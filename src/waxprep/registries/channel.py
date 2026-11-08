@@ -5,6 +5,7 @@ NO real WhatsApp. NO real Telegram. Only fake for testing.
 """
 
 from typing import Protocol, runtime_checkable
+
 from waxprep.registries.base import BaseRegistry
 
 
@@ -24,9 +25,9 @@ class ChannelRegistry(BaseRegistry[ChannelAdapter]):
 
     def register(self, name: str, adapter: ChannelAdapter) -> None:
         """Register a channel adapter."""
-        if not hasattr(adapter, 'name'):
+        if not hasattr(adapter, "name"):
             raise ValueError("Channel adapter must have a 'name' attribute")
-        if not hasattr(adapter, 'handle_message'):
+        if not hasattr(adapter, "handle_message"):
             raise ValueError("Channel adapter must have a 'handle_message' method")
         self._items[name] = adapter
 

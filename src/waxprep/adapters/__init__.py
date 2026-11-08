@@ -1,11 +1,18 @@
 """
-Adapters - Stage 02
-FAKE adapters only to prove registry architecture works.
-NO real implementations. NO WhatsApp. NO Telegram. NO AI providers.
+Adapters - Stage 03
+
+This package contains implementations of ports (adapters).
+
+Dependency Rule: Adapters may import domain/ and application/ports/.
+They may NOT import other adapters or infrastructure/.
+
+NO cross-adapter imports allowed.
 """
 
-from waxprep.adapters.fake_channel import FakeChannelAdapter
-from waxprep.adapters.fake_model import FakeModelAdapter
-from waxprep.adapters.fake_tool import FakeTool
+# This module intentionally does NOT import from other adapters
+# to maintain adapter isolation as per hexagonal architecture rules.
 
-__all__ = ["FakeChannelAdapter", "FakeModelAdapter", "FakeTool"]
+# Adapters are discovered and registered through the registry system,
+# not through this __init__.py file.
+
+__all__ = []

@@ -1,0 +1,135 @@
+name: Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run import linter
+        run: python scripts/lint_imports.py --check
+
+      - name: Run ruff check
+        run: ruff check src/waxprep tests
+
+      - name: Run ruff format check
+        run: ruff format --check src/waxprep tests
+
+      - name: Run pyright type checking
+        run: pyright src/waxprep
+
+      - name: Run pytest with coverage
+        run: |
+          pytest tests/ --tb=short --cov=src/waxprep --cov-report=xml --cov-report=term
+        env:
+          PYTHONPATH: src
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  architecture-tests:
+    name: Architecture Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run architecture fitness tests
+        run: pytest tests/architecture/ -v
+        env:
+          PYTHONPATH: src
+
+      - name: Run unit tests
+        run: pytest tests/unit/ -v
+        env:
+          PYTHONPATH: src
+
+      - name: Run contract tests
+        run: pytest tests/contract/ -v
+        env:
+          PYTHONPATH: src
+
+      - name: Run integration tests
+        run: pytest tests/integration/ -v
+        env:
+          PYTHONPATH: src
+
+      - name: Run regression tests
+        run: pytest tests/regression/ -v
+        env:
+          PYTHONPATH: src
+
+  parallel-tests:
+    name: Parallel Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests in random order
+        run: pytest tests/ --tb=short -p pytest_randomly
+        env:
+          PYTHONPATH: src
+
+      - name: Run tests in parallel
+        run: pytest tests/ --tb=short -n auto
+        env:
+          PYTHONPATH: src

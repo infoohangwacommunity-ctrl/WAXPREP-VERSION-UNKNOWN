@@ -1,0 +1,81 @@
+# Pre-commit Hooks Configuration - Stage 04
+#
+# Runs formatting, linting, and type checking before each commit.
+# This ensures code quality at the earliest possible point.
+#
+# Install with: pre-commit install
+# Run manually with: pre-commit run --all-files
+
+repos:
+  # Remove trailing whitespace
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-toml
+      - id: check-merge-conflict
+
+  # Python formatting with ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.1
+    hooks:
+      - id: ruff-format
+
+  # Python linting with ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.1
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  # Import linting with custom script
+  - repo: local
+    hooks:
+      - id: lint-imports
+        name: lint-imports
+        entry: python scripts/lint_imports.py
+        language: system
+        types: [python]
+        files: src/waxprep/.*\.py$
+        pass_filenames: false
+
+  # Type checking with pyright (primary)
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: pyright
+        language: system
+        types: [python]
+        files: src/waxprep/.*\.py$
+        args: [--pythonversion=3.14]
+
+  # Type checking with mypy (secondary, for comparison)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.0
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        types: [python]
+        files: src/waxprep/.*\.py$
+        args: [--python-version=3.14, --strict]
+        # Only run if pyright passes
+        require_serial: true
+
+  # Run tests
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest
+        language: system
+        types: [python]
+        files: tests/.*\.py$
+        pass_filenames: false
+        args: [--tb=short, --q]

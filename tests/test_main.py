@@ -5,6 +5,7 @@ Prove ASGI app works, health endpoints work, graceful shutdown works.
 
 import pytest
 from fastapi.testclient import TestClient
+
 from waxprep.main import get_app
 
 
@@ -33,17 +34,17 @@ class TestHealthEndpoints:
 
     def test_liveness_not_equal_readiness(self, client):
         """Prove liveness != readiness conceptually.
-        
+
         In Stages 01-02, both return 200, but the endpoints are distinct.
         Later stages will make readiness fail when dependencies are down.
         """
         liveness = client.get("/health/liveness")
         readiness = client.get("/health/readiness")
-        
+
         # Both should succeed in Stages 01-02
         assert liveness.status_code == 200
         assert readiness.status_code == 200
-        
+
         # But they are different endpoints with different purposes
         assert liveness.json()["status"] == "alive"
         assert readiness.json()["status"] == "ready"

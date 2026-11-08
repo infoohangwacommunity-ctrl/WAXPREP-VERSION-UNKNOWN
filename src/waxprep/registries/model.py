@@ -5,6 +5,7 @@ NO real AI providers. NO real model implementations. Only fake for testing.
 """
 
 from typing import Protocol, runtime_checkable
+
 from waxprep.registries.base import BaseRegistry
 
 
@@ -24,9 +25,9 @@ class ModelRegistry(BaseRegistry[ModelAdapter]):
 
     def register(self, name: str, adapter: ModelAdapter) -> None:
         """Register a model adapter."""
-        if not hasattr(adapter, 'name'):
+        if not hasattr(adapter, "name"):
             raise ValueError("Model adapter must have a 'name' attribute")
-        if not hasattr(adapter, 'generate'):
+        if not hasattr(adapter, "generate"):
             raise ValueError("Model adapter must have a 'generate' method")
         self._items[name] = adapter
 

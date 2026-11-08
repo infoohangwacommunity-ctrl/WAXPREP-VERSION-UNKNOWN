@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "waxprep"
-version = "0.1.0"
-description = "WaxPrep Foundation - Stages 01-02 ONLY"
+version = "0.3.0"
+description = "WaxPrep Foundation - Stages 01-03: Hexagonal Architecture, Domain Models, Ports & Adapters"
 readme = "README.md"
 requires-python = ">=3.14,<3.16"
 license = "MIT"
@@ -25,10 +25,14 @@ dependencies = [
 dev = [
     "mypy>=1.8.0",
     "pyright>=1.1.0",
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.23.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
     "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.8.0",
+    "pytest-randomly>=5.0.0",
     "ruff>=0.1.0",
+    "tach>=0.35.0",
+    "coverage>=7.17.0",
 ]
 
 [tool.ruff]
@@ -36,18 +40,128 @@ line-length = 100
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+# Full rule set as recommended in Stage 04 brief
+select = [
+    "E",   # pycodestyle errors
+    "F",   # Pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "S",   # bandit (security)
+    "B",   # flake8-bugbear
+    "A",   # flake8-builtins
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "RUF", # Ruff-specific rules
+]
+
+# Additional configurations
+ignore = []
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# Allow star imports in __init__.py files
+"__init__.py" = ["F401", "F403"]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+
+[tool.ruff.lint.isort]
+known-first-party = ["waxprep"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
 
 [tool.mypy]
 python_version = "3.14"
 strict = true
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
 
 [tool.pyright]
 pythonVersion = "3.14"
 typeCheckingMode = "strict"
 
+# Enable all report flags
+reportGeneralTypeIssues = true
+reportOptionalSubscript = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportUnnecessaryIsInstance = true
+reportUnnecessaryCast = true
+reportUnnecessaryComparison = true
+reportIncompatibleMethodOverride = true
+reportIncompatibleVariableOverride = true
+reportInconsistentOverride = true
+reportCallInDefaultConstructor = true
+reportImplicitStringConcatenation = true
+reportUnboundVariable = true
+reportInvalidStringEscapeSequence = true
+reportMissingParameterType = true
+reportUnknownParameterType = true
+reportUnknownArgumentType = true
+reportUnknownMemberType = true
+reportMissingTypeArgument = true
+reportInvalidTypeArgument = true
+reportUntypedBaseClass = true
+reportUntypedFunctionDecorator = true
+reportUntypedNamedTuple = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "-v --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks integration tests",
+    "contract: marks contract tests",
+    "regression: marks regression tests",
+    "architecture: marks architecture fitness tests",
+]
+testpaths = ["tests"]
+
+[tool.pytest-xdist]
+# Run tests in parallel with xdist
+# Use -n NUM to specify number of workers
+
+[tool.pytest-randomly]
+# Run tests in random order to surface state coupling
+
+[tool.coverage.run]
+source = ["src/waxprep"]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+# Coverage floor - fail if coverage drops below this
+fail_under = 85
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.8.0",
+    "pytest-randomly>=5.0.0",
+    "ruff>=0.1.0",
+    "pyright>=1.1.0",
+    "mypy>=1.8.0",
 ]

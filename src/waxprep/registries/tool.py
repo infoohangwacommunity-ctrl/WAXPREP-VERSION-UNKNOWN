@@ -5,6 +5,7 @@ NO real tools. Only fake for testing.
 """
 
 from typing import Protocol, runtime_checkable
+
 from waxprep.registries.base import BaseRegistry
 
 
@@ -24,9 +25,9 @@ class ToolRegistry(BaseRegistry[Tool]):
 
     def register(self, name: str, tool: Tool) -> None:
         """Register a tool."""
-        if not hasattr(tool, 'name'):
+        if not hasattr(tool, "name"):
             raise ValueError("Tool must have a 'name' attribute")
-        if not hasattr(tool, 'execute'):
+        if not hasattr(tool, "execute"):
             raise ValueError("Tool must have an 'execute' method")
         self._items[name] = tool
 

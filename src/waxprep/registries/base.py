@@ -4,16 +4,16 @@ Abstract base class for all registries.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Generic, TypeVar, List
+from typing import Generic, TypeVar
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class BaseRegistry(ABC, Generic[T]):
     """Base registry class. NO hardcoded adapters."""
 
     def __init__(self) -> None:
-        self._items: Dict[str, T] = {}
+        self._items: dict[str, T] = {}
 
     @abstractmethod
     def register(self, name: str, item: T) -> None:
@@ -26,7 +26,7 @@ class BaseRegistry(ABC, Generic[T]):
             raise KeyError(f"No item registered with name: {name}")
         return self._items[name]
 
-    def list_all(self) -> List[str]:
+    def list_all(self) -> list[str]:
         """List all registered item names."""
         return list(self._items.keys())
 

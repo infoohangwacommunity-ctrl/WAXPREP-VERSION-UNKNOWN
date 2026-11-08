@@ -3,10 +3,9 @@ Test Registries - Stage 02
 Prove registries work with fake adapters.
 """
 
-import pytest
 from waxprep.registries.channel import ChannelRegistry, FakeChannelAdapter, get_channel_registry
-from waxprep.registries.model import ModelRegistry, FakeModelAdapter, get_model_registry
-from waxprep.registries.tool import ToolRegistry, FakeTool, get_tool_registry
+from waxprep.registries.model import FakeModelAdapter, ModelRegistry, get_model_registry
+from waxprep.registries.tool import FakeTool, ToolRegistry, get_tool_registry
 
 
 class TestChannelRegistry:
@@ -15,13 +14,13 @@ class TestChannelRegistry:
     def test_fake_adapter_has_name(self):
         """Prove fake adapter has required name attribute."""
         adapter = FakeChannelAdapter()
-        assert hasattr(adapter, 'name')
+        assert hasattr(adapter, "name")
         assert adapter.name == "fake"
 
     def test_fake_adapter_has_handle_message(self):
         """Prove fake adapter has required handle_message method."""
         adapter = FakeChannelAdapter()
-        assert hasattr(adapter, 'handle_message')
+        assert hasattr(adapter, "handle_message")
         assert callable(adapter.handle_message)
 
     def test_channel_registry_register(self):
@@ -59,13 +58,13 @@ class TestModelRegistry:
     def test_fake_adapter_has_name(self):
         """Prove fake adapter has required name attribute."""
         adapter = FakeModelAdapter()
-        assert hasattr(adapter, 'name')
+        assert hasattr(adapter, "name")
         assert adapter.name == "fake"
 
     def test_fake_adapter_has_generate(self):
         """Prove fake adapter has required generate method."""
         adapter = FakeModelAdapter()
-        assert hasattr(adapter, 'generate')
+        assert hasattr(adapter, "generate")
         assert callable(adapter.generate)
 
     def test_model_registry_register(self):
@@ -87,13 +86,13 @@ class TestToolRegistry:
     def test_fake_tool_has_name(self):
         """Prove fake tool has required name attribute."""
         tool = FakeTool()
-        assert hasattr(tool, 'name')
+        assert hasattr(tool, "name")
         assert tool.name == "fake_tool"
 
     def test_fake_tool_has_execute(self):
         """Prove fake tool has required execute method."""
         tool = FakeTool()
-        assert hasattr(tool, 'execute')
+        assert hasattr(tool, "execute")
         assert callable(tool.execute)
 
     def test_tool_registry_register(self):

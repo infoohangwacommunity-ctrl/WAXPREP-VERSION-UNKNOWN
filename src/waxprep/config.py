@@ -15,12 +15,12 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         # Use WAXPREP_ prefix to avoid conflicts with sandbox env vars
-        env_prefix = "WAXPREP_",
+        env_prefix="WAXPREP_",
     )
 
     # Application
     environment: str = Field(default="development")
-    host: str = Field(default="0.0.0.0")
+    host: str = Field(default="0.0.0.0")  # noqa: S104
     port: int = Field(default=8000)
 
     # Shutdown - configurable, NOT hardcoded
