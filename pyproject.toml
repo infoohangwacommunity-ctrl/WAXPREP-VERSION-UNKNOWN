@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "waxprep"
 version = "0.3.0"
-description = "WaxPrep Foundation - Stages 01-03: Hexagonal Architecture, Domain Models, Ports & Adapters"
+description = "WaxPrep Foundation - Stages 01-07: Hexagonal Architecture, Static Analysis, Quality Gates"
 readme = "README.md"
 requires-python = ">=3.14,<3.16"
 license = "MIT"
@@ -33,6 +33,29 @@ dev = [
     "ruff>=0.1.0",
     "tach>=0.35.0",
     "coverage>=7.17.0",
+    # Stage 06: Static Analysis
+    "bandit>=1.7.0",
+    "semgrep>=1.0.0",
+    "vulture>=2.0",
+    "radon>=6.0.0",
+    "xenon>=0.9.0",
+    "deptry>=0.12.0",
+    "pip-audit>=2.0.0",
+    "gitleaks>=8.0.0",
+]
+
+security = [
+    "bandit>=1.7.0",
+    "semgrep>=1.0.0",
+    "pip-audit>=2.0.0",
+    "gitleaks>=8.0.0",
+]
+
+analysis = [
+    "vulture>=2.0",
+    "radon>=6.0.0",
+    "xenon>=0.9.0",
+    "deptry>=0.12.0",
 ]
 
 [tool.ruff]
@@ -154,14 +177,49 @@ exclude_lines = [
 [tool.coverage.html]
 directory = "htmlcov"
 
-[dependency-groups]
-dev = [
-    "pytest>=9.2.0",
-    "pytest-asyncio>=1.4.1.post1",
-    "pytest-cov>=4.1.0",
-    "pytest-xdist>=3.8.0",
-    "pytest-randomly>=5.0.0",
-    "ruff>=0.1.0",
-    "pyright>=1.1.0",
-    "mypy>=1.8.0",
-]
+# Stage 06: Static Analysis Tools Configuration
+
+[tool.bandit]
+skips = []
+severity = "high"
+confidence = "high"
+
+[tool.bandit.assert_used]
+skips = ["*_test.py", "*test_*.py"]
+
+[tool.vulture]
+paths = ["src/waxprep", "tests"]
+min_confidence = 80
+verbose = true
+
+[tool.radon]
+# Complexity thresholds
+cc_rank = true
+mi_rank = true
+halstead = true
+
+[tool.xenon]
+max_average_A = 10
+max_average_B = 10
+max_average_C = 10
+max_modules_A = 10
+max_modules_B = 10
+max_modules_C = 10
+
+[tool.deptry]
+root = "src/waxprep"
+config = ".deptry.toml"
+ignore_notebooks = true
+json = false
+skip_obsolete = []
+skip_missing = []
+
+[tool.pip-audit]
+require-hashes = false
+vulnerability-service = "osv"
+format = "text"
+
+[tool.gitleaks]
+config = ".gitleaks.toml"
+verbose = true
+redact = true

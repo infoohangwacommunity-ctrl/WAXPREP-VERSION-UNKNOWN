@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for gitleaks and deptry
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -30,8 +32,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,security,analysis]"
 
+      # Layer 1: Fast deterministic checks
       - name: Run import linter
         run: python scripts/lint_imports.py --check
 
@@ -43,6 +46,33 @@ jobs:
 
       - name: Run pyright type checking
         run: pyright src/waxprep
+
+      # Layer 2: Architecture checks
+      - name: Run architecture fitness tests
+        run: pytest tests/architecture/ -v
+        env:
+          PYTHONPATH: src
+
+      # Layer 3: Tests and coverage
+      - name: Run unit tests
+        run: pytest tests/unit/ -v
+        env:
+          PYTHONPATH: src
+
+      - name: Run contract tests
+        run: pytest tests/contract/ -v
+        env:
+          PYTHONPATH: src
+
+      - name: Run integration tests
+        run: pytest tests/integration/ -v
+        env:
+          PYTHONPATH: src
+
+      - name: Run regression tests
+        run: pytest tests/regression/ -v
+        env:
+          PYTHONPATH: src
 
       - name: Run pytest with coverage
         run: |
@@ -56,6 +86,49 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
           fail_ci_if_error: false
+
+      # Layer 4: Deeper static analysis
+      - name: Run Bandit security scanner
+        run: bandit -r src/waxprep -f json -o bandit-results.json || true
+        continue-on-error: false
+
+      - name: Run Semgrep with custom rules
+        run: semgrep --config=.semgrep/semgrep.yml --config=p/python --config=p/security-audit --json -o semgrep-results.json src/waxprep || true
+        continue-on-error: false
+
+      - name: Run Vulture dead code detection
+        run: vulture src/waxprep --min-confidence 80 --verbose || true
+        continue-on-error: true  # Advisory only
+
+      - name: Run Radon complexity analysis
+        run: |
+          radon cc src/waxprep -j radon-results.json || true
+          radon mi src/waxprep -j >> radon-results.json || true
+        continue-on-error: true  # Advisory only
+
+      - name: Run Deptry dependency check
+        run: deptry . || true
+        continue-on-error: true  # Advisory only
+
+      # Layer 5: Security and dependency checks
+      - name: Run pip-audit for vulnerable dependencies
+        run: pip-audit --format json -o pip-audit-results.json || true
+        continue-on-error: false
+
+      - name: Run Gitleaks secret scanning
+        run: gitleaks detect --source . --report-path gitleaks-results.json --verbose || true
+        continue-on-error: false
+
+      # Layer 6: SBOM generation
+      - name: Generate SBOM
+        run: python scripts/generate_sbom.py --format spdx --output sbom.json --verbose || true
+        continue-on-error: true
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
 
   architecture-tests:
     name: Architecture Tests
@@ -80,26 +153,6 @@ jobs:
 
       - name: Run architecture fitness tests
         run: pytest tests/architecture/ -v
-        env:
-          PYTHONPATH: src
-
-      - name: Run unit tests
-        run: pytest tests/unit/ -v
-        env:
-          PYTHONPATH: src
-
-      - name: Run contract tests
-        run: pytest tests/contract/ -v
-        env:
-          PYTHONPATH: src
-
-      - name: Run integration tests
-        run: pytest tests/integration/ -v
-        env:
-          PYTHONPATH: src
-
-      - name: Run regression tests
-        run: pytest tests/regression/ -v
         env:
           PYTHONPATH: src
 

@@ -6,15 +6,7 @@ NO external imports - pure Python only.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import NewType, Self
-from uuid import uuid4
-
-# Type aliases for clarity
-StudentId = NewType("StudentId", str)
-SessionId = NewType("SessionId", str)
-MessageId = NewType("MessageId", str)
-SubjectCode = NewType("SubjectCode", str)
-ConceptId = NewType("ConceptId", str)
+from typing import Self
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,29 +38,5 @@ class Timestamp:
 
 def generate_id() -> str:
     """Generate a unique identifier."""
+    from uuid import uuid4
     return str(uuid4())
-
-
-def create_student_id() -> StudentId:
-    """Create a new student ID."""
-    return StudentId(generate_id())
-
-
-def create_session_id() -> SessionId:
-    """Create a new session ID."""
-    return SessionId(generate_id())
-
-
-def create_message_id() -> MessageId:
-    """Create a new message ID."""
-    return MessageId(generate_id())
-
-
-def create_subject_code(code: str) -> SubjectCode:
-    """Create a subject code."""
-    return SubjectCode(code.upper())
-
-
-def create_concept_id() -> ConceptId:
-    """Create a new concept ID."""
-    return ConceptId(generate_id())

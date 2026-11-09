@@ -10,12 +10,9 @@ Dependency Rule: This module may import domain/ only.
 It may NOT import adapters/, infrastructure/, or external frameworks.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from waxprep.domain.models.message import Message
-    from waxprep.domain.models.result import Error, Result
-    from waxprep.domain.value_objects import MessageId, StudentId
+from waxprep.domain.models.result import Error, Result
 
 
 @runtime_checkable
@@ -35,33 +32,17 @@ class ChannelPort(Protocol):
 
     name: str
 
-    async def handle_message(self, message: Message) -> Result[Message, Error]:
-        """
-        Handle an incoming message from the channel.
-
-        This method is called when a message is received from the channel.
-        The adapter should process the raw channel message and convert it
-        to a domain Message object.
-
-        Args:
-            message: The incoming message from the channel
-
-        Returns:
-            Result containing the processed message or an error
-        """
-        ...
-
     async def send_message(
         self,
-        recipient_id: StudentId,
-        message: Message,
-    ) -> Result[MessageId, Error]:
+        recipient_id: str,
+        content: str,
+    ) -> Result[str, Error]:
         """
         Send a message to a recipient.
 
         Args:
-            recipient_id: The student identifier
-            message: The message to send (domain Message object)
+            recipient_id: The recipient identifier
+            content: The message content to send
 
         Returns:
             Result containing the sent message ID or an error
@@ -70,14 +51,14 @@ class ChannelPort(Protocol):
 
     async def send_typing_indicator(
         self,
-        recipient_id: StudentId,
+        recipient_id: str,
         is_typing: bool,
     ) -> Result[bool, Error]:
         """
         Send a typing indicator to show the AI is thinking.
 
         Args:
-            recipient_id: The student identifier
+            recipient_id: The recipient identifier
             is_typing: True to show typing, False to hide
 
         Returns:
@@ -91,7 +72,6 @@ class ChannelPort(Protocol):
 
         Returns:
             A dictionary describing the adapter's capabilities including:
-            - supported_message_types: List of MessageType enums
             - max_message_length: Maximum message length in characters
             - supports_streaming: Whether streaming responses are supported
             - supports_attachments: Whether file attachments are supported

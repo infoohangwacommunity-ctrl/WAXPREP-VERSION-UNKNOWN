@@ -1,0 +1,56 @@
+# Deptry Configuration for WaxPrep - Stage 06
+# Detects obsolete, missing, and misplaced dependencies
+
+[root]
+name = "waxprep"
+
+# Directories to scan for imports
+[scanners]
+root = "src/waxprep"
+
+# Known first-party packages
+[known_first_party]
+waxprep = ["src/waxprep"]
+
+# Ignore patterns
+[ignores]
+# Ignore test dependencies in test files
+tests = [
+    "pytest",
+    "pytest-asyncio", 
+    "pytest-cov",
+    "pytest-xdist",
+    "pytest-randomly",
+    "coverage",
+]
+
+# Ignore dev dependencies in dev scripts
+scripts = [
+    "mypy",
+    "pyright",
+    "ruff",
+    "bandit",
+    "semgrep",
+    "vulture",
+    "radon",
+    "xenon",
+    "deptry",
+    "pip-audit",
+    "gitleaks",
+]
+
+# Obsolete dependencies - packages that are no longer needed
+[obsolete]
+# Add packages here that were removed but might still be referenced
+
+# Missing dependencies - packages that are imported but not in pyproject.toml
+[missing]
+# Deptry will detect these automatically
+
+# Transitive dependencies - packages that are dependencies of dependencies
+[transitive]
+# These are automatically detected
+
+# Misplaced dependencies - packages that should be in a different group
+[misplaced]
+# Define which dependency groups packages should belong to

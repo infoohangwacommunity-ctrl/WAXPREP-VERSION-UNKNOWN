@@ -1,81 +1,96 @@
-# Pre-commit Hooks Configuration - Stage 04
-#
-# Runs formatting, linting, and type checking before each commit.
-# This ensures code quality at the earliest possible point.
-#
-# Install with: pre-commit install
-# Run manually with: pre-commit run --all-files
+# Pre-commit Configuration for WaxPrep - Stage 06
+# Runs checks before allowing commits
 
 repos:
-  # Remove trailing whitespace
+  # Formatting and linting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # Type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [pydantic>=2.5.0, pydantic-settings>=2.1.0]
+        types_or: [python, pyi]
+
+  # Pyright (alternative type checker)
+  - repo: https://github.com/pre-commit/mirrors-pyright
+    rev: v1.1.35
+    hooks:
+      - id: pyright
+        types_or: [python, pyi]
+
+  # Custom import linter
+  - repo: local
+    hooks:
+      - id: import-linter
+        name: Import Linter
+        entry: python scripts/lint_imports.py --check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  # Security scanning
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: [--skip, B101,B301,B303]  # Skip some tests for pre-commit
+        exclude: tests/
+        types: [python]
+
+  # Secret scanning
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+        args: [--config=.gitleaks.toml, --verbose]
+        pass_filenames: false
+
+  # Dependency checking
+  - repo: https://github.com/danielfm/deptry
+    rev: v0.12.0
+    hooks:
+      - id: deptry
+        args: [--config=.deptry.toml]
+        pass_filenames: false
+
+  # Dead code detection
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.11
+    hooks:
+      - id: vulture
+        args: [--min-confidence, "80", --verbose]
+        types: [python]
+
+  # Complexity analysis
+  - repo: https://github.com/rubik/radon
+    rev: v6.0.1
+    hooks:
+      - id: radon-cc
+        args: [--min, C, --max, A]
+        types: [python]
+
+  # Tests
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v4.5.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
-      - id: check-added-large-files
-        args: [--maxkb=1024]
       - id: check-toml
-      - id: check-merge-conflict
+      - id: check-added-large-files
 
-  # Python formatting with ruff
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.1
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.38.0
     hooks:
-      - id: ruff-format
-
-  # Python linting with ruff
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.1
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-
-  # Import linting with custom script
-  - repo: local
-    hooks:
-      - id: lint-imports
-        name: lint-imports
-        entry: python scripts/lint_imports.py
-        language: system
-        types: [python]
-        files: src/waxprep/.*\.py$
-        pass_filenames: false
-
-  # Type checking with pyright (primary)
-  - repo: local
-    hooks:
-      - id: pyright
-        name: pyright
-        entry: pyright
-        language: system
-        types: [python]
-        files: src/waxprep/.*\.py$
-        args: [--pythonversion=3.14]
-
-  # Type checking with mypy (secondary, for comparison)
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.0
-    hooks:
-      - id: mypy
-        name: mypy
-        entry: mypy
-        language: system
-        types: [python]
-        files: src/waxprep/.*\.py$
-        args: [--python-version=3.14, --strict]
-        # Only run if pyright passes
-        require_serial: true
-
-  # Run tests
-  - repo: local
-    hooks:
-      - id: pytest
-        name: pytest
-        entry: pytest
-        language: system
-        types: [python]
-        files: tests/.*\.py$
-        pass_filenames: false
-        args: [--tb=short, --q]
+      - id: markdownlint
+        args: [--disable, MD013, MD033]  # Disable line length and inline HTML

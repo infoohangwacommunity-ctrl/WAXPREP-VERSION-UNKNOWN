@@ -35,7 +35,7 @@ Adopt **Hexagonal Architecture (Ports and Adapters)** in a **modular monolith** 
 ┌─────────────────────────────────────────────────────────┐
 │                    Domain Layer                           │
 │  Pure business logic - NO external imports               │
-│  - Models (Student, Session, Message, LearningProfile)   │
+│  - Models (Result types)                                   │
 │  - Value Objects                                          │
 │  - Domain Exceptions                                     │
 │  - Result types                                          │

@@ -1,0 +1,173 @@
+# Semgrep Configuration for WaxPrep - Stage 06
+# Custom rules for architectural enforcement and security
+
+rules:
+  # Architectural Rules - Stage 03 Enforcement
+  
+  # Rule: No domain-to-provider imports
+  - id: waxprep-no-domain-provider-import
+    message: "Domain layer must not import external provider SDKs. Use ports and adapters instead."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      from $PROVIDER import ...
+    where:
+      metavariable-pattern:
+        metavariable: $PROVIDER
+        patterns:
+          - pattern: "openai"
+          - pattern: "anthropic"
+          - pattern: "mistralai"
+          - pattern: "upstage"
+          - pattern: "litellm"
+          - pattern: "langchain"
+          - pattern: "llama_index"
+          - pattern: "telegram"
+          - pattern: "whatsapp"
+          - pattern: "twilio"
+    fix: "Import through application ports instead of directly importing provider SDKs."
+    paths:
+      include:
+        - "src/waxprep/domain/**"
+    
+  # Rule: No import-time registration
+  - id: waxprep-no-import-time-registration
+    message: "Modules should not register themselves at import time. Use explicit registration in composition root."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      $REGISTRY.register(...)
+    where:
+      metavariable-pattern:
+        metavariable: $REGISTRY
+        pattern: "$ANY"
+    patterns:
+      - pattern-inside: |
+          # Module-level code that executes on import
+          $STMT
+          ...
+    fix: "Move registration to main.py or use a factory pattern."
+    paths:
+      include:
+        - "src/waxprep/**"
+      exclude:
+        - "src/waxprep/main.py"
+        - "src/waxprep/infrastructure/**"
+    
+  # Rule: No hardcoded model assumptions
+  - id: waxprep-no-hardcoded-model
+    message: "Avoid hardcoding specific AI model names. Use configuration instead."
+    severity: WARNING
+    languages: [python]
+    pattern: |
+      "$MODEL_NAME"
+    where:
+      metavariable-pattern:
+        metavariable: $MODEL_NAME
+        patterns:
+          - pattern: "gpt-4"
+          - pattern: "gpt-3.5"
+          - pattern: "claude-3"
+          - pattern: "claude-2"
+          - pattern: "mistral-large"
+          - pattern: "llama-3"
+          - pattern: "solar-pro"
+    fix: "Use configuration from settings or environment variables."
+    
+  # Rule: No hardcoded channel assumptions
+  - id: waxprep-no-hardcoded-channel
+    message: "Avoid hardcoding specific channel names. Use configuration instead."
+    severity: WARNING
+    languages: [python]
+    pattern: |
+      "$CHANNEL"
+    where:
+      metavariable-pattern:
+        metavariable: $CHANNEL
+        patterns:
+          - pattern: "telegram"
+          - pattern: "whatsapp"
+          - pattern: "sms"
+          - pattern: "email"
+    fix: "Use configuration from settings or environment variables."
+    
+  # Rule: No silent exception handling
+  - id: waxprep-no-silent-exception
+    message: "Do not silently catch exceptions without handling or logging them."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      try:
+          ...
+      except $EXCEPTION:
+          pass
+    fix: "At minimum, log the exception. Better: handle it or re-raise."
+    
+  # Rule: No sys.exit in application code
+  - id: waxprep-no-sys-exit
+    message: "Do not use sys.exit() in application code. Use proper error handling."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      sys.exit(...)
+    fix: "Raise an exception or return an error result instead."
+    paths:
+      include:
+        - "src/waxprep/**"
+      exclude:
+        - "src/waxprep/main.py"
+    
+  # Security Rules
+  
+  # Rule: Detect hardcoded API keys
+  - id: waxprep-hardcoded-api-key
+    message: "Potential hardcoded API key detected. Use environment variables instead."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      $KEY = "$API_KEY_PATTERN"
+    where:
+      metavariable-pattern:
+        metavariable: $API_KEY_PATTERN
+        regex: "(sk-|pk-|api-|key-)[a-zA-Z0-9]{20,}"
+    fix: "Store API keys in environment variables or secret management system."
+    
+  # Rule: Detect dangerous eval usage
+  - id: waxprep-no-eval
+    message: "Using eval() is dangerous. Avoid it."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      eval(...)
+    fix: "Use safer alternatives like ast.literal_eval or avoid dynamic code execution."
+    
+  # Rule: Detect dangerous exec usage
+  - id: waxprep-no-exec
+    message: "Using exec() is dangerous. Avoid it."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      exec(...)
+    fix: "Avoid dynamic code execution. Use safer alternatives."
+    
+  # Rule: Detect shell injection vulnerabilities
+  - id: waxprep-no-shell-true
+    message: "Using shell=True in subprocess can lead to shell injection vulnerabilities."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      subprocess.$FUNC(..., shell=True, ...)
+    fix: "Use shell=False (the default) and pass arguments as a list."
+    
+  # Rule: Detect SQL injection patterns
+  - id: waxprep-no-string-format-sql
+    message: "Using string formatting for SQL queries can lead to SQL injection."
+    severity: ERROR
+    languages: [python]
+    pattern: |
+      $QUERY = "SELECT ..." % $PARAMS
+    or:
+      $QUERY = "SELECT ...".format(...)
+    or:
+      $QUERY = f"SELECT ...{$VAR}..."
+    fix: "Use parameterized queries with your database library."

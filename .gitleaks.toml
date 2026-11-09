@@ -1,0 +1,86 @@
+# Gitleaks Configuration for WaxPrep - Stage 06
+# Detects secrets, API keys, and sensitive information in the repository
+
+title = "WaxPrep Secrets Detection"
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''test_.*\.(py|js|ts|go|rs|java)$''',
+    '''.*_test\.(py|js|ts|go|rs|java)$''',
+    '''tests/.*\.(py|js|ts|go|rs|java)$''',
+    '''fixtures/.*''',
+    '''mocks/.*''',
+]
+regexes = [
+    # Allow fake keys in test files
+    '''(?i)fake|test|example|sample|mock''',
+    # Allow placeholder values
+    '''(?i)placeholder|dummy|xxxxx|aaaaa''',
+]
+
+[[rules]]
+id = "waxprep-api-key"
+description = "API Key Detection"
+regex = '''(?i)(api[_-]?key|apikey|api[_-]?secret)[\s]*[=:]\s*["'][a-zA-Z0-9_\-]{20,}["']'''
+tags = ["api", "key", "secret"]
+
+[[rules]]
+id = "waxprep-openai-key"
+description = "OpenAI API Key"
+regex = '''(?i)sk-[a-zA-Z0-9]{48}'''
+tags = ["openai", "api", "key"]
+
+[[rules]]
+id = "waxprep-anthropic-key"
+description = "Anthropic API Key"
+regex = '''(?i)sk-ant-[a-zA-Z0-9\-]{34}'''
+tags = ["anthropic", "api", "key"]
+
+[[rules]]
+id = "waxprep-mistral-key"
+description = "Mistral API Key"
+regex = '''(?i)(xn|mn)-[a-zA-Z0-9\-]{32,}'''
+tags = ["mistral", "api", "key"]
+
+[[rules]]
+id = "waxprep-telegram-token"
+description = "Telegram Bot Token"
+regex = '''(?i)[0-9]{8,10}:[a-zA-Z0-9\-_]{35}'''
+tags = ["telegram", "bot", "token"]
+
+[[rules]]
+id = "waxprep-whatsapp-secret"
+description = "WhatsApp Secret"
+regex = '''(?i)(whatsapp|wa)[_-]?(secret|token|key)[\s]*[=:]\s*["'][a-zA-Z0-9_\-]{20,}["']'''
+tags = ["whatsapp", "secret"]
+
+[[rules]]
+id = "waxprep-aws-credentials"
+description = "AWS Credentials"
+regex = '''(?i)(aws[_-]?access[_-]?key[_-]?id|aws[_-]?secret[_-]?access[_-]?key)[\s]*[=:]\s*["'][A-Z0-9/+=]{20,}["']'''
+tags = ["aws", "credentials"]
+
+[[rules]]
+id = "waxprep-github-token"
+description = "GitHub Token"
+regex = '''(?i)(ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9_]{36,}'''
+tags = ["github", "token"]
+
+[[rules]]
+id = "waxprep-generic-secret"
+description = "Generic Secret"
+regex = '''(?i)(secret|password|passwd|pwd|token|api[_-]?key)[\s]*[=:]\s*["'][a-zA-Z0-9_\-!@#$%^&*()]{16,}["']'''
+tags = ["secret", "password", "token"]
+
+[[rules]]
+id = "waxprep-private-key"
+description = "Private Key"
+regex = '''(?i)-----BEGIN\s*(?:RSA\s*)?PRIVATE\s*KEY-----'''
+tags = ["private", "key", "crypto"]
+
+[[rules]]
+id = "waxprep-jwt-token"
+description = "JWT Token"
+regex = '''(?i)eyJ[a-zA-Z0-9\-_]+\.eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+'''
+tags = ["jwt", "token"]

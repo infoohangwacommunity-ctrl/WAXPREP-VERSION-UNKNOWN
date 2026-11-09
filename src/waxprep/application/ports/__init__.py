@@ -11,14 +11,10 @@ Ports define the contracts that adapters must implement.
 
 from waxprep.application.ports.channel import ChannelPort
 from waxprep.application.ports.model import ModelPort
-from waxprep.application.ports.session import SessionPort
-from waxprep.application.ports.student import StudentPort
 from waxprep.application.ports.tool import ToolPort
 
 __all__ = [
     "ChannelPort",
     "ModelPort",
-    "SessionPort",
-    "StudentPort",
     "ToolPort",
 ]

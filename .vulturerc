@@ -1,0 +1,36 @@
+# Vulture Configuration for WaxPrep - Stage 06
+# Detects dead code (unused functions, classes, variables)
+
+[paths]
+waxprep = src/waxprep
+tests = tests
+
+[min_confidence]
+# Minimum confidence score (0-100) for reporting unused code
+value = 80
+
+[verbose]
+# Verbose output
+enabled = true
+
+[make_whitelist]
+# Generate a whitelist file
+enabled = false
+
+[whitelist_files]
+# Files containing whitelisted items
+files = .vulture_whitelist.py
+
+[sort_by_size]
+# Sort results by size
+enabled = false
+
+# Exclude patterns
+[exclude]
+# Patterns for files to exclude
+patterns = 
+    __pycache__
+    .*\.pyc
+    .*\.pyo
+    tests/fixtures
+    tests/conftest.py

@@ -10,13 +10,10 @@ Dependency Rule: This module may import domain/ only.
 It may NOT import adapters/, infrastructure/, or external frameworks.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Any, Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    from waxprep.domain.models.result import Error, Result
-    from waxprep.domain.value_objects import StudentId
+from waxprep.domain.models.result import Error, Result
 
 
 @runtime_checkable
@@ -40,7 +37,7 @@ class ToolPort(Protocol):
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        student_id: StudentId | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Result[dict[str, Any], Error]:
         """
         Execute the tool with given arguments.
@@ -48,7 +45,7 @@ class ToolPort(Protocol):
         Args:
             tool_name: The name of the tool to execute
             arguments: The arguments for the tool
-            student_id: Optional student ID for context
+            context: Optional context for the tool
 
         Returns:
             Result containing the tool execution result or an error
@@ -59,7 +56,7 @@ class ToolPort(Protocol):
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        student_id: StudentId | None = None,
+        context: dict[str, Any] | None = None,
     ) -> AsyncIterator[Result[dict[str, Any], Error]]:
         """
         Execute the tool with streaming output.
@@ -67,7 +64,7 @@ class ToolPort(Protocol):
         Args:
             tool_name: The name of the tool to execute
             arguments: The arguments for the tool
-            student_id: Optional student ID for context
+            context: Optional context for streaming
 
         Yields:
             Result objects containing chunks of the streaming result or errors

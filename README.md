@@ -1,10 +1,10 @@
-# WaxPrep Foundation - Stages 01-03
+# WaxPrep Foundation - Stages 01-05
 
 ## Overview
 
 This repository contains the **WaxPrep Foundation** - the architectural and engineering foundation for the WaxPrep AI learning companion project.
 
-**Current Version**: 0.3.0 (Stages 01-03 Complete)
+**Current Version**: 0.3.0 (Stages 01-05 Complete)
 
 ## What is WaxPrep?
 
@@ -25,30 +25,29 @@ WaxPrep is an **AI-powered learning companion** designed to help students learn,
 ### Hexagonal Architecture (Ports and Adapters)
 
 ```
-┌─────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────┐
 │                      main.py                              │
 │                 (Composition Root)                       │
-└─────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────┘
                            │
                            ▼
-┌─────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────┐
 │                    Domain Layer                           │
 │  Pure business logic - NO external imports               │
-│  - Models (Student, Session, Message, LearningProfile)   │
+│  - Models (Result types)                                  │
 │  - Value Objects                                          │
 │  - Domain Exceptions                                     │
-│  - Result types                                          │
-└─────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────┘
                            │
                            ▼
-┌─────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────┐
 │                 Application Layer                         │
 │  Use case orchestration + Port definitions                │
-│  - Ports/Interfaces (ChannelPort, ModelPort, etc.)       │
+│  - Ports/Interfaces (ChannelPort, ModelPort, ToolPort)    │
 │  - Use case handlers                                      │
-└─────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────┘
                            │
-            ┌──────────────┼──────────────┐
+            ┌──────────────┴──────────────┬──────────────┐
             ▼              ▼              ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
 │   Adapters      │ │ Infrastructure  │ │   Registries    │
@@ -79,11 +78,10 @@ waxprep-version-unknown/
 ├── src/
 │   └── waxprep/
 │       ├── domain/              # Pure domain models
-│       │   ├── models/          # Student, Session, Message, etc.
-│       │   └── value_objects/   # StudentId, SessionId, etc.
+│       │   └── models/          # Result types
 │       │
 │       ├── application/         # Application layer
-│       │   └── ports/           # Port interfaces (ChannelPort, ModelPort, etc.)
+│       │   └── ports/           # Port interfaces (ChannelPort, ModelPort, ToolPort)
 │       │
 │       ├── adapters/            # Port implementations
 │       │   ├── fake_channel.py  # Fake implementations for testing
@@ -146,11 +144,11 @@ waxprep-version-unknown/
 - ✅ Basic test structure
 
 ### Stage 03: Hexagonal Architecture
-- ✅ Domain models (Student, Session, Message, LearningProfile, Subject, Concept)
-- ✅ Value objects (StudentId, SessionId, MessageId, etc.)
+- ✅ Domain models (Result types)
+- ✅ Value objects (Timestamp)
 - ✅ Result types for functional error handling
 - ✅ Domain exceptions hierarchy
-- ✅ Port interfaces (ChannelPort, ModelPort, ToolPort, StudentPort, SessionPort)
+- ✅ Port interfaces (ChannelPort, ModelPort, ToolPort)
 - ✅ Infrastructure modules (config, logging, lifecycle, DI)
 - ✅ Composition root (main.py)
 - ✅ Import linter with all contracts
@@ -275,8 +273,8 @@ pyright src/waxprep
 
 The foundation is now complete through Stage 05. The next steps are:
 
-1. **Stage 06**: Implement real channel adapters (WhatsApp, Telegram)
-2. **Stage 07**: Implement real model adapters (AI providers)
+1. **Stage 06**: Static Analysis and Code Inspection
+2. **Stage 07**: Quality Gate Infrastructure
 3. **Stage 08**: Implement persistence layer
 4. **Stage 09**: Implement message processing pipeline
 5. **Stage 10**: Implement personalization engine
@@ -285,7 +283,6 @@ Each stage will build on this solid foundation while maintaining the architectur
 
 ## Resources
 
-- [WaxPrep Philosophy](https://github.com/user/waxprep) - Core philosophy and vision
 - [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/) - Architecture pattern
 - [Ports and Adapters](https://martinfowler.com/bliki/PortsAndAdapters.html) - Pattern description
 - [Ruff](https://github.com/astral-sh/ruff) - Python linter and formatter
