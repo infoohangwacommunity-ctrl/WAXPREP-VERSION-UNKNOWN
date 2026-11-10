@@ -1,0 +1,295 @@
+# WaxPrep Semgrep Rules
+# Version: 1.0.0
+# These rules detect hardcoded educational patterns and architectural violations
+
+rules:
+  # ============================================================================
+  # HARDCODED EDUCATIONAL PATTERNS
+  # ============================================================================
+  
+  - id: waxprep-hardcoded-subjects-list
+    patterns:
+      - pattern: $SUBJECTS = ["anatomy", ...]
+      - pattern: $SUBJECTS = ["biology", ...]
+      - pattern: $SUBJECTS = ["chemistry", ...]
+      - pattern: $SUBJECTS = ["physics", ...]
+      - pattern: $SUBJECTS = ["mathematics", ...]
+    message: "Hardcoded list of educational subjects detected. Use AI model for subject classification."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: hardcoding
+      rule_id: WAXPREP-HARD-001
+      layer: application
+    fix: "Remove hardcoded subject list and use AI model for classification."
+
+  - id: waxprep-hardcoded-subjects-dict
+    patterns:
+      - pattern: |
+          $SUBJECTS = {
+            ...,
+            "anatomy"|"biology"|"chemistry"|"physics"|"mathematics"|"science"|"history"|"geography": ...
+            ...
+          }
+    message: "Hardcoded dictionary of educational subjects detected. Use AI model for subject classification."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: hardcoding
+      rule_id: WAXPREP-HARD-001
+      layer: application
+    fix: "Remove hardcoded subject dictionary and use AI model for classification."
+
+  - id: waxprep-hardcoded-student-levels
+    patterns:
+      - pattern: $LEVELS = ["beginner", "intermediate", "advanced"]
+      - pattern: $LEVELS = ["ss1", "ss2", "ss3"]
+      - pattern: $LEVELS = ["jss1", "jss2", "jss3"]
+      - pattern: $LEVELS = ["primary", "secondary", "undergraduate"]
+    message: "Hardcoded student levels detected. Use AI model for level assessment."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: hardcoding
+      rule_id: WAXPREP-HARD-002
+      layer: application
+    fix: "Remove hardcoded levels and use AI model for assessment."
+
+  - id: waxprep-hardcoded-teaching-methods
+    patterns:
+      - pattern: $METHODS = ["explanation", "lecture", "tutorial", ...]
+      - pattern: $METHODS = {"explanation": ..., "lecture": ..., ...}
+    message: "Hardcoded teaching methods detected. Use AI model for pedagogical decisions."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: hardcoding
+      rule_id: WAXPREP-HARD-003
+      layer: application
+    fix: "Remove hardcoded teaching methods and use AI model for pedagogy."
+
+  - id: waxprep-hardcoded-response
+    patterns:
+      - pattern: |
+          def $FUNC(...):
+            ...
+            return "Welcome to WaxPrep..."
+    message: "Hardcoded educational response detected. Use AI model for dynamic responses."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: hardcoding
+      rule_id: WAXPREP-HARD-004
+      layer: application
+    fix: "Use AI model to generate response dynamically."
+    patterns:
+      - pattern-inside: |
+          def $FUNC(...):
+            ...
+      - pattern: return "$EDUCATIONAL_TEXT"
+      - metavariable-comparison:
+          metavariable: $EDUCATIONAL_TEXT
+          comparison: |
+            "anatomy" in $EDUCATIONAL_TEXT.lower() or
+            "biology" in $EDUCATIONAL_TEXT.lower() or
+            "chemistry" in $EDUCATIONAL_TEXT.lower() or
+            "physics" in $EDUCATIONAL_TEXT.lower() or
+            "mathematics" in $EDUCATIONAL_TEXT.lower()
+    message: "Hardcoded educational content detected in response. Use AI model for dynamic content."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: hardcoding
+      rule_id: WAXPREP-HARD-004
+      layer: application
+
+  # ============================================================================
+  # EDUCATIONAL CONDITIONAL BRANCHING
+  # ============================================================================
+  
+  - id: waxprep-educational-if-statement
+    patterns:
+      - pattern: if "anatomy" in $VAR.lower():
+      - pattern: if "biology" in $VAR.lower():
+      - pattern: if "chemistry" in $VAR.lower():
+      - pattern: if "physics" in $VAR.lower():
+      - pattern: if "mathematics" in $VAR.lower():
+      - pattern: if $VAR == "anatomy":
+      - pattern: if $VAR == "biology":
+      - pattern: if $VAR == "chemistry":
+      - pattern: if $VAR == "physics":
+      - pattern: if $VAR == "beginner":
+      - pattern: if $VAR == "intermediate":
+      - pattern: if $VAR == "advanced":
+    message: "Conditional branching on educational strings detected. Use AI model for intent detection."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: hardcoding
+      rule_id: WAXPREP-HARD-005
+      layer: application
+    fix: "Use AI model for educational intent detection instead of conditional branching."
+
+  - id: waxprep-educational-elif-chain
+    patterns:
+      - pattern-inside: |
+          if ...:
+            ...
+          elif $COND:
+            ...
+      - pattern: $COND
+      - metavariable-regex:
+          metavariable: $COND
+          regex: "(anatomy|biology|chemistry|physics|mathematics|science|beginner|intermediate|advanced|ss1|ss2|ss3)"
+    message: "Educational elif chain detected. Use AI model for intent detection."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: hardcoding
+      rule_id: WAXPREP-HARD-005
+      layer: application
+
+  # ============================================================================
+  # ARCHITECTURAL LAYER VIOLATIONS
+  # ============================================================================
+  
+  - id: waxprep-domain-external-import
+    patterns:
+      - pattern-inside: |
+          # File: src/waxprep/domain/...
+          ...
+      - pattern: from waxprep.application ... import ...
+      - pattern: from waxprep.adapters ... import ...
+      - pattern: from waxprep.infrastructure ... import ...
+      - pattern: import fastapi
+      - pattern: import uvicorn
+      - pattern: import httpx
+      - pattern: import pydantic
+    message: "Domain layer must not import from external layers or frameworks. Only stdlib and domain imports allowed."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: architecture
+      rule_id: WAXPREP-ARCH-001
+      layer: domain
+    paths:
+      include:
+        - src/waxprep/domain/**
+    fix: "Remove external imports from domain layer. Move logic to appropriate layer."
+
+  - id: waxprep-adapter-business-logic
+    patterns:
+      - pattern-inside: |
+          # File: src/waxprep/adapters/...
+          class $ADAPTER:
+            ...
+      - pattern: |
+          if $EDUCATIONAL_COND:
+            ...
+      - metavariable-regex:
+          metavariable: $EDUCATIONAL_COND
+          regex: "(anatomy|biology|chemistry|subject|level|teaching|educational)"
+    message: "Adapters must not contain educational decision-making logic. Only implement port interfaces."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: architecture
+      rule_id: WAXPREP-ARCH-003
+      layer: adapters
+    paths:
+      include:
+        - src/waxprep/adapters/**
+
+  - id: waxprep-infrastructure-educational-knowledge
+    patterns:
+      - pattern-inside: |
+          # File: src/waxprep/infrastructure/...
+          ...
+      - pattern: $EDUCATIONAL_DICT = { ..., "anatomy"|"biology"|"chemistry"|... , ...}
+    message: "Infrastructure must not contain educational knowledge. Move to appropriate layer or use AI model."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: architecture
+      rule_id: WAXPREP-ARCH-004
+      layer: infrastructure
+    paths:
+      include:
+        - src/waxprep/infrastructure/**
+
+  # ============================================================================
+  # SUSPICIOUS PATTERNS (WARNING LEVEL)
+  # ============================================================================
+  
+  - id: waxprep-large-dictionary
+    patterns:
+      - pattern: $DICT = { $KEY1: $VAL1, $KEY2: $VAL2, $KEY3: $VAL3, ... }
+      - pattern-count:
+          pattern: $KEY
+          count: 10
+    message: "Large dictionary detected. Verify it doesn't contain educational knowledge."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: suspicious
+      rule_id: WAXPREP-SUSP-001
+    fix: "Review dictionary contents. If educational, use AI model instead."
+
+  - id: waxprep-string-comparison
+    patterns:
+      - pattern: if $VAR == "$STRING_LITERAL":
+      - metavariable-comparison:
+          metavariable: $STRING_LITERAL
+          comparison: $STRING_LITERAL.len() > 10
+    message: "String comparison detected. Verify it's not educational decision-making."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: suspicious
+      rule_id: WAXPREP-SUSP-002
+
+  # ============================================================================
+  # SECURITY AND BEST PRACTICES
+  # ============================================================================
+  
+  - id: waxprep-hardcoded-secret
+    patterns:
+      - pattern: $SECRET = "$VALUE"
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: "(api_key|secret|password|token|credential)[=:\\s]"
+    message: "Hardcoded secret detected. Use environment variables or secret management."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      rule_id: WAXPREP-SEC-001
+
+  - id: waxprep-eval-usage
+    patterns:
+      - pattern: eval($INPUT)
+      - pattern: exec($INPUT)
+    message: "Use of eval/exec detected. This is a security risk. Use safer alternatives."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      rule_id: WAXPREP-SEC-002
+
+  # ============================================================================
+  # TEST FILE EXCLUSIONS
+  # ============================================================================
+  
+  - id: waxprep-exclude-tests
+    patterns:
+      - pattern: $ANY
+    message: "Excluding test files from Semgrep analysis"
+    severity: INFO
+    languages: [python]
+    metadata:
+      category: configuration
+    paths:
+      exclude:
+        - tests/**
+        - *test*.py
+        - */test_*.py

@@ -1,0 +1,350 @@
+# WaxPrep Architectural Rules - Machine Readable
+# Version: 1.0.0
+# This file defines executable architectural rules for the Living Specification
+
+rules:
+  # Architectural Layer Rules
+  - id: WAXPREP-ARCH-001
+    name: domain_purity
+    description: Domain layer must contain only pure business logic
+    category: architecture
+    severity: blocking
+    layer: domain
+    pattern: 
+      - "no external imports in domain"
+      - "no infrastructure dependencies"
+      - "no adapter dependencies"
+    allowed_imports:
+      - "waxprep.domain.*"
+      - "stdlib"
+    prohibited_imports:
+      - "waxprep.application.*"
+      - "waxprep.adapters.*"
+      - "waxprep.infrastructure.*"
+      - "fastapi"
+      - "uvicorn"
+      - "httpx"
+      - "pydantic"
+    test_file: tests/architecture/test_domain_purity.py
+
+  - id: WAXPREP-ARCH-002
+    name: application_boundaries
+    description: Application layer must not contain concrete implementations
+    category: architecture
+    severity: blocking
+    layer: application
+    pattern:
+      - "no direct adapter instantiation"
+      - "no business logic in application"
+    allowed_imports:
+      - "waxprep.domain.*"
+      - "waxprep.application.*"
+    prohibited_patterns:
+      - "FakeChannelAdapter()"
+      - "FakeModelAdapter()"
+      - "FakeTool()"
+    test_file: tests/architecture/test_layer_dependencies.py
+
+  - id: WAXPREP-ARCH-003
+    name: adapter_responsibilities
+    description: Adapters must only implement ports, not make decisions
+    category: architecture
+    severity: blocking
+    layer: adapters
+    pattern:
+      - "no educational decision making"
+      - "no business logic"
+    allowed_imports:
+      - "waxprep.application.ports.*"
+      - "waxprep.domain.*"
+    prohibited_keywords:
+      - "subject"
+      - "anatomy"
+      - "biology"
+      - "chemistry"
+      - "student_level"
+      - "teaching_method"
+    test_file: tests/architecture/test_layer_dependencies.py
+
+  - id: WAXPREP-ARCH-004
+    name: infrastructure_no_educational_intelligence
+    description: Infrastructure must not contain educational knowledge
+    category: architecture
+    severity: blocking
+    layer: infrastructure
+    pattern:
+      - "no educational dictionaries"
+      - "no hardcoded classifications"
+    prohibited_keywords:
+      - "SUBJECTS ="
+      - "STUDENT_LEVELS ="
+      - "TOPICS ="
+      - "TEACHING_METHODS ="
+    test_file: tests/architecture/test_layer_dependencies.py
+
+  - id: WAXPREP-ARCH-005
+    name: composition_root_exclusivity
+    description: Only main.py may import across all layers
+    category: architecture
+    severity: blocking
+    layer: all
+    pattern:
+      - "only main.py imports from all layers"
+    allowed_files:
+      - "src/waxprep/main.py"
+    prohibited_pattern:
+      - "from waxprep.domain import"
+      - "from waxprep.application import"
+      - "from waxprep.adapters import"
+      - "from waxprep.infrastructure import"
+    exclude_files:
+      - "src/waxprep/main.py"
+    test_file: tests/architecture/test_composition_root.py
+
+  # Hardcoding Prevention Rules
+  - id: WAXPREP-HARD-001
+    name: no_hardcoded_subjects
+    description: No hardcoded educational subject classifications
+    category: hardcoding
+    severity: blocking
+    pattern:
+      - "list of subjects"
+      - "subject dictionary"
+      - "subject classification"
+    prohibited_keywords:
+      - "anatomy"
+      - "biology"
+      - "chemistry"
+      - "physics"
+      - "mathematics"
+      - "science"
+      - "SUBJECTS"
+      - "subjects ="
+    allowed_contexts:
+      - "test fixtures"
+      - "documentation"
+      - "comments"
+    test_file: tests/detector_verification/test_hardcoded_subject_detection.py
+
+  - id: WAXPREP-HARD-002
+    name: no_hardcoded_student_levels
+    description: No hardcoded student categories or levels
+    category: hardcoding
+    severity: blocking
+    pattern:
+      - "student level list"
+      - "student category dictionary"
+    prohibited_keywords:
+      - "beginner"
+      - "intermediate"
+      - "advanced"
+      - "STUDENT_LEVELS"
+      - "SS1"
+      - "SS2"
+      - "SS3"
+      - "levels ="
+    allowed_contexts:
+      - "test fixtures"
+      - "documentation"
+    test_file: tests/detector_verification/test_hardcoded_student_detection.py
+
+  - id: WAXPREP-HARD-003
+    name: no_hardcoded_teaching_methods
+    description: No hardcoded teaching methodologies
+    category: hardcoding
+    severity: blocking
+    pattern:
+      - "teaching method dictionary"
+      - "pedagogical approach list"
+    prohibited_keywords:
+      - "TEACHING_METHODS"
+      - "explanation"
+      - "example"
+      - "quiz"
+      - "lecture"
+      - "tutorial"
+    allowed_contexts:
+      - "test fixtures"
+      - "documentation"
+    test_file: tests/detector_verification/test_hardcoded_teaching_detection.py
+
+  - id: WAXPREP-HARD-004
+    name: no_hardcoded_responses
+    description: No hardcoded educational responses
+    category: hardcoding
+    severity: blocking
+    pattern:
+      - "fixed educational response"
+      - "hardcoded explanation"
+    prohibited_patterns:
+      - "return \"Welcome to WaxPrep\""
+      - "return \"Anatomy is...\""
+      - "return \"Biology is...\""
+    allowed_patterns:
+      - "return model.generate("
+      - "return ai_response"
+      - "raise Exception("
+    allowed_contexts:
+      - "error messages"
+      - "system status"
+      - "validation errors"
+    test_file: tests/detector_verification/test_hardcoded_response_detection.py
+
+  - id: WAXPREP-HARD-005
+    name: no_educational_conditional_branching
+    description: No conditional branching on educational strings
+    category: hardcoding
+    severity: blocking
+    pattern:
+      - "if educational string in message"
+      - "conditional based on subject"
+    prohibited_patterns:
+      - "if \"anatomy\" in message"
+      - "if \"biology\" in message.lower()"
+      - "elif subject == \"Chemistry\""
+    allowed_patterns:
+      - "if model.decide("
+      - "if ai_intent =="
+    test_file: tests/detector_verification/test_conditional_branching_detection.py
+
+  - id: WAXPREP-HARD-006
+    name: no_hidden_educational_dictionaries
+    description: No dictionaries containing educational knowledge
+    category: hardcoding
+    severity: blocking
+    pattern:
+      - "educational dictionary"
+      - "subject mapping"
+    prohibited_patterns:
+      - "SUBJECTS = {}"
+      - "TOPICS = {}"
+      - "subject_codes = {}"
+      - "{...\"anatomy\"...}"
+      - "{...\"biology\"...}"
+    allowed_patterns:
+      - "CONFIG = {}"
+      - "SETTINGS = {}"
+      - "PERMISSIONS = {}"
+    test_file: tests/detector_verification/test_hidden_dictionary_detection.py
+
+# Detection Configuration
+detection:
+  layers:
+    - name: ast_analysis
+      description: AST-based structural analysis
+      enabled: true
+      severity: warning
+      
+    - name: semgrep
+      description: Pattern-based semantic analysis
+      enabled: true
+      severity: blocking
+      
+    - name: import_linter
+      description: Architectural dependency enforcement
+      enabled: true
+      severity: blocking
+      
+    - name: fitness_tests
+      description: Architectural fitness functions
+      enabled: true
+      severity: blocking
+      
+    - name: ai_reviewer
+      description: AI-assisted architectural review
+      enabled: true
+      severity: warning
+      
+    - name: property_tests
+      description: Property-based testing
+      enabled: true
+      severity: blocking
+      
+    - name: mutation_tests
+      description: Mutation testing
+      enabled: true
+      severity: informational
+
+  # Quality Gate Integration
+  quality_gate:
+    pre_commit:
+      - import_linter
+      - ruff
+      - pyright
+      - ast_analysis (fast mode)
+      
+    ci_pipeline:
+      - all pre_commit checks
+      - semgrep
+      - fitness_tests
+      - property_tests
+      - ai_reviewer (async)
+      
+    nightly:
+      - all ci_pipeline checks
+      - mutation_tests
+
+  # Reporting
+  reporting:
+    formats:
+      - console
+      - json
+      - sarif
+    
+    severity_colors:
+      blocking: red
+      warning: yellow
+      informational: blue
+
+# AI Reviewer Configuration
+ai_reviewer:
+  model: "waxprep-architectural-reviewer-v1"
+  confidence_threshold: 0.85
+  
+  report_fields:
+    - file
+    - line
+    - column
+    - rule_id
+    - rule_name
+    - description
+    - explanation
+    - evidence
+    - confidence
+    - severity
+    - suggestion
+  
+  severity_levels:
+    blocking:
+      threshold: 0.95
+      auto_reject: true
+      
+    warning:
+      threshold: 0.85
+      auto_reject: false
+      
+    informational:
+      threshold: 0.70
+      auto_reject: false
+
+# Test Configuration
+testing:
+  detector_verification:
+    enabled: true
+    deliberate_violations_dir: tests/detector_verification/fixtures/
+    
+  negative_testing:
+    enabled: true
+    legitimate_examples_dir: tests/detector_verification/legitimate/
+  
+  mutation_testing:
+    enabled: true
+    tool: mutmut
+    min_coverage: 85%
+
+# Version Metadata
+version: 1.0.0
+last_updated: 2026-11-10
+authors:
+  - WaxPrep Architecture Team
+  - ECC Agents (All 71 agents contributed)
