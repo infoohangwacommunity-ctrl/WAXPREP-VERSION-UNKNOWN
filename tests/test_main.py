@@ -58,6 +58,6 @@ class TestRootEndpoint:
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["message"] == "WaxPrep Foundation - Stages 01-02 ONLY"
-        assert data["stages"] == ["01", "02"]
+        assert data["message"] == "WaxPrep Foundation - Stages 01-07"
+        assert data["stages"] == ["01", "02", "03", "04", "05", "06", "07"]
         assert data["status"] == "running"

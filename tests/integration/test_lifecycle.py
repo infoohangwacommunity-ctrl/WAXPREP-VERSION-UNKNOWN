@@ -36,7 +36,7 @@ class TestApplicationLifecycle:
         assert "message" in data
         assert "WaxPrep" in data["message"]
         assert "stages" in data
-        assert "03" in data["stages"]
+        assert "07" in data["stages"]
         assert data["status"] == "running"
 
     def test_architecture_endpoint_exists(self, client: TestClient) -> None:
@@ -88,5 +88,5 @@ class TestApplicationLifecycle:
         response = client.get("/")
         data = response.json()
 
-        # Version should be 0.3.0 for Stage 03
-        assert "03" in data.get("message", "") or "0.3" in data.get("message", "")
+        # Version should be 0.4.0 for Stage 07
+        assert "07" in data.get("message", "") or "0.4" in data.get("message", "")

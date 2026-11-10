@@ -65,7 +65,16 @@ class ImportLinter:
             "signal", "site", "string", "sys", "time", "typing", "uuid",
             "warnings", "weakref",
         }
-        return module in stdlib_modules or module.startswith("typing.")
+        # Check exact match or if it starts with a stdlib module
+        if module in stdlib_modules:
+            return True
+        if module.startswith("typing."):
+            return True
+        # Check if it starts with any stdlib module
+        for stdlib in stdlib_modules:
+            if module.startswith(stdlib + ".") or module.startswith(stdlib + ""):
+                return True
+        return False
 
     def is_external(self, module: str) -> bool:
         """Check if a module is external (not part of waxprep)."""
@@ -119,13 +128,23 @@ class ImportLinter:
 
         imports = self.parse_imports(file_path)
         for import_name in imports:
-            if import_name.startswith("waxprep"):
-                imported_module = import_name
-                imported_layer = self.get_layer(imported_module)
-                self.import_graph[module_path].add(imported_module)
+            # Check ALL imports, not just waxprep imports
+            # External imports need to be checked for domain purity
+            if import_name.startswith("waxprep") or not self.is_stdlib(import_name):
+                if import_name.startswith("waxprep"):
+                    imported_module = import_name
+                    imported_layer = self.get_layer(imported_module)
+                    self.import_graph[module_path].add(imported_module)
 
-                # Check layer dependencies
-                self.check_layer_dependency(module_path, layer, imported_module, imported_layer)
+                    # Check layer dependencies
+                    self.check_layer_dependency(module_path, layer, imported_module, imported_layer)
+                else:
+                    # External import - check domain purity
+                    if layer == "domain" and self.is_external(import_name):
+                        self.violations.append(
+                            f"Domain purity violation: {module_path} imports external "
+                            f"module {import_name}. Domain may only import stdlib and domain."
+                        )
 
     def check_layer_dependency(
         self,
@@ -186,10 +205,25 @@ class ImportLinter:
 
     def check_composition_root(self) -> None:
         """Check that only main.py imports across all layers."""
-        main_imports = self.import_graph.get("waxprep.main", set())
-        if main_imports:
-            # main.py is allowed to import anything
-            pass
+        # Check all modules that import from multiple layers
+        for module_path, imports in self.import_graph.items():
+            if module_path == "waxprep.main":
+                # main.py is allowed to import anything
+                continue
+            
+            # Check if this module imports from multiple layers
+            layers_imported = set()
+            for imp in imports:
+                if imp.startswith("waxprep"):
+                    layer = self.get_layer(imp)
+                    layers_imported.add(layer)
+            
+            # If importing from more than one layer, it might be doing composition
+            if len(layers_imported) > 1 and module_path != "waxprep.main":
+                self.violations.append(
+                    f"Composition root violation: {module_path} imports from multiple layers "
+                    f"({', '.join(sorted(layers_imported))}). Only main.py should connect layers."
+                )
 
     def check_cycles(self) -> None:
         """Check for circular dependencies."""
@@ -232,9 +266,10 @@ class ImportLinter:
         self.check_composition_root()
         self.check_cycles()
 
-    def run(self) -> tuple[int, list[str]]:
+    def run(self, check_all: bool = True) -> tuple[int, list[str]]:
         """Run the linter and return exit code and violations."""
-        self.check_all_files()
+        if check_all:
+            self.check_all_files()
 
         if self.verbose:
             print(f"Checked {len(self.module_layers)} modules")
@@ -253,9 +288,21 @@ def main() -> int:
 
     verbose = "--verbose" in sys.argv or "-v" in sys.argv
     check_only = "--check" in sys.argv
+    
+    # Check if a specific file is provided
+    target_file = None
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
+        target_file = Path(sys.argv[1])
 
     linter = ImportLinter(root_path, verbose=verbose or check_only)
-    exit_code, violations = linter.run()
+    
+    if target_file and target_file.exists():
+        # Check only the specified file
+        linter.check_file(target_file)
+        exit_code, violations = linter.run(check_all=False)
+    else:
+        # Check all files
+        exit_code, violations = linter.run(check_all=True)
 
     if violations:
         print("Import linting violations found:")

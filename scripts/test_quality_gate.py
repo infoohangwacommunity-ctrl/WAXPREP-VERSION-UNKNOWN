@@ -30,9 +30,13 @@ def test_import_linter() -> tuple[str, bool]:
     """Test that import linter catches violations."""
     print("Testing import linter...")
     
-    # Create a temporary file with a violation
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-        f.write("""
+    # Create a temporary file with a violation in the src directory
+    src_path = Path(__file__).parent.parent / "src" / "waxprep"
+    temp_file = src_path / "__temp_test_import__.py"
+    
+    try:
+        # Write a file with violations
+        temp_file.write_text("""
 from fastapi import FastAPI
 from waxprep.domain.models.result import Result
 
@@ -40,9 +44,7 @@ from waxprep.domain.models.result import Result
 from waxprep.adapters.fake_channel import FakeChannelAdapter
 from waxprep.domain.models.result import Result
 """)
-        temp_file = Path(f.name)
-    
-    try:
+        
         # Run the linter
         exit_code, stdout, stderr = run_command(
             [sys.executable, "scripts/lint_imports.py", "--check"],
@@ -54,7 +56,8 @@ from waxprep.domain.models.result import Result
         else:
             return "Import linter failed to detect violations", False
     finally:
-        temp_file.unlink()
+        if temp_file.exists():
+            temp_file.unlink()
 
 
 def test_ruff() -> tuple[str, bool]:

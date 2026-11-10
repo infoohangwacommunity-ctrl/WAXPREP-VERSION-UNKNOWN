@@ -1,10 +1,10 @@
-# WaxPrep Foundation - Stages 01-05
+# WaxPrep Foundation - Stages 01-07
 
 ## Overview
 
 This repository contains the **WaxPrep Foundation** - the architectural and engineering foundation for the WaxPrep AI learning companion project.
 
-**Current Version**: 0.3.0 (Stages 01-05 Complete)
+**Current Version**: 0.4.0 (Stages 01-07 Complete)
 
 ## What is WaxPrep?
 

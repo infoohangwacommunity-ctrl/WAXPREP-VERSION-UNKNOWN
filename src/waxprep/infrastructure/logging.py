@@ -63,7 +63,8 @@ def configure_logging() -> None:
     logging.basicConfig(level=log_level)
 
     # Configure standard logging to use structlog
-    structlog.stdlib.install_logger_factory()
+    # Note: In structlog 26.x+, this is handled automatically
+    # structlog.stdlib.install_logger_factory()  # Removed for compatibility
 
 
 def get_logger(name: str | None = None) -> structlog.BoundLogger:

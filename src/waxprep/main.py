@@ -106,7 +106,7 @@ def create_app() -> FastAPI:
     # Create FastAPI app
     _app = FastAPI(
         title="WaxPrep Foundation",
-        description="WaxPrep - Personalized AI Learning Companion (Stages 01-03)",
+        description="WaxPrep - Personalized AI Learning Companion (Stages 01-07)",
         version="0.3.0",
         # Use the lifespan from lifecycle manager
         lifespan=lifespan,
@@ -295,8 +295,8 @@ def setup_routes(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
-                "message": "WaxPrep Foundation - Stages 01-03",
-                "stages": ["01", "02", "03"],
+                "message": "WaxPrep Foundation - Stages 01-07",
+                "stages": ["01", "02", "03", "04", "05", "06", "07"],
                 "status": "running",
                 "environment": config.environment,
                 "lifecycle_state": lifecycle.state.value,
