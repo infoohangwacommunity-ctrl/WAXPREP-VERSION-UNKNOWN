@@ -5,9 +5,9 @@ Test for duplicate webhook detection and handling.
 This is a known failure mode from Stage 02 that must be prevented.
 
 The contract:
-- Webhook messages must be idempotent
-- Duplicate messages must be detected and handled gracefully
-- The system must not process the same message twice
+- Webhook requests must be idempotent
+- Duplicate requests must be detected and handled gracefully
+- The system must not process the same request twice
 """
 
 import pytest
@@ -44,10 +44,10 @@ class TestDuplicateWebhook:
         # This test will be expanded when we implement webhook handling
         # For now, we're just proving the contract exists
 
-    def test_webhook_interface_accepts_message_id(self, client) -> None:
-        """Test that the webhook interface can accept a message ID.
+    def test_webhook_interface_accepts_request_id(self, client) -> None:
+        """Test that the webhook interface can accept a request ID.
 
-        This verifies that the system is designed to track message IDs
+        This verifies that the system is designed to track request IDs
         for duplicate detection.
         """
         # This will be implemented when we add webhook endpoints
@@ -58,9 +58,9 @@ class TestDuplicateWebhook:
         """Test that the duplicate detection contract is documented.
 
         The contract states:
-        - Every message has a unique ID
-        - Messages with the same ID are duplicates
-        - Duplicate messages must be detected at the boundary
+        - Every request has a unique ID
+        - Requests with the same ID are duplicates
+        - Duplicate requests must be detected at the boundary
         - The system must be idempotent (same result for same input)
         """
         # This is a documentation test

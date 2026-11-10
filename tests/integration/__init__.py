@@ -11,5 +11,5 @@ Characteristics:
 
 Fixtures:
 - Use function-scoped fixtures by default
-- Session-scoped fixtures only for expensive, read-only resources
+- Expensive, read-only resources use broader scopes
 """

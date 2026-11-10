@@ -51,13 +51,13 @@ class Settings(BaseSettings):
     rate_limit_requests: int = Field(default=100, ge=1, le=10000)
     rate_limit_period: int = Field(default=60, ge=1, le=3600)
 
-    # Message processing
-    max_message_length: int = Field(default=4096, ge=100, le=100000)
-    message_timeout_seconds: int = Field(default=30, ge=1, le=300)
+    # Request processing
+    max_request_length: int = Field(default=4096, ge=100, le=100000)
+    request_timeout_seconds: int = Field(default=30, ge=1, le=300)
 
-    # Session configuration
-    session_timeout_minutes: int = Field(default=30, ge=1, le=1440)
-    max_messages_per_session: int = Field(default=1000, ge=10, le=10000)
+    # Interaction configuration
+    interaction_timeout_minutes: int = Field(default=30, ge=1, le=1440)
+    max_interactions_per_context: int = Field(default=1000, ge=10, le=10000)
 
     # Model provider configuration
     model_provider: str = Field(default="fake")
