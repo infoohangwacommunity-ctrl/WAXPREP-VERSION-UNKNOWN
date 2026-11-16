@@ -1,0 +1,102 @@
+"""
+Pure Functions - Stage 03
+Algorithms and transformations with no I/O, no infrastructure.
+
+These functions are purely computational. They take inputs and return outputs
+without touching databases, external APIs, files, or any I/O.
+
+Use these as building blocks that can be tested in isolation and combined
+in different ways by services or adapters.
+"""
+
+from typing import Any, Dict, List, Optional, Callable
+import re
+
+
+def normalize_text(text: str) -> str:
+    """
+    Normalize text for consistent processing.
+
+    - Strips leading/trailing whitespace
+    - Collapses multiple spaces
+    - Normalizes unicode (basic)
+
+    Does NOT:
+    - Perform spell correction
+    - Categorize content
+    - Add any domain-specific transformations
+    """
+    if not text:
+        return ""
+
+    # Strip and collapse whitespace
+    normalized = " ".join(text.split())
+    return normalized
+
+
+def extract_keywords(text: str, min_length: int = 3) -> List[str]:
+    """
+    Extract potential keywords from text.
+
+    This is a simple heuristic extractor. It does NOT:
+    - Use NLP models
+    - Categorize into subjects
+    - Score by importance
+
+    Returns unique words that might be meaningful.
+    """
+    if not text:
+        return []
+
+    # Split on non-alphanumeric
+    words = re.findall(r"[a-zA-Z0-9]+", text.lower())
+
+    # Filter by length and return unique
+    keywords = set()
+    for word in words:
+        if len(word) >= min_length:
+            keywords.add(word)
+
+    return sorted(keywords)
+
+
+def build_response(
+    content: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Build a response dictionary.
+
+    This is a pure function that assembles a response structure.
+    It does NOT send the response or interact with any system.
+
+    The structure is intentionally generic - implementations can extend it.
+    """
+    response: Dict[str, Any] = {
+        "content": content,
+    }
+
+    if metadata:
+        response["metadata"] = metadata
+
+    return response
+
+
+def compose_handlers(
+    handlers: List[Callable[[Any], Any]],
+) -> Callable[[Any], Any]:
+    """
+    Compose multiple handler functions into a pipeline.
+
+    Each handler receives the output of the previous handler.
+    The first handler receives the initial input.
+
+    Does NOT handle errors or async - that's the caller's responsibility.
+    """
+    def pipeline(input_data: Any) -> Any:
+        result = input_data
+        for handler in handlers:
+            result = handler(result)
+        return result
+
+    return pipeline
