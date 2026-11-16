@@ -15,7 +15,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         # Use WAXPREP_ prefix to avoid conflicts with sandbox env vars
-        env_prefix = "WAXPREP_",
+        env_prefix="WAXPREP_",
     )
 
     # Application

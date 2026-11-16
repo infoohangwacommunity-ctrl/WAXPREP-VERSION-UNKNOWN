@@ -6,13 +6,10 @@ These are skeletons - real implementations go in separate modules.
 Uncomment and customize when needed.
 """
 
-from typing import Callable, Any
-
-from starlette.middleware.base import BaseHTTPMiddleware
+import structlog
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
-
-import structlog
 
 logger = structlog.get_logger()
 
@@ -20,12 +17,12 @@ logger = structlog.get_logger()
 class TimingMiddleware(BaseHTTPMiddleware):
     """
     Skeleton: Request timing middleware.
-    
+
     Measures request duration for observability.
     Uncomment and customize when needed.
     """
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # import time
         # start = time.perf_counter()
         # response = await call_next(request)
@@ -38,7 +35,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
 class HeaderSanitizationMiddleware(BaseHTTPMiddleware):
     """
     Skeleton: Header sanitization middleware.
-    
+
     Remove sensitive headers from responses.
     Uncomment and customize when needed.
     """
@@ -46,7 +43,7 @@ class HeaderSanitizationMiddleware(BaseHTTPMiddleware):
     # Headers to strip from responses
     SENSITIVE_HEADERS = frozenset({"X-Internal-Token", "X-Debug-Info"})
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # response = await call_next(request)
         # for header in self.SENSITIVE_HEADERS:
         #     response.headers.pop(header, None)

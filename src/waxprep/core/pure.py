@@ -9,8 +9,9 @@ Use these as building blocks that can be tested in isolation and combined
 in different ways by services or adapters.
 """
 
-from typing import Any, Dict, List, Optional, Callable
 import re
+from collections.abc import Callable
+from typing import Any
 
 
 def normalize_text(text: str) -> str:
@@ -34,7 +35,7 @@ def normalize_text(text: str) -> str:
     return normalized
 
 
-def extract_keywords(text: str, min_length: int = 3) -> List[str]:
+def extract_keywords(text: str, min_length: int = 3) -> list[str]:
     """
     Extract potential keywords from text.
 
@@ -62,8 +63,8 @@ def extract_keywords(text: str, min_length: int = 3) -> List[str]:
 
 def build_response(
     content: str,
-    metadata: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Build a response dictionary.
 
@@ -72,7 +73,7 @@ def build_response(
 
     The structure is intentionally generic - implementations can extend it.
     """
-    response: Dict[str, Any] = {
+    response: dict[str, Any] = {
         "content": content,
     }
 
@@ -83,7 +84,7 @@ def build_response(
 
 
 def compose_handlers(
-    handlers: List[Callable[[Any], Any]],
+    handlers: list[Callable[[Any], Any]],
 ) -> Callable[[Any], Any]:
     """
     Compose multiple handler functions into a pipeline.
@@ -93,6 +94,7 @@ def compose_handlers(
 
     Does NOT handle errors or async - that's the caller's responsibility.
     """
+
     def pipeline(input_data: Any) -> Any:
         result = input_data
         for handler in handlers:

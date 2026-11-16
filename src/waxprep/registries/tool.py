@@ -7,6 +7,7 @@ Register via register_defaults() method explicitly, not at import time.
 """
 
 from typing import Any, Protocol, runtime_checkable
+
 from waxprep.registries.base import BaseRegistry
 
 
@@ -16,7 +17,7 @@ class Tool(Protocol):
 
     name: str
 
-    async def execute(self, **kwargs: Any) -> dict:
+    async def execute(self, **kwargs: Any) -> dict[str, Any]:
         """Execute the tool."""
         ...
 
@@ -26,15 +27,17 @@ class ToolRegistry(BaseRegistry[Tool]):
 
     def register(self, name: str, tool: Tool) -> None:
         """Register a tool. Validates protocol compliance."""
-        if not hasattr(tool, 'name'):
+        if not hasattr(tool, "name"):
             raise ValueError("Tool must have a 'name' attribute")
-        if not hasattr(tool, 'execute'):
-            raise ValueError("Tool must have an 'execute' method")
+        if not hasattr(tool, "execute") or not callable(tool.execute):
+            raise ValueError("Tool must have a callable 'execute' method")
+        self._validate_not_duplicate(name)
         self._items[name] = tool
 
     def register_defaults(self) -> None:
         """Register default fake tool. Must be called explicitly."""
         from waxprep.adapters.fake_tool import FakeTool
+
         self.register("fake_tool", FakeTool())
 
 

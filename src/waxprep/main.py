@@ -1,7 +1,6 @@
 """
-Main Application - Stages 01-03
+Main Application - Stages 01-04
 ASGI application with ordered startup, graceful shutdown, health endpoints.
-NO tutor logic. NO real adapters. Foundation + core integration point.
 
 Includes:
 - Request correlation ID middleware
@@ -11,16 +10,14 @@ Includes:
 - Composition root for Stage 03 services (when added)
 """
 
-import logging
-import signal
-import sys
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional, Union
 import types
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import cast
 
 import structlog
 from fastapi import FastAPI, Request, status
-from fastapi.exceptions import HTTPException, RequestValidationError
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -29,7 +26,6 @@ from waxprep.middleware.request_id import RequestIdMiddleware
 from waxprep.registries.channel import ChannelRegistry
 from waxprep.registries.model import ModelRegistry
 from waxprep.registries.tool import ToolRegistry
-
 
 # Configure structured logging
 structlog.configure(
@@ -47,62 +43,61 @@ logger = structlog.get_logger()
 
 
 # Global state
-_app: Optional[FastAPI] = None
+_app: FastAPI | None = None
 _shutting_down: bool = False
 _registries_ready: bool = False
-_channel_registry: Optional[ChannelRegistry] = None
-_model_registry: Optional[ModelRegistry] = None
-_tool_registry: Optional[ToolRegistry] = None
+_channel_registry: ChannelRegistry | None = None
+_model_registry: ModelRegistry | None = None
+_tool_registry: ToolRegistry | None = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
-    Ordered startup sequence - Stage 02
+    Ordered startup sequence - Stages 01-04
     1. Load configuration
     2. Initialize registries (explicit registration)
-    3. Initialize external clients (none in Stages 01-02)
-    4. Start background services (none in Stages 01-02)
+    3. Initialize external clients (none in foundation stage)
+    4. Start background services (none in foundation stage)
     5. Log startup
     """
     global _shutting_down, _registries_ready, _channel_registry, _model_registry, _tool_registry
     _shutting_down = False
 
     # 1. Load configuration (already done via settings)
-    logger.info("Stage 02: Configuration loaded")
+    logger.info("Configuration loaded")
 
     # 2. Initialize registries with explicit registration
     from waxprep.registries.channel import get_channel_registry
     from waxprep.registries.model import get_model_registry
     from waxprep.registries.tool import get_tool_registry
-    
+
     _channel_registry = get_channel_registry()
     _model_registry = get_model_registry()
     _tool_registry = get_tool_registry()
-    
+
     # Explicit registration - proves no import-time side effects
     _channel_registry.register_defaults()
     _model_registry.register_defaults()
     _tool_registry.register_defaults()
-    
+
     _registries_ready = True
-    
-    logger.info("Stage 02: Registries initialized")
+
+    logger.info("Registries initialized")
     logger.info(f"  Channels: {_channel_registry.list_all()}")
     logger.info(f"  Models: {_model_registry.list_all()}")
     logger.info(f"  Tools: {_tool_registry.list_all()}")
 
-    # 3. External clients - none in Stages 01-02
-    logger.info("Stage 02: No external clients (Stages 01-02 only)")
+    # 3. External clients - none in foundation stage
+    logger.info("No external clients (foundation stage)")
 
-    # 4. Background services - none in Stages 01-02
-    logger.info("Stage 02: No background services (Stages 01-02 only)")
+    # 4. Background services - none in foundation stage
+    logger.info("No background services (foundation stage)")
 
     # 5. Log startup
-    logger.info("Stage 02: Startup complete", 
-                environment=settings.environment,
-                host=settings.host,
-                port=settings.port)
+    logger.info(
+        "Startup complete", environment=settings.environment, host=settings.host, port=settings.port
+    )
 
     yield
 
@@ -112,14 +107,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _channel_registry = None
     _model_registry = None
     _tool_registry = None
-    logger.info("Stage 02: Shutdown started")
-    logger.info("Stage 02: Shutdown complete")
+    logger.info("Shutdown started")
+    logger.info("Shutdown complete")
 
 
 # Create FastAPI app
 _app = FastAPI(
     title="WaxPrep Foundation",
-    description="Stages 01-02 ONLY - Foundation",
+    description="Stages 01-04 - Foundation + Architecture + Engineering Standards",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -195,49 +190,49 @@ async def liveness() -> JSONResponse:
 @_app.get("/health/readiness")
 async def readiness() -> JSONResponse:
     """Readiness endpoint - Is the application ready?
-    
+
     Checks:
     - Configuration is loaded
     - Registries are initialized
     - Default adapters are registered
-    
+
     Liveness != Readiness. This proves the distinction.
     """
     global _channel_registry, _model_registry, _tool_registry
-    
+
     # Check configuration
     if not settings.environment:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "not_ready", "reason": "configuration_not_loaded"},
         )
-    
+
     # Check registries are initialized
     if not _registries_ready:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "not_ready", "reason": "registries_not_initialized"},
         )
-    
+
     # Verify default adapters registered using stored instances
     if _channel_registry is None or not _channel_registry.is_registered("fake"):
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "not_ready", "reason": "channel_registry_not_initialized"},
         )
-    
+
     if _model_registry is None or not _model_registry.is_registered("fake"):
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "not_ready", "reason": "model_registry_not_initialized"},
         )
-    
+
     if _tool_registry is None or not _tool_registry.is_registered("fake_tool"):
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "not_ready", "reason": "tool_registry_not_initialized"},
         )
-    
+
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={
@@ -248,29 +243,29 @@ async def readiness() -> JSONResponse:
                 "model_registry": "ok",
                 "tool_registry": "ok",
                 "correlation_id_middleware": "active",
-            }
+            },
         },
     )
 
 
 # Graceful shutdown handler
-def handle_shutdown(signum: int, frame: Union[types.FrameType, None]) -> None:
-    """Handle SIGTERM for graceful shutdown."""
+# NOTE: Signal handling is delegated to the ASGI server (uvicorn).
+# The lifespan shutdown sequence handles orderly cleanup.
+# This handler exists only for direct execution (python -m waxprep.main).
+def handle_shutdown(signum: int, frame: types.FrameType | None) -> None:
+    """Handle SIGTERM/SIGINT for graceful shutdown.
+
+    In production, uvicorn manages signals and triggers the lifespan shutdown.
+    This handler is used only when running directly via python -m waxprep.main.
+    """
     global _shutting_down
     if _shutting_down:
         return
-    
+
     _shutting_down = True
-    logger.info("SIGTERM received - graceful shutdown initiated")
-    
-    # In a real ASGI server, this would trigger the lifespan shutdown
-    # For now, we just log and exit
-    sys.exit(0)
-
-
-# Register signal handlers
-signal.signal(signal.SIGTERM, handle_shutdown)
-signal.signal(signal.SIGINT, handle_shutdown)
+    logger.info("Signal received - initiating shutdown", signal=signum)
+    # Do NOT call sys.exit() here - let the caller handle termination.
+    # For direct execution, the __main__ block will observe _shutting_down.
 
 
 # Root endpoint
@@ -280,8 +275,8 @@ async def root() -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={
-            "message": "WaxPrep Foundation - Stages 01-02 ONLY",
-            "stages": ["01", "02"],
+            "message": "WaxPrep Foundation - Stages 01-04",
+            "stages": ["01", "02", "03", "04"],
             "status": "running",
         },
     )
@@ -290,21 +285,23 @@ async def root() -> JSONResponse:
 # Get the app (for uvicorn)
 def get_app() -> FastAPI:
     """ASGI entry point for uvicorn.
-    
+
     Uvicorn imports this as "waxprep.main:get_app" — a string reference
     that expects a callable returning the FastAPI app instance.
     """
-    return _app
+    return cast(FastAPI, _app)
 
 
 # For running with uvicorn directly
 if __name__ == "__main__":
     import uvicorn
-    
+
+    # Run uvicorn with signal handling disabled so our handler works
     uvicorn.run(
         "waxprep.main:get_app",
         host=settings.host,
         port=settings.port,
-        reload=True,
+        reload=False,
         log_config=None,  # structlog handles logging
+        interface="asgi3",
     )

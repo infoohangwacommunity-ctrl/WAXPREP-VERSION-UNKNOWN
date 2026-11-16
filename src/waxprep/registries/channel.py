@@ -6,7 +6,8 @@ Fake adapter source of truth: src/waxprep/adapters/fake_channel.py
 Register via register_defaults() method explicitly, not at import time.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
+
 from waxprep.registries.base import BaseRegistry
 
 
@@ -16,7 +17,7 @@ class ChannelAdapter(Protocol):
 
     name: str
 
-    async def handle_message(self, message: dict) -> dict:
+    async def handle_message(self, message: dict[str, Any]) -> dict[str, Any]:
         """Handle an incoming message."""
         ...
 
@@ -26,15 +27,17 @@ class ChannelRegistry(BaseRegistry[ChannelAdapter]):
 
     def register(self, name: str, adapter: ChannelAdapter) -> None:
         """Register a channel adapter. Validates protocol compliance."""
-        if not hasattr(adapter, 'name'):
+        if not hasattr(adapter, "name"):
             raise ValueError("Channel adapter must have a 'name' attribute")
-        if not hasattr(adapter, 'handle_message'):
-            raise ValueError("Channel adapter must have a 'handle_message' method")
+        if not hasattr(adapter, "handle_message") or not callable(adapter.handle_message):
+            raise ValueError("Channel adapter must have a callable 'handle_message' method")
+        self._validate_not_duplicate(name)
         self._items[name] = adapter
 
     def register_defaults(self) -> None:
         """Register default fake adapter. Must be called explicitly."""
         from waxprep.adapters.fake_channel import FakeChannelAdapter
+
         self.register("fake", FakeChannelAdapter())
 
 

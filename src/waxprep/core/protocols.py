@@ -9,7 +9,7 @@ Design principle: Protocols are intentionally minimal and flexible.
 Do NOT add student types, subject categories, or ability levels here.
 """
 
-from typing import Protocol, runtime_checkable, Any, Dict, Optional
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -31,7 +31,7 @@ class Message(Protocol):
         """Return the primary content of the message."""
         ...
 
-    def get_metadata(self) -> Dict[str, Any]:
+    def get_metadata(self) -> dict[str, Any]:
         """Return optional metadata. Keys are implementation-defined."""
         ...
 
@@ -77,7 +77,7 @@ class ContextProvider(Protocol):
     Let implementations define what context means for their use case.
     """
 
-    def get_context(self, **kwargs: Any) -> Dict[str, Any]:
+    def get_context(self, **kwargs: Any) -> dict[str, Any]:
         """
         Return context information.
 

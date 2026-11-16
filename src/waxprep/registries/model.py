@@ -7,6 +7,7 @@ Register via register_defaults() method explicitly, not at import time.
 """
 
 from typing import Protocol, runtime_checkable
+
 from waxprep.registries.base import BaseRegistry
 
 
@@ -26,15 +27,17 @@ class ModelRegistry(BaseRegistry[ModelAdapter]):
 
     def register(self, name: str, adapter: ModelAdapter) -> None:
         """Register a model adapter. Validates protocol compliance."""
-        if not hasattr(adapter, 'name'):
+        if not hasattr(adapter, "name"):
             raise ValueError("Model adapter must have a 'name' attribute")
-        if not hasattr(adapter, 'generate'):
-            raise ValueError("Model adapter must have a 'generate' method")
+        if not hasattr(adapter, "generate") or not callable(adapter.generate):
+            raise ValueError("Model adapter must have a callable 'generate' method")
+        self._validate_not_duplicate(name)
         self._items[name] = adapter
 
     def register_defaults(self) -> None:
         """Register default fake adapter. Must be called explicitly."""
         from waxprep.adapters.fake_model import FakeModelAdapter
+
         self.register("fake", FakeModelAdapter())
 
 

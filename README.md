@@ -1,6 +1,6 @@
-# WaxPrep Foundation - Stages 01-03
+# WaxPrep Foundation - Stages 01-04
 
-**IMPORTANT: This repository contains Stages 01, 02, and 03 (architecture).**
+**IMPORTANT: This repository contains Stages 01, 02, 03, and 04 (engineering standards).**
 
 ## Stage 01: Programming Language
 - Python 3.14+ (compatibility proven, not assumed)
@@ -12,10 +12,11 @@
 - ASGI application (FastAPI + Uvicorn)
 - Registry pattern with fake adapters (proves architecture)
 - Explicit registry registration (no import-time side effects)
-- Graceful shutdown (signal handlers implemented)
+- Graceful shutdown (ASGI server-managed, lifespan cleanup)
 - Health endpoints (liveness ≠ readiness, readiness checks registry state)
 - Structured logging with correlation IDs (middleware-bound)
-- Message acceptance contract (proven by test)
+- Request ID validation (incoming IDs validated before trust)
+- Global exception handling (no stack traces leaked)
 
 ## Stage 03: Project Architecture and Structural Boundaries
 
@@ -118,6 +119,14 @@ NEVER reverse this: core/ must not import from messaging/, services/, adapters/,
 - ❌ NO tool executor
 - ❌ NO Prometheus/OpenTelemetry
 - ❌ NO production deployment
+
+## Stage 04: Engineering Standards and Coding Conventions
+
+- CONTRIBUTING.md - How developers should contribute
+- docs/ENGINEERING-STANDARDS.md - Engineering rules and conventions
+- PR_REVIEW_CHECKLIST.md - What reviewers should check before approving changes
+- Type annotation improvements
+- Consistent coding conventions
 
 ## NO Hardcoding Rule
 - ❌ NO model names hardcoded
