@@ -1,7 +1,9 @@
 """
 Model Registry - Stage 02
-Registry for model adapters. Contains ONE fake adapter to prove it works.
-NO real AI providers. NO real model implementations. Only fake for testing.
+Registry for model adapters. NO import-time side effects.
+
+Fake adapter source of truth: src/waxprep/adapters/fake_model.py
+Register via register_defaults() method explicitly, not at import time.
 """
 
 from typing import Protocol, runtime_checkable
@@ -23,30 +25,19 @@ class ModelRegistry(BaseRegistry[ModelAdapter]):
     """Registry for model adapters."""
 
     def register(self, name: str, adapter: ModelAdapter) -> None:
-        """Register a model adapter."""
+        """Register a model adapter. Validates protocol compliance."""
         if not hasattr(adapter, 'name'):
             raise ValueError("Model adapter must have a 'name' attribute")
         if not hasattr(adapter, 'generate'):
             raise ValueError("Model adapter must have a 'generate' method")
         self._items[name] = adapter
 
-
-# FAKE adapter for testing only - proves registry works
-class FakeModelAdapter:
-    """Fake model adapter. NOT a real implementation."""
-
-    name = "fake"
-
-    async def generate(self, prompt: str) -> str:
-        """Fake generator. Returns fake response."""
-        return f"Fake response to: {prompt[:50]}..."
-
-
-# Register the fake adapter
-_default_model_registry = ModelRegistry()
-_default_model_registry.register("fake", FakeModelAdapter())
+    def register_defaults(self) -> None:
+        """Register default fake adapter. Must be called explicitly."""
+        from waxprep.adapters.fake_model import FakeModelAdapter
+        self.register("fake", FakeModelAdapter())
 
 
 def get_model_registry() -> ModelRegistry:
-    """Get the default model registry with fake adapter."""
-    return _default_model_registry
+    """Get a fresh model registry. Call register_defaults() to populate."""
+    return ModelRegistry()

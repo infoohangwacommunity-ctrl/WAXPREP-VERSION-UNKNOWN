@@ -2,6 +2,12 @@
 Main Application - Stage 02
 ASGI application with ordered startup, graceful shutdown, health endpoints.
 NO tutor logic. NO real adapters. Only foundation.
+
+Includes:
+- Request correlation ID middleware
+- Global exception handlers
+- Meaningful readiness checks
+- Structured logging with structlog
 """
 
 import logging
@@ -12,13 +18,13 @@ from typing import AsyncGenerator, Optional
 
 import structlog
 from fastapi import FastAPI, Request, status
-from fastapi.exceptions import HTTPException
+from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from waxprep.config import settings
-from waxprep.registries.channel import get_channel_registry
-from waxprep.registries.model import get_model_registry
-from waxprep.registries.tool import get_tool_registry
+from waxprep.middleware.request_id import RequestIdMiddleware
+
 
 # Configure structured logging
 structlog.configure(
@@ -34,9 +40,14 @@ structlog.configure(
 )
 logger = structlog.get_logger()
 
+
 # Global state
 _app: Optional[FastAPI] = None
 _shutting_down: bool = False
+_registries_ready: bool = False
+_channel_registry: Optional[object] = None
+_model_registry: Optional[object] = None
+_tool_registry: Optional[object] = None
 
 
 @asynccontextmanager
@@ -44,26 +55,37 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Ordered startup sequence - Stage 02
     1. Load configuration
-    2. Initialize registries
+    2. Initialize registries (explicit registration)
     3. Initialize external clients (none in Stages 01-02)
     4. Start background services (none in Stages 01-02)
     5. Log startup
     """
-    global _shutting_down
+    global _shutting_down, _registries_ready, _channel_registry, _model_registry, _tool_registry
     _shutting_down = False
 
     # 1. Load configuration (already done via settings)
     logger.info("Stage 02: Configuration loaded")
 
-    # 2. Initialize registries
-    channel_registry = get_channel_registry()
-    model_registry = get_model_registry()
-    tool_registry = get_tool_registry()
+    # 2. Initialize registries with explicit registration
+    from waxprep.registries.channel import get_channel_registry
+    from waxprep.registries.model import get_model_registry
+    from waxprep.registries.tool import get_tool_registry
+    
+    _channel_registry = get_channel_registry()
+    _model_registry = get_model_registry()
+    _tool_registry = get_tool_registry()
+    
+    # Explicit registration - proves no import-time side effects
+    _channel_registry.register_defaults()
+    _model_registry.register_defaults()
+    _tool_registry.register_defaults()
+    
+    _registries_ready = True
     
     logger.info("Stage 02: Registries initialized")
-    logger.info(f"  Channels: {channel_registry.list_all()}")
-    logger.info(f"  Models: {model_registry.list_all()}")
-    logger.info(f"  Tools: {tool_registry.list_all()}")
+    logger.info(f"  Channels: {_channel_registry.list_all()}")
+    logger.info(f"  Models: {_model_registry.list_all()}")
+    logger.info(f"  Tools: {_tool_registry.list_all()}")
 
     # 3. External clients - none in Stages 01-02
     logger.info("Stage 02: No external clients (Stages 01-02 only)")
@@ -81,6 +103,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown sequence
     _shutting_down = True
+    _registries_ready = False
+    _channel_registry = None
+    _model_registry = None
+    _tool_registry = None
     logger.info("Stage 02: Shutdown started")
     logger.info("Stage 02: Shutdown complete")
 
@@ -92,6 +118,63 @@ _app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Add request correlation ID middleware
+_app.add_middleware(RequestIdMiddleware)
+
+
+# Exception handlers
+@_app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """Handle HTTP exceptions without leaking internals."""
+    logger.warning(
+        "HTTP exception",
+        status_code=exc.status_code,
+        path=request.url.path,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail if exc.detail else "HTTP error",
+            "path": request.url.path,
+        },
+    )
+
+
+@_app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Handle validation errors with sanitized output."""
+    logger.warning(
+        "Validation error",
+        path=request.url.path,
+        error_count=len(exc.errors()),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "detail": "Validation error",
+            "errors": [{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()],
+        },
+    )
+
+
+@_app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Handle unexpected exceptions - log full details, return sanitized response."""
+    logger.exception(
+        "Unhandled exception",
+        path=request.url.path,
+        exc_type=type(exc).__name__,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Internal server error",
+            "message": "An unexpected error occurred",
+        },
+    )
 
 
 # Health endpoints
@@ -107,12 +190,61 @@ async def liveness() -> JSONResponse:
 @_app.get("/health/readiness")
 async def readiness() -> JSONResponse:
     """Readiness endpoint - Is the application ready?
-    Liveness != Readiness. This proves the distinction."""
-    # In Stages 01-02, we're always ready if we're alive
-    # Later stages will check dependencies here
+    
+    Checks:
+    - Configuration is loaded
+    - Registries are initialized
+    - Default adapters are registered
+    
+    Liveness != Readiness. This proves the distinction.
+    """
+    global _channel_registry, _model_registry, _tool_registry
+    
+    # Check configuration
+    if not settings.environment:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not_ready", "reason": "configuration_not_loaded"},
+        )
+    
+    # Check registries are initialized
+    if not _registries_ready:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not_ready", "reason": "registries_not_initialized"},
+        )
+    
+    # Verify default adapters registered using stored instances
+    if _channel_registry is None or not _channel_registry.is_registered("fake"):
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not_ready", "reason": "channel_registry_not_initialized"},
+        )
+    
+    if _model_registry is None or not _model_registry.is_registered("fake"):
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not_ready", "reason": "model_registry_not_initialized"},
+        )
+    
+    if _tool_registry is None or not _tool_registry.is_registered("fake_tool"):
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "not_ready", "reason": "tool_registry_not_initialized"},
+        )
+    
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content={"status": "ready"},
+        content={
+            "status": "ready",
+            "checks": {
+                "configuration": "ok",
+                "channel_registry": "ok",
+                "model_registry": "ok",
+                "tool_registry": "ok",
+                "correlation_id_middleware": "active",
+            }
+        },
     )
 
 
@@ -152,7 +284,11 @@ async def root() -> JSONResponse:
 
 # Get the app (for uvicorn)
 def get_app() -> FastAPI:
-    """Get the FastAPI application."""
+    """ASGI entry point for uvicorn.
+    
+    Uvicorn imports this as "waxprep.main:get_app" — a string reference
+    that expects a callable returning the FastAPI app instance.
+    """
     return _app
 
 

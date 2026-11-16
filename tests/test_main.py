@@ -29,7 +29,10 @@ class TestHealthEndpoints:
         """Prove readiness endpoint returns ready status."""
         response = client.get("/health/readiness")
         assert response.status_code == 200
-        assert response.json() == {"status": "ready"}
+        data = response.json()
+        assert data["status"] == "ready"
+        # Readiness now includes detailed checks
+        assert "checks" in data
 
     def test_liveness_not_equal_readiness(self, client):
         """Prove liveness != readiness conceptually.

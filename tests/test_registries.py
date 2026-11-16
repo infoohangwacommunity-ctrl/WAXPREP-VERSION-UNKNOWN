@@ -4,9 +4,10 @@ Prove registries work with fake adapters.
 """
 
 import pytest
-from waxprep.registries.channel import ChannelRegistry, FakeChannelAdapter, get_channel_registry
-from waxprep.registries.model import ModelRegistry, FakeModelAdapter, get_model_registry
-from waxprep.registries.tool import ToolRegistry, FakeTool, get_tool_registry
+from waxprep.registries.channel import ChannelRegistry, get_channel_registry
+from waxprep.registries.model import ModelRegistry, get_model_registry
+from waxprep.registries.tool import ToolRegistry, get_tool_registry
+from waxprep.adapters import FakeChannelAdapter, FakeModelAdapter, FakeTool
 
 
 class TestChannelRegistry:
@@ -48,8 +49,9 @@ class TestChannelRegistry:
         assert "test2" in registry.list_all()
 
     def test_default_channel_registry_has_fake(self):
-        """Prove default channel registry has fake adapter."""
+        """Prove default channel registry can be populated with fake adapter."""
         registry = get_channel_registry()
+        registry.register_defaults()
         assert registry.is_registered("fake")
 
 
@@ -76,8 +78,9 @@ class TestModelRegistry:
         assert registry.is_registered("test")
 
     def test_default_model_registry_has_fake(self):
-        """Prove default model registry has fake adapter."""
+        """Prove default model registry can be populated with fake adapter."""
         registry = get_model_registry()
+        registry.register_defaults()
         assert registry.is_registered("fake")
 
 
@@ -104,6 +107,7 @@ class TestToolRegistry:
         assert registry.is_registered("test")
 
     def test_default_tool_registry_has_fake(self):
-        """Prove default tool registry has fake tool."""
+        """Prove default tool registry can be populated with fake tool."""
         registry = get_tool_registry()
+        registry.register_defaults()
         assert registry.is_registered("fake_tool")

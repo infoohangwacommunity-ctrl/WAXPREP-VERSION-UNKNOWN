@@ -1,7 +1,9 @@
 """
 Channel Registry - Stage 02
-Registry for channel adapters. Contains ONE fake adapter to prove it works.
-NO real WhatsApp. NO real Telegram. Only fake for testing.
+Registry for channel adapters. NO import-time side effects.
+
+Fake adapter source of truth: src/waxprep/adapters/fake_channel.py
+Register via register_defaults() method explicitly, not at import time.
 """
 
 from typing import Protocol, runtime_checkable
@@ -23,30 +25,19 @@ class ChannelRegistry(BaseRegistry[ChannelAdapter]):
     """Registry for channel adapters."""
 
     def register(self, name: str, adapter: ChannelAdapter) -> None:
-        """Register a channel adapter."""
+        """Register a channel adapter. Validates protocol compliance."""
         if not hasattr(adapter, 'name'):
             raise ValueError("Channel adapter must have a 'name' attribute")
         if not hasattr(adapter, 'handle_message'):
             raise ValueError("Channel adapter must have a 'handle_message' method")
         self._items[name] = adapter
 
-
-# FAKE adapter for testing only - proves registry works
-class FakeChannelAdapter:
-    """Fake channel adapter. NOT a real implementation."""
-
-    name = "fake"
-
-    async def handle_message(self, message: dict) -> dict:
-        """Fake handler. Does nothing real."""
-        return {"status": "fake_processed", "message_id": message.get("id")}
-
-
-# Register the fake adapter
-_default_channel_registry = ChannelRegistry()
-_default_channel_registry.register("fake", FakeChannelAdapter())
+    def register_defaults(self) -> None:
+        """Register default fake adapter. Must be called explicitly."""
+        from waxprep.adapters.fake_channel import FakeChannelAdapter
+        self.register("fake", FakeChannelAdapter())
 
 
 def get_channel_registry() -> ChannelRegistry:
-    """Get the default channel registry with fake adapter."""
-    return _default_channel_registry
+    """Get a fresh channel registry. Call register_defaults() to populate."""
+    return ChannelRegistry()
