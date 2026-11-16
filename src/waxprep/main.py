@@ -15,7 +15,8 @@ import logging
 import signal
 import sys
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Union
+import types
 
 import structlog
 from fastapi import FastAPI, Request, status
@@ -25,6 +26,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from waxprep.config import settings
 from waxprep.middleware.request_id import RequestIdMiddleware
+from waxprep.registries.channel import ChannelRegistry
+from waxprep.registries.model import ModelRegistry
+from waxprep.registries.tool import ToolRegistry
 
 
 # Configure structured logging
@@ -46,9 +50,9 @@ logger = structlog.get_logger()
 _app: Optional[FastAPI] = None
 _shutting_down: bool = False
 _registries_ready: bool = False
-_channel_registry: Optional[object] = None
-_model_registry: Optional[object] = None
-_tool_registry: Optional[object] = None
+_channel_registry: Optional[ChannelRegistry] = None
+_model_registry: Optional[ModelRegistry] = None
+_tool_registry: Optional[ToolRegistry] = None
 
 
 @asynccontextmanager
@@ -250,7 +254,7 @@ async def readiness() -> JSONResponse:
 
 
 # Graceful shutdown handler
-def handle_shutdown(signum: int, frame: object) -> None:
+def handle_shutdown(signum: int, frame: Union[types.FrameType, None]) -> None:
     """Handle SIGTERM for graceful shutdown."""
     global _shutting_down
     if _shutting_down:

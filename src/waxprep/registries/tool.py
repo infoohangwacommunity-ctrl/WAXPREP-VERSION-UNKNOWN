@@ -6,7 +6,7 @@ Fake tool source of truth: src/waxprep/adapters/fake_tool.py
 Register via register_defaults() method explicitly, not at import time.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from waxprep.registries.base import BaseRegistry
 
 
@@ -16,7 +16,7 @@ class Tool(Protocol):
 
     name: str
 
-    async def execute(self, **kwargs) -> dict:
+    async def execute(self, **kwargs: Any) -> dict:
         """Execute the tool."""
         ...
 
