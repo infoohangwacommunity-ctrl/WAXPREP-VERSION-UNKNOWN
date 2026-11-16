@@ -1,6 +1,6 @@
 """
-Test Foundation - Stage 02
-Prove foundation stability: no import pollution, registry behavior, health endpoints.
+Test Foundation - Stages 02-03
+Prove foundation stability: no import pollution, registry behavior, health endpoints, middleware.
 """
 
 import pytest

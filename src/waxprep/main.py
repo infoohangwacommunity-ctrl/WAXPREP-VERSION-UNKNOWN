@@ -1,13 +1,14 @@
 """
-Main Application - Stage 02
+Main Application - Stages 01-03
 ASGI application with ordered startup, graceful shutdown, health endpoints.
-NO tutor logic. NO real adapters. Only foundation.
+NO tutor logic. NO real adapters. Foundation + core integration point.
 
 Includes:
 - Request correlation ID middleware
 - Global exception handlers
 - Meaningful readiness checks
 - Structured logging with structlog
+- Composition root for Stage 03 services (when added)
 """
 
 import logging
