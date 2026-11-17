@@ -30,7 +30,7 @@ jobs:
             uv-${{ runner.os }}-
       - run: uv sync --dev
       - name: Run unit tests
-        run: uv run --dev pytest tests/unit/ -v --tb=short
+        run: uv run pytest tests/unit/ -v --tb=short
         env:
           TIMEOUT: 10
 
