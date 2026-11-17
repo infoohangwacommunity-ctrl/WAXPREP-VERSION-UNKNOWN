@@ -1,6 +1,6 @@
 # WaxPrep Foundation - Boundary Rules (Stage 03)
 
-**Version:** 0.3.0  
+**Version:** 0.1.0  
 **Python Requirement:** >=3.14, <3.16
 
 ---
@@ -41,7 +41,7 @@
 | Rule | Description |
 |------|-------------|
 | ❌ NO imports from `waxprep.adapters` | Core cannot depend on adapter implementations |
-| ❌ NO imports from `waxprep.channels` (concrete) | Core cannot import channel-specific code |
+| ❌ NO imports from `waxprep.adapters` (concrete) | Core cannot import adapter-specific code |
 | ❌ NO FastAPI imports | Core is framework-agnostic |
 | ❌ NO external SDK imports | Core does not know about WhatsApp, Telegram, AI providers |
 | ❌ NO HTTP/client code | Core is pure logic |
@@ -331,7 +331,7 @@ class StudentContext:
 
 | Package | Can Import From | Cannot Import From |
 |---------|-----------------|---------------------|
-| `waxprep.core` | standard lib, typing | `waxprep.adapters`, `waxprep.channels`, FastAPI, external SDKs |
+| `waxprep.core` | standard lib, typing | `waxprep.adapters`, FastAPI, external SDKs |
 | **Direction:** | Pure inward | Depends on nothing external |
 
 ### `src/waxprep/registries/`

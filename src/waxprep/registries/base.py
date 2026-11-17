@@ -24,7 +24,6 @@ class BaseRegistry[T](ABC):
     @abstractmethod
     def register(self, name: str, item: T) -> None:
         """Register an item. Must validate before registering."""
-        pass
 
     def get(self, name: str) -> T:
         """Get a registered item by name."""

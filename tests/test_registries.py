@@ -50,6 +50,23 @@ class TestChannelRegistry:
         assert "test1" in registry.list_all()
         assert "test2" in registry.list_all()
 
+    def test_channel_registry_get_missing_key(self):
+        """Prove channel registry raises KeyError for unregistered name."""
+        registry = ChannelRegistry()
+        with pytest.raises(KeyError, match="No item registered with name"):
+            registry.get("nonexistent")
+
+    def test_channel_registry_rejects_adapter_without_name(self):
+        """Prove channel registry rejects adapters without a 'name' attribute."""
+        registry = ChannelRegistry()
+
+        class NoNameAdapter:
+            async def handle_message(self, message: dict) -> dict:
+                return message
+
+        with pytest.raises(ValueError, match="must have a 'name' attribute"):
+            registry.register("no_name", NoNameAdapter())
+
     def test_default_channel_registry_has_fake(self):
         """Prove default channel registry can be populated with fake adapter."""
         registry = get_channel_registry()
@@ -121,6 +138,23 @@ class TestModelRegistry:
         with pytest.raises(DuplicateRegistrationError, match="already registered"):
             registry.register("test", adapter)
 
+    def test_model_registry_rejects_adapter_without_name(self):
+        """Prove model registry rejects adapters without a 'name' attribute."""
+        registry = ModelRegistry()
+
+        class NoNameAdapter:
+            async def generate(self, prompt: str) -> str:
+                return prompt
+
+        with pytest.raises(ValueError, match="must have a 'name' attribute"):
+            registry.register("no_name", NoNameAdapter())
+
+    def test_model_registry_get_missing_key(self):
+        """Prove model registry raises KeyError for unregistered name."""
+        registry = ModelRegistry()
+        with pytest.raises(KeyError, match="No item registered with name"):
+            registry.get("nonexistent")
+
     def test_model_registry_rejects_non_callable_generate(self):
         """Prove model registry rejects adapters without callable generate."""
         registry = ModelRegistry()
@@ -140,6 +174,16 @@ class TestModelRegistry:
 
         with pytest.raises(ValueError, match="callable"):
             registry.register("worse", WorseAdapter())
+
+    def test_fake_model_adapter_generate_returns_canned_response(self):
+        """Prove fake model adapter returns a canned response."""
+        import asyncio
+
+        adapter = FakeModelAdapter()
+        response = asyncio.run(adapter.generate("test prompt"))
+        assert isinstance(response, str)
+        assert "test prompt" in response
+        assert response.startswith("[FAKE]") or response.startswith("Fake response")
 
 
 class TestToolRegistry:
@@ -178,6 +222,23 @@ class TestToolRegistry:
         with pytest.raises(DuplicateRegistrationError, match="already registered"):
             registry.register("test", tool)
 
+    def test_tool_registry_rejects_tool_without_name(self):
+        """Prove tool registry rejects tools without a 'name' attribute."""
+        registry = ToolRegistry()
+
+        class NoNameTool:
+            async def execute(self, **kwargs):
+                pass
+
+        with pytest.raises(ValueError, match="must have a 'name' attribute"):
+            registry.register("no_name", NoNameTool())
+
+    def test_tool_registry_get_missing_key(self):
+        """Prove tool registry raises KeyError for unregistered name."""
+        registry = ToolRegistry()
+        with pytest.raises(KeyError, match="No item registered with name"):
+            registry.get("nonexistent")
+
     def test_tool_registry_rejects_non_callable_execute(self):
         """Prove tool registry rejects tools without callable execute."""
         registry = ToolRegistry()
@@ -197,3 +258,77 @@ class TestToolRegistry:
 
         with pytest.raises(ValueError, match="callable"):
             registry.register("worse", WorseTool())
+
+class TestFakeChannelHandleMessageViaRegistry:
+    """Prove fake channel handle_message body executes via registry."""
+
+    @pytest.mark.asyncio
+    async def test_handle_message_via_registry(self):
+        """Retrieve fake channel from registry and call handle_message."""
+        registry = get_channel_registry()
+        registry.register_defaults()
+        adapter = registry.get("fake")
+        message = {"id": "msg-123", "content": "hello"}
+        result = await adapter.handle_message(message)
+        assert result["status"] == "fake_processed"
+        assert result["message_id"] == "msg-123"
+        assert result["channel"] == "fake"
+
+    @pytest.mark.asyncio
+    async def test_handle_message_default_id(self):
+        """handle_message uses 'unknown' when message has no id."""
+        registry = get_channel_registry()
+        registry.register_defaults()
+        adapter = registry.get("fake")
+        result = await adapter.handle_message({"content": "no-id"})
+        assert result["message_id"] == "unknown"
+        assert result["channel"] == "fake"
+
+
+class TestFakeToolExecuteViaRegistry:
+    """Prove fake tool execute body executes via registry."""
+
+    @pytest.mark.asyncio
+    async def test_execute_via_registry(self):
+        """Retrieve fake tool from registry and call execute."""
+        registry = get_tool_registry()
+        registry.register_defaults()
+        tool = registry.get("fake_tool")
+        result = await tool.execute(arg1="val1", arg2=42)
+        assert result["status"] == "fake_executed"
+        assert result["tool"] == "fake_tool"
+        assert result["input"] == {"arg1": "val1", "arg2": 42}
+
+    @pytest.mark.asyncio
+    async def test_execute_empty_kwargs(self):
+        """execute works with no kwargs."""
+        registry = get_tool_registry()
+        registry.register_defaults()
+        tool = registry.get("fake_tool")
+        result = await tool.execute()
+        assert result["status"] == "fake_executed"
+        assert result["tool"] == "fake_tool"
+        assert result["input"] == {}
+
+
+class TestFakeModelGenerateViaRegistry:
+    """Prove fake model generate body executes via registry."""
+
+    @pytest.mark.asyncio
+    async def test_generate_via_registry(self):
+        """Retrieve fake model from registry and call generate."""
+        registry = get_model_registry()
+        registry.register_defaults()
+        adapter = registry.get("fake")
+        result = await adapter.generate("Hello world")
+        assert result.startswith("Fake response to: Hello world...")
+
+    @pytest.mark.asyncio
+    async def test_generate_long_prompt_truncated(self):
+        """generate truncates prompt at 50 chars in output."""
+        registry = get_model_registry()
+        registry.register_defaults()
+        adapter = registry.get("fake")
+        long_prompt = "A" * 100
+        result = await adapter.generate(long_prompt)
+        assert result == "Fake response to: " + "A" * 50 + "..."

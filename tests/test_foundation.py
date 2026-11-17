@@ -233,3 +233,18 @@ class TestExceptionHandling:
         valid_uuid = "550e8400-e29b-41d4-a716-446655440000"
         response = client.get("/", headers={"X-Request-ID": valid_uuid})
         assert response.headers["X-Request-ID"] == valid_uuid
+
+    def test_validate_request_id_rejects_none(self):
+        """_validate_request_id must not crash on None — returns False."""
+        from waxprep.middleware.request_id import _validate_request_id
+        assert not _validate_request_id(None)
+
+    def test_validate_request_id_rejects_integer(self):
+        """_validate_request_id must not crash on non-string — returns False."""
+        from waxprep.middleware.request_id import _validate_request_id
+        assert not _validate_request_id(123)
+
+    def test_validate_request_id_rejects_float(self):
+        """_validate_request_id must not crash on float — returns False."""
+        from waxprep.middleware.request_id import _validate_request_id
+        assert not _validate_request_id(3.14)

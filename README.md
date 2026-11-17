@@ -35,9 +35,10 @@
 src/waxprep/
 ├── main.py              # ASGI app, health endpoints, lifespan, middleware
 ├── config.py            # Settings (NO hardcoded values)
+├── id.py                # UUIDv7 identity generation (Stage 04 identity foundation)
 ├── core/                # Pure logic & protocols (NO infrastructure imports)
-│   ├── __init__.py      # Boundary rules, purpose statement
-│   ├── protocols.py     # Domain protocols (Message, MessageHandler, ContextProvider)
+│   ├── __init__.py      # Boundary rules, purpose statement, Message/MessageHandler/ContextProvider
+│   ├── protocols.py     # Protocol re-exports and boundary guard
 │   └── pure.py          # Pure functions (normalize_text, extract_keywords, etc.)
 ├── messaging/           # Message handling & conversation flow (placeholder)
 │   └── __init__.py      # Boundary rules, placeholder for future code
@@ -65,7 +66,9 @@ tests/
 ├── test_config.py       # Proves NO hardcoded values
 ├── test_registries.py   # Proves registry behavior
 ├── test_main.py         # Proves health endpoints work
-└── test_foundation.py   # Proves foundation stability + middleware + correlation IDs
+├── test_foundation.py   # Proves foundation stability + middleware + correlation IDs
+├── test_boundaries.py   # Proves architectural boundaries enforced
+└── test_id.py           # Proves UUIDv7 identity generation
 ```
 
 ### Boundary Rules
@@ -120,13 +123,22 @@ NEVER reverse this: core/ must not import from messaging/, services/, adapters/,
 - ❌ NO Prometheus/OpenTelemetry
 - ❌ NO production deployment
 
-## Stage 04: Engineering Standards and Coding Conventions
+## Stage 04: Identity Foundation (Wax ID)
 
-- CONTRIBUTING.md - How developers should contribute
-- docs/ENGINEERING-STANDARDS.md - Engineering rules and conventions
-- PR_REVIEW_CHECKLIST.md - What reviewers should check before approving changes
-- Type annotation improvements
-- Consistent coding conventions
+- `src/waxprep/id.py` — UUIDv7 identity generation (`generate_id()`, `is_valid_id()`)
+- Centralized, reusable identity capability for system entities and objects
+- Uses standard UUID string format, no semantic prefixes
+- Time-sortable (UUIDv7, RFC 9562), suitable for distributed systems
+- Designed so future components can safely consume it
+- `tests/test_id.py` — UUIDv7 correctness, monotonicity, mass uniqueness, format validation
+
+## Supporting Documentation
+
+- CONTRIBUTING.md — How developers should contribute
+- docs/ENGINEERING-STANDARDS.md — Engineering rules and conventions
+- PR_REVIEW_CHECKLIST.md — What reviewers should check before approving changes
+- docs/STAGE_03_ARCHITECTURE.md — Stage 03 architectural decisions and boundaries
+- docs/ARCHITECTURE_BOUNDARIES.md — Package dependency rules and what each layer may import
 
 ## NO Hardcoding Rule
 - ❌ NO model names hardcoded
@@ -180,7 +192,7 @@ Land with clear boundaries, utilities, and foundations:
 
 For WaxPrep:
 - The domain boundaries we establish now will outlast any specific implementation
-- When we add WhatsApp handlers (Stage 04), they fit into the existing structure
+- When we add identity generation (Stage 04 Wax ID), it fits into the existing structure
 - When we add AI models, they fit into the existing adapter structure
 - The architecture enables change without requiring architectural changes
 

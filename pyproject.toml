@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "waxprep"
 version = "0.1.0"
-description = "WaxPrep Foundation - Stages 01-03"
+description = "WaxPrep Foundation - Stages 01-04"
 readme = "README.md"
 requires-python = ">=3.14,<3.16"
 license = "MIT"
@@ -19,6 +19,7 @@ dependencies = [
     "httpx>=0.26.0",
     "structlog>=23.2.0",
     "python-dotenv>=1.0.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [project.optional-dependencies]

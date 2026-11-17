@@ -64,3 +64,15 @@ class TestGenerateId:
         assert is_valid_id("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
         assert is_valid_id("00000000-0000-0000-0000-000000000000")
         assert not is_valid_id("---")
+
+    def test_is_valid_id_rejects_none(self) -> None:
+        """is_valid_id must not crash on None — returns False."""
+        assert not is_valid_id(None)
+
+    def test_is_valid_id_rejects_integer(self) -> None:
+        """is_valid_id must not crash on non-string — returns False."""
+        assert not is_valid_id(123)
+
+    def test_is_valid_id_rejects_float(self) -> None:
+        """is_valid_id must not crash on float — returns False."""
+        assert not is_valid_id(3.14)
