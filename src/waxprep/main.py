@@ -145,14 +145,19 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """Handle validation errors with sanitized output."""
+    """Handle validation errors with sanitized output.
+
+    Uses 422 (Unprocessable Content) per RFC 9110 — signals semantic/
+    validation failure rather than generic bad request (400). This is the
+    standard status for Pydantic/FastAPI validation errors.
+    """
     logger.warning(
         "Validation error",
         path=request.url.path,
         error_count=len(exc.errors()),
     )
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
             "detail": "Validation error",
             "errors": [{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()],

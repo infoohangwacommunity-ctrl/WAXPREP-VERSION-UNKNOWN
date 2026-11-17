@@ -377,7 +377,7 @@ class TestMainExceptionHandlers:
                 content="not-valid-json{{{{",
                 headers={"Content-Type": "application/json"},
             )
-            assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+            assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
             data = response.json()
             assert data["detail"] == "Validation error"
             assert "errors" in data

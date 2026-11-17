@@ -2,7 +2,7 @@
 
 **Extracted from source code:** `/workspaces/WAXPREP-VERSION-UNKNOWN`
 **Version:** 0.1.0
-**Python Requirement:** >=3.14, <3.16
+**Python Requirement:** >=3.14
 
 ---
 

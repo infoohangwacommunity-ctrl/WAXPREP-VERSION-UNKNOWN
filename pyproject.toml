@@ -7,7 +7,7 @@ name = "waxprep"
 version = "0.1.0"
 description = "WaxPrep Foundation - Stages 01-04"
 readme = "README.md"
-requires-python = ">=3.14,<3.16"
+requires-python = ">=3.14"
 license = "MIT"
 authors = [{ name = "WaxPrep Team" }]
 

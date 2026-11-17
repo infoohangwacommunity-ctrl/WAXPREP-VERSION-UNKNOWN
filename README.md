@@ -137,8 +137,8 @@ NEVER reverse this: core/ must not import from messaging/, services/, adapters/,
 - CONTRIBUTING.md — How developers should contribute
 - docs/ENGINEERING-STANDARDS.md — Engineering rules and conventions
 - PR_REVIEW_CHECKLIST.md — What reviewers should check before approving changes
-- docs/STAGE_03_ARCHITECTURE.md — Stage 03 architectural decisions and boundaries
-- docs/ARCHITECTURE_BOUNDARIES.md — Package dependency rules and what each layer may import
+- STAGE_03_ARCHITECTURE.md — Stage 03 architectural decisions and boundaries
+- ARCHITECTURE_BOUNDARIES.md — Package dependency rules and what each layer may import
 
 ## NO Hardcoding Rule
 - ❌ NO model names hardcoded
@@ -199,12 +199,12 @@ For WaxPrep:
 ## Running Tests
 
 ```bash
-uv run pytest tests/ -v
+uv run --dev pytest tests/ -v
 ```
 
 With coverage:
 ```bash
-uv run pytest tests/ -v --cov=src/waxprep --cov-report=term-missing
+uv run --dev pytest tests/ -v --cov=src/waxprep --cov-report=term-missing
 ```
 
 ## Running the Application
