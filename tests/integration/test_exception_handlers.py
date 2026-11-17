@@ -36,6 +36,7 @@ class TestValidationExceptionHandler:
         with TestClient(app) as test_client:
             yield test_client
 
+    @pytest.mark.integration
     def test_validation_error_returns_422(self, client):
         """Prove RequestValidationError returns 422 with sanitized errors."""
         # Send valid JSON but wrong types to trigger Pydantic validation error
@@ -53,6 +54,7 @@ class TestValidationExceptionHandler:
             assert "loc" in err
             assert "msg" in err
 
+    @pytest.mark.integration
     def test_validation_error_does_not_leak_traceback(self, client):
         """Prove validation error response contains no traceback or file paths."""
         response = client.post(
@@ -63,6 +65,7 @@ class TestValidationExceptionHandler:
         assert "Traceback" not in data_str
         assert "File " not in data_str
 
+    @pytest.mark.integration
     def test_validation_error_includes_correlation_id(self, client):
         """Prove validation error responses include X-Request-ID."""
         response = client.post(
@@ -72,6 +75,7 @@ class TestValidationExceptionHandler:
         assert "X-Request-ID" in response.headers
         assert len(response.headers["X-Request-ID"]) > 0
 
+    @pytest.mark.integration
     def test_malformed_json_triggers_validation_handler(self, client):
         """Prove malformed JSON body triggers RequestValidationError handler."""
         response = client.post(
@@ -101,6 +105,7 @@ class TestGeneralExceptionHandler:
         with TestClient(app, raise_server_exceptions=False) as test_client:
             yield test_client
 
+    @pytest.mark.integration
     def test_unhandled_exception_returns_500(self, client):
         """Prove unhandled exception returns 500 with sanitized response."""
         response = client.get("/test-raise")
@@ -109,6 +114,7 @@ class TestGeneralExceptionHandler:
         assert data["detail"] == "Internal server error"
         assert data["message"] == "An unexpected error occurred"
 
+    @pytest.mark.integration
     def test_unhandled_exception_does_not_leak_traceback(self, client):
         """Prove 500 response contains no traceback or file paths."""
         response = client.get("/test-raise")
@@ -118,6 +124,7 @@ class TestGeneralExceptionHandler:
         assert "ValueError" not in data_str
         assert "test unhandled exception" not in data_str
 
+    @pytest.mark.integration
     def test_unhandled_exception_response_structure(self, client):
         """Prove 500 response has correct sanitized structure."""
         response = client.get("/test-raise")
@@ -132,6 +139,7 @@ class TestGeneralExceptionHandler:
         assert "ValueError" not in data_str
         assert "test unhandled exception" not in data_str
 
+    @pytest.mark.integration
     def test_different_exception_types_all_return_500(self, client):
         """Prove any Exception subclass is caught and returns 500."""
         # Add another temporary route with a different exception type

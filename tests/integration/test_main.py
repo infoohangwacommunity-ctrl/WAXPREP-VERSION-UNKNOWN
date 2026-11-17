@@ -36,12 +36,14 @@ def client():
 class TestHealthEndpoints:
     """Prove health endpoints work and distinguish liveness from readiness."""
 
+    @pytest.mark.integration
     def test_liveness_endpoint(self, client):
         """Prove liveness endpoint returns alive status."""
         response = client.get("/health/liveness")
         assert response.status_code == 200
         assert response.json() == {"status": "alive"}
 
+    @pytest.mark.integration
     def test_readiness_endpoint(self, client):
         """Prove readiness endpoint returns ready status."""
         response = client.get("/health/readiness")
@@ -50,6 +52,7 @@ class TestHealthEndpoints:
         assert data["status"] == "ready"
         assert "checks" in data
 
+    @pytest.mark.integration
     def test_liveness_not_equal_readiness(self, client):
         """Prove liveness != readiness conceptually."""
         liveness = client.get("/health/liveness")
@@ -63,6 +66,7 @@ class TestHealthEndpoints:
 class TestRootEndpoint:
     """Prove root endpoint works."""
 
+    @pytest.mark.integration
     def test_root_endpoint(self, client):
         """Prove root endpoint returns foundation info."""
         response = client.get("/")
@@ -80,6 +84,7 @@ class TestRootEndpoint:
 class TestValidationExceptionHandler:
     """Prove validation_exception_handler logs at WARNING level (lines 149-154)."""
 
+    @pytest.mark.integration
     def test_validation_error_logs_warning(self, client):
         """Malformed JSON body on a Pydantic-validated route → warning log."""
         from pydantic import BaseModel
@@ -118,6 +123,7 @@ class TestValidationExceptionHandler:
 class TestGeneralExceptionHandler:
     """Prove general_exception_handler logs at EXCEPTION level (lines 166-171)."""
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_unhandled_exception_logs_exception(self):
         """Call the handler directly: unhandled Exception → logger.exception."""
@@ -160,6 +166,7 @@ class TestGeneralExceptionHandler:
 class TestReadinessErrorPaths:
     """Prove readiness endpoint fails gracefully when preconditions are not met."""
 
+    @pytest.mark.integration
     def test_readiness_fails_when_environment_not_loaded(self, client):
         """Line 205: settings.environment falsy → 503 configuration_not_loaded."""
         with patch("waxprep.main.settings") as mock_settings:
@@ -168,6 +175,7 @@ class TestReadinessErrorPaths:
         assert response.status_code == 503
         assert response.json()["reason"] == "configuration_not_loaded"
 
+    @pytest.mark.integration
     def test_readiness_fails_when_registries_not_ready(self, client):
         """Line 212: _registries_ready=False → 503 registries_not_initialized."""
         with patch("waxprep.main._registries_ready", False):
@@ -175,6 +183,7 @@ class TestReadinessErrorPaths:
         assert response.status_code == 503
         assert response.json()["reason"] == "registries_not_initialized"
 
+    @pytest.mark.integration
     def test_readiness_fails_when_channel_registry_empty(self, client):
         """Line 219: _channel_registry=None → 503."""
         with patch("waxprep.main._registries_ready", True), \
@@ -183,6 +192,7 @@ class TestReadinessErrorPaths:
         assert response.status_code == 503
         assert response.json()["reason"] == "channel_registry_not_initialized"
 
+    @pytest.mark.integration
     def test_readiness_fails_when_model_registry_empty(self, client):
         """Line 225: _model_registry=None → 503 (channel must be OK to reach here)."""
         from waxprep.registries.channel import ChannelRegistry
@@ -196,6 +206,7 @@ class TestReadinessErrorPaths:
         assert response.status_code == 503
         assert response.json()["reason"] == "model_registry_not_initialized"
 
+    @pytest.mark.integration
     def test_readiness_fails_when_tool_registry_empty(self, client):
         """Line 231: _tool_registry=None → 503 (channel+model must be OK to reach here)."""
         from waxprep.registries.channel import ChannelRegistry
@@ -222,6 +233,7 @@ class TestReadinessErrorPaths:
 class TestLifespan:
     """Prove lifespan startup sets globals and shutdown resets them."""
 
+    @pytest.mark.integration
     def test_startup_sets_globals(self):
         """After lifespan startup: _registries_ready=True, registries populated."""
         import waxprep.main as main
@@ -242,6 +254,7 @@ class TestLifespan:
 
         asyncio.run(_run())
 
+    @pytest.mark.integration
     def test_shutdown_resets_globals(self):
         """After lifespan shutdown: globals are None, _registries_ready=False."""
         import waxprep.main as main
@@ -273,6 +286,7 @@ class TestLifespan:
 class TestHandleShutdown:
     """Prove handle_shutdown is idempotent and logs on first call."""
 
+    @pytest.mark.integration
     def test_first_call_sets_flag_and_logs(self):
         """First call: _shutting_down becomes True, logger.info called."""
         import waxprep.main as main
@@ -284,6 +298,7 @@ class TestHandleShutdown:
         mock_logger.info.assert_called_once()
         assert mock_logger.info.call_args.kwargs["signal"] == 15
 
+    @pytest.mark.integration
     def test_second_call_is_noop(self):
         """Second call while shutting down: no log, flag unchanged."""
         import waxprep.main as main
@@ -302,6 +317,7 @@ class TestHandleShutdown:
 class TestMainBlock:
     """Prove the __main__ block calls uvicorn.run with correct arguments."""
 
+    @pytest.mark.integration
     def test_main_block_calls_uvicorn_run(self):
         """Executing main.py as __main__ delegates to uvicorn.run correctly."""
         import waxprep.main as main

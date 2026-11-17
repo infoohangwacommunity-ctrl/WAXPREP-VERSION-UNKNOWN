@@ -59,9 +59,11 @@ class ConcreteContextProvider:
 # ---------------------------------------------------------------------------
 
 class TestMessageProtocol:
+    @pytest.mark.contract
     def test_is_runtime_checkable(self):
         assert isinstance(ConcreteMessage("hello", "msg-1"), Message)
 
+    @pytest.mark.contract
     def test_is_not_runtime_checkable_when_missing_method(self):
         class BadMessage:
             def get_content(self) -> str:
@@ -70,25 +72,30 @@ class TestMessageProtocol:
 
         assert not isinstance(BadMessage(), Message)
 
+    @pytest.mark.contract
     def test_get_content_returns_str(self):
         msg = ConcreteMessage("student question", "q-1")
         assert msg.get_content() == "student question"
         assert isinstance(msg.get_content(), str)
 
+    @pytest.mark.contract
     def test_get_metadata_returns_dict(self):
         msg = ConcreteMessage("data", "d-1", metadata={"source": "user"})
         assert msg.get_metadata() == {"source": "user"}
         assert isinstance(msg.get_metadata(), dict)
 
+    @pytest.mark.contract
     def test_get_metadata_default_empty(self):
         msg = ConcreteMessage("plain", "p-1")
         assert msg.get_metadata() == {}
 
+    @pytest.mark.contract
     def test_get_id_returns_str(self):
         msg = ConcreteMessage("content", "unique-id-42")
         assert msg.get_id() == "unique-id-42"
         assert isinstance(msg.get_id(), str)
 
+    @pytest.mark.contract
     def test_multiple_messages_independent(self):
         m1 = ConcreteMessage("first", "id-1")
         m2 = ConcreteMessage("second", "id-2", metadata={"tag": "math"})
@@ -102,10 +109,12 @@ class TestMessageProtocol:
 # ---------------------------------------------------------------------------
 
 class TestMessageHandlerProtocol:
+    @pytest.mark.contract
     def test_is_runtime_checkable(self):
         handler = ConcreteMessageHandler("user:")
         assert isinstance(handler, MessageHandler)
 
+    @pytest.mark.contract
     def test_is_not_runtime_checkable_when_missing_method(self):
         class BadHandler:
             async def handle(self, message: Message) -> Any:
@@ -113,21 +122,25 @@ class TestMessageHandlerProtocol:
 
         assert not isinstance(BadHandler(), MessageHandler)
 
+    @pytest.mark.contract
     def test_can_handle_returns_true_when_prefix_matches(self):
         handler = ConcreteMessageHandler("user:")
         msg = ConcreteMessage("user: hello", "msg-1")
         assert handler.can_handle(msg) is True
 
+    @pytest.mark.contract
     def test_can_handle_returns_false_when_prefix_does_not_match(self):
         handler = ConcreteMessageHandler("sys:")
         msg = ConcreteMessage("user: hello", "msg-1")
         assert handler.can_handle(msg) is False
 
+    @pytest.mark.contract
     def test_can_handle_with_empty_prefix(self):
         handler = ConcreteMessageHandler("")
         msg = ConcreteMessage("anything", "msg-1")
         assert handler.can_handle(msg) is True
 
+    @pytest.mark.contract
     @pytest.mark.asyncio
     async def test_handle_returns_result(self):
         handler = ConcreteMessageHandler("user:")
@@ -135,6 +148,7 @@ class TestMessageHandlerProtocol:
         result = await handler.handle(msg)
         assert result == {"handled": "msg-1", "content": "user: hello"}
 
+    @pytest.mark.contract
     @pytest.mark.asyncio
     async def test_handle_with_different_messages(self):
         handler = ConcreteMessageHandler("bot:")
@@ -148,37 +162,44 @@ class TestMessageHandlerProtocol:
 # ---------------------------------------------------------------------------
 
 class TestContextProviderProtocol:
+    @pytest.mark.contract
     def test_is_runtime_checkable(self):
         provider = ConcreteContextProvider({"user": "alice"})
         assert isinstance(provider, ContextProvider)
 
+    @pytest.mark.contract
     def test_is_not_runtime_checkable_when_missing_method(self):
         class NoMethods:
             pass
 
         assert not isinstance(NoMethods(), ContextProvider)
 
+    @pytest.mark.contract
     def test_get_context_returns_dict(self):
         provider = ConcreteContextProvider({"session": "abc"})
         ctx = provider.get_context()
         assert isinstance(ctx, dict)
         assert ctx == {"session": "abc"}
 
+    @pytest.mark.contract
     def test_get_context_with_kwargs_merges(self):
         provider = ConcreteContextProvider({"base": "value"})
         ctx = provider.get_context(extra="data", msg_id="123")
         assert ctx == {"base": "value", "extra": "data", "msg_id": "123"}
 
+    @pytest.mark.contract
     def test_get_context_empty_store(self):
         provider = ConcreteContextProvider()
         ctx = provider.get_context()
         assert ctx == {}
 
+    @pytest.mark.contract
     def test_get_context_kwargs_only(self):
         provider = ConcreteContextProvider()
         ctx = provider.get_context(foo="bar")
         assert ctx == {"foo": "bar"}
 
+    @pytest.mark.contract
     def test_multiple_providers_independent(self):
         p1 = ConcreteContextProvider({"a": 1})
         p2 = ConcreteContextProvider({"b": 2})

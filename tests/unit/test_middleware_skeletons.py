@@ -17,21 +17,25 @@ from waxprep.middleware.base import HeaderSanitizationMiddleware, TimingMiddlewa
 class TestTimingMiddleware:
     """Prove TimingMiddleware skeleton is properly structured."""
 
+    @pytest.mark.unit
     def test_can_be_instantiated(self):
         """Prove TimingMiddleware can be instantiated without errors."""
         middleware = TimingMiddleware(app=None)
         assert middleware is not None
 
+    @pytest.mark.unit
     def test_is_base_http_middleware_subclass(self):
         """Prove TimingMiddleware inherits from BaseHTTPMiddleware."""
         from starlette.middleware.base import BaseHTTPMiddleware
         assert issubclass(TimingMiddleware, BaseHTTPMiddleware)
 
+    @pytest.mark.unit
     def test_dispatch_method_exists(self):
         """Prove TimingMiddleware has a dispatch method."""
         assert hasattr(TimingMiddleware, "dispatch")
         assert callable(TimingMiddleware.dispatch)
 
+    @pytest.mark.unit
     def test_dispatch_signature_accepts_request_and_call_next(self):
         """Prove dispatch method accepts request and call_next parameters."""
         sig = inspect.signature(TimingMiddleware.dispatch)
@@ -42,6 +46,7 @@ class TestTimingMiddleware:
         assert "request" in params
         assert "call_next" in params
 
+    @pytest.mark.unit
     def test_dispatch_returns_response(self):
         """Prove dispatch method return annotation is Response."""
         sig = inspect.signature(TimingMiddleware.dispatch)
@@ -57,6 +62,7 @@ class TestTimingMiddleware:
         else:
             assert return_annotation is Response
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_dispatch_calls_call_next_and_returns_response(self):
         """Prove dispatch delegates to call_next and returns its response."""
@@ -75,21 +81,25 @@ class TestTimingMiddleware:
 class TestHeaderSanitizationMiddleware:
     """Prove HeaderSanitizationMiddleware skeleton is properly structured."""
 
+    @pytest.mark.unit
     def test_can_be_instantiated(self):
         """Prove HeaderSanitizationMiddleware can be instantiated without errors."""
         middleware = HeaderSanitizationMiddleware(app=None)
         assert middleware is not None
 
+    @pytest.mark.unit
     def test_is_base_http_middleware_subclass(self):
         """Prove HeaderSanitizationMiddleware inherits from BaseHTTPMiddleware."""
         from starlette.middleware.base import BaseHTTPMiddleware
         assert issubclass(HeaderSanitizationMiddleware, BaseHTTPMiddleware)
 
+    @pytest.mark.unit
     def test_dispatch_method_exists(self):
         """Prove HeaderSanitizationMiddleware has a dispatch method."""
         assert hasattr(HeaderSanitizationMiddleware, "dispatch")
         assert callable(HeaderSanitizationMiddleware.dispatch)
 
+    @pytest.mark.unit
     def test_dispatch_signature_accepts_request_and_call_next(self):
         """Prove dispatch method accepts request and call_next parameters."""
         sig = inspect.signature(HeaderSanitizationMiddleware.dispatch)
@@ -100,6 +110,7 @@ class TestHeaderSanitizationMiddleware:
         assert "request" in params
         assert "call_next" in params
 
+    @pytest.mark.unit
     def test_dispatch_returns_response(self):
         """Prove dispatch method return annotation is Response."""
         sig = inspect.signature(HeaderSanitizationMiddleware.dispatch)
@@ -113,26 +124,31 @@ class TestHeaderSanitizationMiddleware:
         else:
             assert return_annotation is Response
 
+    @pytest.mark.unit
     def test_sensitive_headers_class_attribute_exists(self):
         """Prove SENSITIVE_HEADERS class attribute exists."""
         assert hasattr(HeaderSanitizationMiddleware, "SENSITIVE_HEADERS")
         assert isinstance(HeaderSanitizationMiddleware.SENSITIVE_HEADERS, frozenset)
 
+    @pytest.mark.unit
     def test_sensitive_headers_contains_expected_values(self):
         """Prove SENSITIVE_HEADERS contains the expected sensitive header names."""
         expected = frozenset({"X-Internal-Token", "X-Debug-Info"})
         assert HeaderSanitizationMiddleware.SENSITIVE_HEADERS == expected
 
+    @pytest.mark.unit
     def test_sensitive_headers_is_not_empty(self):
         """Prove SENSITIVE_HEADERS is not empty."""
         assert len(HeaderSanitizationMiddleware.SENSITIVE_HEADERS) > 0
 
+    @pytest.mark.unit
     def test_sensitive_headers_can_be_accessed_on_instance(self):
         """Prove SENSITIVE_HEADERS accessible from instance via self."""
         middleware = HeaderSanitizationMiddleware(app=None)
         assert hasattr(middleware, "SENSITIVE_HEADERS")
         assert middleware.SENSITIVE_HEADERS == HeaderSanitizationMiddleware.SENSITIVE_HEADERS
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_dispatch_calls_call_next_and_returns_response(self):
         """Prove dispatch delegates to call_next and returns its response."""

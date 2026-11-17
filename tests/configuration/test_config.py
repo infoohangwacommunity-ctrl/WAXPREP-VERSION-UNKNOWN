@@ -5,12 +5,15 @@ Prove NO hardcoded values. All configuration from environment.
 
 import os
 
+import pytest
+
 from waxprep.config import settings
 
 
 class TestNoHardcoding:
     """Prove configuration values are NOT hardcoded."""
 
+    @pytest.mark.configuration
     def test_port_not_hardcoded(self):
         """Prove port is configurable, not hardcoded."""
         # The default is 8000, but it can be changed via environment
@@ -18,11 +21,13 @@ class TestNoHardcoding:
         # Default value exists but is not hardcoded in logic
         assert settings.port == 8000
 
+    @pytest.mark.configuration
     def test_host_not_hardcoded(self):
         """Prove host is configurable, not hardcoded."""
         assert hasattr(settings, "host")
         assert settings.host == "0.0.0.0"
 
+    @pytest.mark.configuration
     def test_shutdown_grace_period_not_hardcoded(self):
         """Prove shutdown grace period is configurable, NOT hardcoded.
 
@@ -43,11 +48,13 @@ class TestNoHardcoding:
         # Clean up
         del os.environ["WAXPREP_SHUTDOWN_GRACE_PERIOD"]
 
+    @pytest.mark.configuration
     def test_environment_not_hardcoded(self):
         """Prove environment is configurable, not hardcoded."""
         assert hasattr(settings, "environment")
         assert settings.environment == "development"
 
+    @pytest.mark.configuration
     def test_log_level_not_hardcoded(self):
         """Prove log level is configurable, not hardcoded."""
         assert hasattr(settings, "log_level")

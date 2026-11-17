@@ -132,6 +132,26 @@ NEVER reverse this: core/ must not import from messaging/, services/, adapters/,
 - Designed so future components can safely consume it
 - `tests/test_id.py` — UUIDv7 correctness, monotonicity, mass uniqueness, format validation
 
+## Stage 05: Testing
+
+Seven test categories with dedicated directories under `tests/`:
+
+- **unit/** — pure logic, single function/class
+- **integration/** — component interactions  
+- **contract/** — protocol compliance
+- **lifecycle/** — startup/shutdown, failures
+- **architecture/** — boundary enforcement
+- **configuration/** — config loading
+- **regression/** — behavior preservation
+
+```bash
+uv run --dev pytest tests/unit/ -v          # run unit tests
+uv run --dev pytest tests/integration/ -v   # run integration tests
+# etc.
+```
+
+**Markers alternative:** Use `@pytest.mark.unit` etc. on test functions instead of directory nesting. Run with `pytest -m unit`.
+
 ## Supporting Documentation
 
 - CONTRIBUTING.md — How developers should contribute

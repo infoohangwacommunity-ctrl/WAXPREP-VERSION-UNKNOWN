@@ -1,0 +1,1 @@
+Stage 05 testing strategy: hermetic, isolated, deterministic tests. Categories: unit, integration, contract, lifecycle, architecture, configuration, regression. Run locally: uv run --dev pytest tests/. CI runs on every commit. Fixtures in conftest.py. Full suite < 30 seconds.
