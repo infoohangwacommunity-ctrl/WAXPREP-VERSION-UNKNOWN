@@ -129,8 +129,9 @@ class TestContextBoundaries:
     def test_context_may_import_core(self, context_path):
         """Context may import from core/ (this is the allowed direction).
 
-        This test verifies the boundary ALLOWS this direction by checking
-        the __init__.py explicitly documents core/ as allowed.
+        This test verifies the boundary ALLOWS this direction by:
+        1. Checking the __init__.py explicitly documents core/ as allowed
+        2. Verifying core/ can be imported from context/ without error
         """
         init_file = context_path / "__init__.py"
         content = init_file.read_text()
@@ -140,14 +141,22 @@ class TestContextBoundaries:
             "context/__init__.py should mention core/ as an allowed dependency"
         )
 
+        # Verify the documentation is explicit about the direction
+        assert "depend" in content.lower() or "import" in content.lower(), (
+            "context/__init__.py should explicitly document dependency rules"
+        )
+
         # Verify core/ can be imported from context/ path (structural check)
         # This proves there's no technical barrier to the allowed dependency
         import sys
         from pathlib import Path
+        import importlib
 
         sys.path.insert(0, str(Path("src").resolve()))
         try:
-            pass
+            # Verify core module can be imported
+            core_module = importlib.import_module("waxprep.core")
+            assert core_module is not None
         finally:
             sys.path.pop(0)
 
@@ -182,8 +191,9 @@ class TestMessagingBoundaries:
     def test_messaging_may_import_core(self, messaging_path):
         """Messaging may import from core/ (this is the allowed direction).
 
-        This test verifies the boundary ALLOWS this direction by checking
-        the __init__.py explicitly documents core/ as allowed.
+        This test verifies the boundary ALLOWS this direction by:
+        1. Checking the __init__.py explicitly documents core/ as allowed
+        2. Verifying core/ can be imported from messaging/ without error
         """
         init_file = messaging_path / "__init__.py"
         content = init_file.read_text()
@@ -193,13 +203,21 @@ class TestMessagingBoundaries:
             "messaging/__init__.py should mention core/ as an allowed dependency"
         )
 
+        # Verify the documentation is explicit about the direction
+        assert "depend" in content.lower() or "import" in content.lower(), (
+            "messaging/__init__.py should explicitly document dependency rules"
+        )
+
         # Verify core/ can be imported from messaging/ path (structural check)
         import sys
         from pathlib import Path
+        import importlib
 
         sys.path.insert(0, str(Path("src").resolve()))
         try:
-            pass
+            # Verify core module can be imported
+            core_module = importlib.import_module("waxprep.core")
+            assert core_module is not None
         finally:
             sys.path.pop(0)
 

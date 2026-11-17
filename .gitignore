@@ -36,3 +36,9 @@ htmlcov/
 
 # Local development
 *.local
+
+# OpenCode / OmO local config
+.opencode/
+
+# Misc binaries
+*.deb
