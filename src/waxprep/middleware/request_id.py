@@ -22,7 +22,7 @@ def _validate_request_id(request_id: str) -> bool:
     try:
         uuid.UUID(request_id)
         return True
-    except ValueError, AttributeError:
+    except (ValueError, TypeError):
         return False
 
 

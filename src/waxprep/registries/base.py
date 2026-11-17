@@ -4,7 +4,7 @@ Abstract base class for all registries.
 """
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 T = TypeVar("T")
 
@@ -15,7 +15,7 @@ class DuplicateRegistrationError(ValueError):
     pass
 
 
-class BaseRegistry(ABC, Generic[T]):
+class BaseRegistry[T](ABC):
     """Base registry class. NO hardcoded adapters."""
 
     def __init__(self) -> None:

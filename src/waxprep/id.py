@@ -57,5 +57,5 @@ def is_valid_id(id_string: str) -> bool:
     try:
         UUID(id_string)
         return True
-    except (ValueError, AttributeError):
+    except (ValueError, TypeError, AttributeError):
         return False

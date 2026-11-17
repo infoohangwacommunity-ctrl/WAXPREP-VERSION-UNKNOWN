@@ -148,9 +148,9 @@ class TestContextBoundaries:
 
         # Verify core/ can be imported from context/ path (structural check)
         # This proves there's no technical barrier to the allowed dependency
+        import importlib
         import sys
         from pathlib import Path
-        import importlib
 
         sys.path.insert(0, str(Path("src").resolve()))
         try:
@@ -209,9 +209,9 @@ class TestMessagingBoundaries:
         )
 
         # Verify core/ can be imported from messaging/ path (structural check)
+        import importlib
         import sys
         from pathlib import Path
-        import importlib
 
         sys.path.insert(0, str(Path("src").resolve()))
         try:
