@@ -1,4 +1,4 @@
-name: Test Suite
+name: Test Suite & Static Analysis
 
 on:
   push:
@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Test Suite
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -186,3 +187,146 @@ jobs:
             exit 1
           fi
           echo "Flake detection PASSED: all 10 runs succeeded"
+
+  # Static Analysis (Blocking)
+  ruff-lint:
+    name: Ruff Lint (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+      - run: uv sync --extra dev
+      - name: Run ruff check
+        run: uv run ruff check src/ tests/
+
+  ruff-format:
+    name: Ruff Format (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+      - run: uv sync --extra dev
+      - name: Run ruff format check
+        run: uv run ruff format --check src/ tests/
+
+  mypy:
+    name: Mypy Type Check (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+      - run: uv sync --extra dev
+      - name: Run mypy
+        run: uv run mypy src/
+
+  pyright:
+    name: Pyright Type Check (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+      - run: uv sync --extra dev
+      - name: Run pyright
+        run: uv run pyright src/
+
+  import-linter:
+    name: Import Linter (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+      - run: uv sync --extra dev
+      - name: Run import-linter
+        run: uv run importlinter src/waxprep/
+
+  semgrep:
+    name: Semgrep Security Scan (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+      - run: uv sync --extra dev
+      - name: Run semgrep
+        run: uv run semgrep --config auto --error src/
+
+  # Static Analysis (Advisory)
+  vulture:
+    name: Vulture Dead Code Report (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v3
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+      - run: uv sync --extra dev
+      - name: Run vulture
+        run: uv run vulture src/waxprep/ --min-confidence 80
