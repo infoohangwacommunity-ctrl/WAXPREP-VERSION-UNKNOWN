@@ -14,8 +14,10 @@ from waxprep.core.protocols import ContextProvider, Message, MessageHandler
 # Concrete implementations for testing
 # ---------------------------------------------------------------------------
 
+
 class ConcreteMessage:
     """Minimal concrete Message implementation."""
+
     def __init__(self, content: str, msg_id: str, metadata: dict[str, Any] | None = None):
         self._content = content
         self._id = msg_id
@@ -33,6 +35,7 @@ class ConcreteMessage:
 
 class ConcreteMessageHandler:
     """Minimal concrete MessageHandler implementation."""
+
     def __init__(self, accepted_prefix: str = ""):
         self._prefix = accepted_prefix
 
@@ -45,6 +48,7 @@ class ConcreteMessageHandler:
 
 class ConcreteContextProvider:
     """Minimal concrete ContextProvider implementation."""
+
     def __init__(self, initial: dict[str, Any] | None = None):
         self._store: dict[str, Any] = initial or {}
 
@@ -58,6 +62,7 @@ class ConcreteContextProvider:
 # Message protocol tests
 # ---------------------------------------------------------------------------
 
+
 class TestMessageProtocol:
     @pytest.mark.contract
     def test_is_runtime_checkable(self):
@@ -68,6 +73,7 @@ class TestMessageProtocol:
         class BadMessage:
             def get_content(self) -> str:
                 return "x"
+
             # missing get_metadata and get_id
 
         assert not isinstance(BadMessage(), Message)
@@ -107,6 +113,7 @@ class TestMessageProtocol:
 # ---------------------------------------------------------------------------
 # MessageHandler protocol tests
 # ---------------------------------------------------------------------------
+
 
 class TestMessageHandlerProtocol:
     @pytest.mark.contract
@@ -160,6 +167,7 @@ class TestMessageHandlerProtocol:
 # ---------------------------------------------------------------------------
 # ContextProvider protocol tests
 # ---------------------------------------------------------------------------
+
 
 class TestContextProviderProtocol:
     @pytest.mark.contract

@@ -24,6 +24,7 @@ from waxprep.registries.tool import ToolRegistry
 # Markers
 # ---------------------------------------------------------------------------
 
+
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom pytest markers."""
     markers = [
@@ -43,6 +44,7 @@ def pytest_configure(config: pytest.Config) -> None:
 # Time control
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def frozen_time():
     """Freeze time at a fixed point. Opt-in via explicit request.
@@ -58,6 +60,7 @@ def frozen_time():
 # ---------------------------------------------------------------------------
 # Seeded randomness (opt-in)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def seeded_random():

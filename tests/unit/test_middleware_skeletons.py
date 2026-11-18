@@ -27,6 +27,7 @@ class TestTimingMiddleware:
     def test_is_base_http_middleware_subclass(self):
         """Prove TimingMiddleware inherits from BaseHTTPMiddleware."""
         from starlette.middleware.base import BaseHTTPMiddleware
+
         assert issubclass(TimingMiddleware, BaseHTTPMiddleware)
 
     @pytest.mark.unit
@@ -91,6 +92,7 @@ class TestHeaderSanitizationMiddleware:
     def test_is_base_http_middleware_subclass(self):
         """Prove HeaderSanitizationMiddleware inherits from BaseHTTPMiddleware."""
         from starlette.middleware.base import BaseHTTPMiddleware
+
         assert issubclass(HeaderSanitizationMiddleware, BaseHTTPMiddleware)
 
     @pytest.mark.unit

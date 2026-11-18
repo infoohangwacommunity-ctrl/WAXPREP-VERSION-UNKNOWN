@@ -72,6 +72,7 @@ class TestLifespan:
 # handle_shutdown idempotency and logging
 # ---------------------------------------------------------------------------
 
+
 class TestHandleShutdown:
     """Prove handle_shutdown is idempotent and logs on first call."""
 

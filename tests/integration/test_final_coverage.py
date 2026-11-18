@@ -48,6 +48,7 @@ from waxprep.registries.tool import ToolRegistry
 
 def _make_awaitable(response: Response):
     """Return an awaitable that resolves to the given Response."""
+
     async def _coro() -> Response:  # noqa: RUF029
         return response
 
@@ -57,6 +58,7 @@ def _make_awaitable(response: Response):
 # ---------------------------------------------------------------------------
 # core/pure.py
 # ---------------------------------------------------------------------------
+
 
 class TestNormalizeText:
     def test_strips_and_collapses_whitespace(self):
@@ -130,6 +132,7 @@ class TestComposeHandlers:
 # core/protocols.py
 # ---------------------------------------------------------------------------
 
+
 class TestMessageProtocol:
     def test_runtime_checkable_accepts_concrete(self):
         class ConcreteMessage:
@@ -201,6 +204,7 @@ class TestProtocolTypeAliases:
 # adapters - call async methods directly
 # ---------------------------------------------------------------------------
 
+
 class TestFakeChannelAdapter:
     def test_handle_message_returns_expected_structure(self):
         adapter = FakeChannelAdapter()
@@ -247,6 +251,7 @@ class TestFakeTool:
 # middleware/base.py
 # ---------------------------------------------------------------------------
 
+
 class TestTimingMiddleware:
     @pytest.mark.asyncio
     async def test_dispatch_passes_through(self):
@@ -277,6 +282,7 @@ class TestHeaderSanitizationMiddleware:
 # registries/base.py - get() KeyError + register() abstract
 # ---------------------------------------------------------------------------
 
+
 class TestBaseRegistryGetError:
     def test_get_raises_keyerror_for_missing_name(self):
         class ConcreteRegistry(BaseRegistry[str]):
@@ -299,6 +305,7 @@ class TestBaseRegistryRegisterAbstract:
 # ---------------------------------------------------------------------------
 # registries/* - missing 'name' ValueError
 # ---------------------------------------------------------------------------
+
 
 class TestChannelRegistryMissingName:
     def test_rejects_adapter_without_name(self):
@@ -339,6 +346,7 @@ class TestToolRegistryMissingName:
 # ---------------------------------------------------------------------------
 # main.py - exception handlers + readiness failure paths + __main__ guard
 # ---------------------------------------------------------------------------
+
 
 class TestMainExceptionHandlers:
     """Trigger the validation and general exception handlers via TestClient."""

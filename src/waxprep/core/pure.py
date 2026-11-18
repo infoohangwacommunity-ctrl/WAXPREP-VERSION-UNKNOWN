@@ -53,7 +53,7 @@ def extract_keywords(text: str, min_length: int = 3) -> list[str]:
     words = re.findall(r"[a-zA-Z0-9]+", text.lower())
 
     # Filter by length and return unique
-    keywords = set()
+    keywords: set[str] = set()
     for word in words:
         if len(word) >= min_length:
             keywords.add(word)

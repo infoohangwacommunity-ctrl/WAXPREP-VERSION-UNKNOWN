@@ -175,6 +175,7 @@ class TestComposeHandlers:
     @pytest.mark.unit
     def test_single_handler(self):
         """Prove a single handler is called with input."""
+
         def add_one(x):
             return x + 1
 
@@ -184,6 +185,7 @@ class TestComposeHandlers:
     @pytest.mark.unit
     def test_multiple_handlers_chained(self):
         """Prove handlers are chained: output of one is input to next."""
+
         def add_one(x):
             return x + 1
 
@@ -197,6 +199,7 @@ class TestComposeHandlers:
     @pytest.mark.unit
     def test_three_handlers(self):
         """Prove three handlers chain correctly."""
+
         def add_one(x):
             return x + 1
 
@@ -221,6 +224,7 @@ class TestComposeHandlers:
     @pytest.mark.unit
     def test_string_transformations(self):
         """Prove handlers work with strings."""
+
         def uppercase(s):
             return s.upper()
 
@@ -233,6 +237,7 @@ class TestComposeHandlers:
     @pytest.mark.unit
     def test_handlers_with_different_types(self):
         """Prove handlers can transform between types."""
+
         def to_str(x):
             return str(x)
 

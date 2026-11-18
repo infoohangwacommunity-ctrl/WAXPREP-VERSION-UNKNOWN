@@ -32,6 +32,7 @@ def client():
 # Original tests (kept from the existing file)
 # ---------------------------------------------------------------------------
 
+
 class TestHealthEndpoints:
     """Prove health endpoints work and distinguish liveness from readiness."""
 
@@ -80,6 +81,7 @@ class TestRootEndpoint:
 # Lines 149-154: validation_exception_handler
 # ---------------------------------------------------------------------------
 
+
 class TestValidationExceptionHandler:
     """Prove validation_exception_handler logs at WARNING level (lines 149-154)."""
 
@@ -91,7 +93,7 @@ class TestValidationExceptionHandler:
         class _TestBody(BaseModel):
             name: str
 
-        async def _endpoint(body:  _TestBody):  # noqa: RUF029
+        async def _endpoint(body: _TestBody):  # noqa: RUF029
             return body
 
         get_app().add_api_route(
@@ -118,6 +120,7 @@ class TestValidationExceptionHandler:
 # ---------------------------------------------------------------------------
 # Lines 166-171: general_exception_handler
 # ---------------------------------------------------------------------------
+
 
 class TestGeneralExceptionHandler:
     """Prove general_exception_handler logs at EXCEPTION level (lines 166-171)."""
@@ -162,6 +165,7 @@ class TestGeneralExceptionHandler:
 # Lines 205, 212, 219, 225, 231: readiness error paths
 # ---------------------------------------------------------------------------
 
+
 class TestReadinessErrorPaths:
     """Prove readiness endpoint fails gracefully when preconditions are not met."""
 
@@ -185,8 +189,10 @@ class TestReadinessErrorPaths:
     @pytest.mark.integration
     def test_readiness_fails_when_channel_registry_empty(self, client):
         """Line 219: _channel_registry=None → 503."""
-        with patch("waxprep.main._registries_ready", True), \
-             patch("waxprep.main._channel_registry", None):
+        with (
+            patch("waxprep.main._registries_ready", True),
+            patch("waxprep.main._channel_registry", None),
+        ):
             response = client.get("/health/readiness")
         assert response.status_code == 503
         assert response.json()["reason"] == "channel_registry_not_initialized"
@@ -195,12 +201,15 @@ class TestReadinessErrorPaths:
     def test_readiness_fails_when_model_registry_empty(self, client):
         """Line 225: _model_registry=None → 503 (channel must be OK to reach here)."""
         from waxprep.registries.channel import ChannelRegistry
+
         channel_registry = ChannelRegistry()
         channel_registry.register_defaults()  # registers "fake"
 
-        with patch("waxprep.main._registries_ready", True), \
-             patch("waxprep.main._channel_registry", channel_registry), \
-             patch("waxprep.main._model_registry", None):
+        with (
+            patch("waxprep.main._registries_ready", True),
+            patch("waxprep.main._channel_registry", channel_registry),
+            patch("waxprep.main._model_registry", None),
+        ):
             response = client.get("/health/readiness")
         assert response.status_code == 503
         assert response.json()["reason"] == "model_registry_not_initialized"
@@ -216,10 +225,12 @@ class TestReadinessErrorPaths:
         model_registry = ModelRegistry()
         model_registry.register_defaults()
 
-        with patch("waxprep.main._registries_ready", True), \
-             patch("waxprep.main._channel_registry", channel_registry), \
-             patch("waxprep.main._model_registry", model_registry), \
-             patch("waxprep.main._tool_registry", None):
+        with (
+            patch("waxprep.main._registries_ready", True),
+            patch("waxprep.main._channel_registry", channel_registry),
+            patch("waxprep.main._model_registry", model_registry),
+            patch("waxprep.main._tool_registry", None),
+        ):
             response = client.get("/health/readiness")
         assert response.status_code == 503
         assert response.json()["reason"] == "tool_registry_not_initialized"
@@ -228,6 +239,7 @@ class TestReadinessErrorPaths:
 # ---------------------------------------------------------------------------
 # Lines 297-300: __main__ block
 # ---------------------------------------------------------------------------
+
 
 class TestMainBlock:
     """Prove the __main__ block calls uvicorn.run with correct arguments."""
@@ -249,6 +261,7 @@ class TestMainBlock:
 
         with patch.dict(sys.modules, {"uvicorn": fake_uvicorn}):
             import runpy
+
             # run_path executes the file with __name__ == "__main__"
             runpy.run_path(main.__file__, run_name="__main__")
 

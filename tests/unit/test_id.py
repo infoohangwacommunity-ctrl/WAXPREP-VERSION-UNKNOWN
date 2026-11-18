@@ -13,7 +13,7 @@ class TestGenerateId:
     @pytest.mark.unit
     def test_format(self) -> None:
         id_value = generate_id()
-        parts = id_value.split('-')
+        parts = id_value.split("-")
         assert len(parts) == 5
 
     @pytest.mark.unit
@@ -32,24 +32,25 @@ class TestGenerateId:
         """Must be exactly 36 chars: 8-4-4-4-12 lowercase hex with hyphens."""
         id_value = generate_id()
         assert len(id_value) == 36
-        parts = id_value.split('-')
+        parts = id_value.split("-")
         assert len(parts[0]) == 8
         assert len(parts[1]) == 4
         assert len(parts[2]) == 4
         assert len(parts[3]) == 4
         assert len(parts[4]) == 12
-        assert all(c in '0123456789abcdef' for c in id_value if c != '-')
+        assert all(c in "0123456789abcdef" for c in id_value if c != "-")
 
     @pytest.mark.unit
     def test_version_is_v7(self) -> None:
         """UUIDv7 version nibble at position 14 must be '7'."""
         id_value = generate_id()
-        assert id_value[14] == '7'
+        assert id_value[14] == "7"
 
     @pytest.mark.unit
     def test_monotonicity(self) -> None:
         """UUIDv7 IDs must be time-ordered — later calls produce larger IDs."""
         import time
+
         id1 = generate_id()
         time.sleep(0.01)
         id2 = generate_id()

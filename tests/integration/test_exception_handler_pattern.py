@@ -90,6 +90,7 @@ def test_all_exception_handlers_return_same_format():
 
     # All handlers should be callable async functions
     import inspect
+
     assert inspect.iscoroutinefunction(http_handler)
     assert inspect.iscoroutinefunction(validation_handler)
     assert inspect.iscoroutinefunction(general_handler)

@@ -25,14 +25,14 @@ class ChannelAdapter(Protocol):
 class ChannelRegistry(BaseRegistry[ChannelAdapter]):
     """Registry for channel adapters."""
 
-    def register(self, name: str, adapter: ChannelAdapter) -> None:
+    def register(self, name: str, item: ChannelAdapter) -> None:
         """Register a channel adapter. Validates protocol compliance."""
-        if not hasattr(adapter, "name"):
+        if not hasattr(item, "name"):
             raise ValueError("Channel adapter must have a 'name' attribute")
-        if not hasattr(adapter, "handle_message") or not callable(adapter.handle_message):
+        if not hasattr(item, "handle_message") or not callable(item.handle_message):
             raise ValueError("Channel adapter must have a callable 'handle_message' method")
         self._validate_not_duplicate(name)
-        self._items[name] = adapter
+        self._items[name] = item
 
     def register_defaults(self) -> None:
         """Register default fake adapter. Must be called explicitly."""

@@ -286,6 +286,7 @@ class TestToolRegistry:
         with pytest.raises(ValueError, match="callable"):
             registry.register("worse", WorseTool())
 
+
 class TestFakeChannelHandleMessageViaRegistry:
     """Prove fake channel handle_message body executes via registry."""
 

@@ -287,7 +287,14 @@ jobs:
             uv-${{ runner.os }}-
       - run: uv sync --extra dev
       - name: Run import-linter
-        run: uv run importlinter src/waxprep/
+        run: |
+          uv run import-linter lint --no-logo | tee /tmp/imlit.out
+          if grep -q 'broken' /tmp/imlit.out; then
+            echo "Import linter violations found:"
+            cat /tmp/imlit.out
+            exit 1
+          fi
+          echo "All import contracts satisfied"
 
   semgrep:
     name: Semgrep Security Scan (blocking)

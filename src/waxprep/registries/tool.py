@@ -25,14 +25,14 @@ class Tool(Protocol):
 class ToolRegistry(BaseRegistry[Tool]):
     """Registry for tools."""
 
-    def register(self, name: str, tool: Tool) -> None:
+    def register(self, name: str, item: Tool) -> None:
         """Register a tool. Validates protocol compliance."""
-        if not hasattr(tool, "name"):
+        if not hasattr(item, "name"):
             raise ValueError("Tool must have a 'name' attribute")
-        if not hasattr(tool, "execute") or not callable(tool.execute):
+        if not hasattr(item, "execute") or not callable(item.execute):
             raise ValueError("Tool must have a callable 'execute' method")
         self._validate_not_duplicate(name)
-        self._items[name] = tool
+        self._items[name] = item
 
     def register_defaults(self) -> None:
         """Register default fake tool. Must be called explicitly."""

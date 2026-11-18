@@ -25,14 +25,14 @@ class ModelAdapter(Protocol):
 class ModelRegistry(BaseRegistry[ModelAdapter]):
     """Registry for model adapters."""
 
-    def register(self, name: str, adapter: ModelAdapter) -> None:
+    def register(self, name: str, item: ModelAdapter) -> None:
         """Register a model adapter. Validates protocol compliance."""
-        if not hasattr(adapter, "name"):
+        if not hasattr(item, "name"):
             raise ValueError("Model adapter must have a 'name' attribute")
-        if not hasattr(adapter, "generate") or not callable(adapter.generate):
+        if not hasattr(item, "generate") or not callable(item.generate):
             raise ValueError("Model adapter must have a callable 'generate' method")
         self._validate_not_duplicate(name)
-        self._items[name] = adapter
+        self._items[name] = item
 
     def register_defaults(self) -> None:
         """Register default fake adapter. Must be called explicitly."""
