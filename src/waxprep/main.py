@@ -52,7 +52,7 @@ _tool_registry: ToolRegistry | None = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
     """
     Ordered startup sequence - Stages 01-04
     1. Load configuration
@@ -125,7 +125,7 @@ _app.add_middleware(RequestIdMiddleware)
 
 # Exception handlers
 @_app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:  # noqa: RUF029
     """Handle HTTP exceptions without leaking internals."""
     logger.warning(
         "HTTP exception",
@@ -142,7 +142,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 
 
 @_app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
+async def validation_exception_handler(  # noqa: RUF029
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Handle validation errors with sanitized output.
@@ -166,7 +166,7 @@ async def validation_exception_handler(
 
 
 @_app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:  # noqa: RUF029
     """Handle unexpected exceptions - log full details, return sanitized response."""
     logger.exception(
         "Unhandled exception",
@@ -257,7 +257,7 @@ async def readiness() -> JSONResponse:
 # NOTE: Signal handling is delegated to the ASGI server (uvicorn).
 # The lifespan shutdown sequence handles orderly cleanup.
 # This handler exists only for direct execution (python -m waxprep.main).
-def handle_shutdown(signum: int, frame: types.FrameType | None) -> None:
+def handle_shutdown(signum: int, _frame: types.FrameType | None) -> None:
     """Handle SIGTERM/SIGINT for graceful shutdown.
 
     In production, uvicorn manages signals and triggers the lifespan shutdown.

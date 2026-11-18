@@ -18,6 +18,7 @@ from waxprep.main import lifespan
 # Lifespan startup/shutdown globals management
 # ---------------------------------------------------------------------------
 
+
 class TestLifespan:
     """Prove lifespan startup sets globals and shutdown resets them."""
 
@@ -81,7 +82,7 @@ class TestHandleShutdown:
 
         main._shutting_down = False
         with patch("waxprep.main.logger") as mock_logger:
-            main.handle_shutdown(signum=15, frame=None)
+            main.handle_shutdown(signum=15, _frame=None)
         assert main._shutting_down is True
         mock_logger.info.assert_called_once()
         assert mock_logger.info.call_args.kwargs["signal"] == 15
@@ -93,6 +94,6 @@ class TestHandleShutdown:
 
         main._shutting_down = True
         with patch("waxprep.main.logger") as mock_logger:
-            main.handle_shutdown(signum=15, frame=None)
+            main.handle_shutdown(signum=15, _frame=None)
         assert main._shutting_down is True
         mock_logger.info.assert_not_called()

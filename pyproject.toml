@@ -32,14 +32,117 @@ dev = [
     "pytest-random-order>=1.2.0",
     "freezegun>=1.5.5",
     "ruff>=0.1.0",
+    "vulture>=2.16.0",
+    "import-linter>=2.17",
+    "semgrep>=1.0.0",
 ]
+
+# ── Vulture: dead code detection ─────────────────────────────────────────────
+# Run: uv run vulture src/waxprep/ (auto-reads [tool.vulture] from pyproject.toml)
+# Config: [tool.vulture] below — excludes tests, min confidence 80, ignores dynamic
+#          registry patterns (register_defaults, FakeAdapters, Protocols, FastAPI
+#          handlers, Pydantic model_config, middleware skeletons).
+# Whitelist: after reviewing findings, run: uv run vulture src/waxprep/ --make-whitelist
+#          to generate vulture_whitelist.py, then commit it.
+
+[tool.vulture]
+min_confidence = 80
+exclude = ["*/tests/*", "*/__pycache__/*", "*/**/__pycache__/*"]
+ignore_names = [
+    "register_defaults",
+    "FakeChannelAdapter",
+    "FakeModelAdapter",
+    "FakeTool",
+    "get_channel_registry",
+    "get_model_registry",
+    "get_tool_registry",
+    "model_config",
+    "http_exception_handler",
+    "validation_exception_handler",
+    "general_exception_handler",
+    "liveness",
+    "readiness",
+    "root",
+    "get_app",
+    "TimingMiddleware",
+    "HeaderSanitizationMiddleware",
+    "MessageHandler",
+    "ContextProvider",
+]
+ignore_decorators = []
+
+# =============================================================================
+# Ruff configuration - Phase 1 tighten
+# =============================================================================
+# select additions (curated for low-noise, high-signal):
+#   S  - Security (bandit-style): S102 (exec), S105/S106 (hardcoded secrets),
+#        S301/S302 (pickle/marshal deserialization), S303/S304 (insecure hash/
+#        cipher usage), S323 (unverified SSL context), S324 (insecure hash
+#        functions like MD5/SHA1). Excluded S101 (assert - noisy in tests),
+#        S107/S108 (temp file/dir - noisy), S304-S308 (subprocess - too broad).
+#   RUF - Ruff internal diagnostics: RUF005/006/007/008/009, RUF012/013/015/
+#        016/017/018/019/024/029. These catch real issues (collection concatenation
+#        anti-patterns, dangling asyncio tasks, mutable defaults in dataclasses/
+#        classes, implicit Optional, invalid index types, quadratic summations,
+#        unnecessary key checks, unused async, etc.).
+#   PLC - Platform compatibility: intentionally excluded. For a web service this
+#        mostly flags sys module access patterns that aren't common here; the
+#        noise-to-signal ratio isn't favorable.
+#
+# exclude: tests/ - test files legitimately use asserts, fixtures, and patterns
+#          that would trigger false positives from the new rules.
+#
+# mypy vs pyright: Both configured strict. This is redundant. Recommendation:
+#   - Keep mypy as the primary type checker (mature, broader ecosystem, CI-friendly)
+#   - Consider dropping pyright or relaxing to typeCheckingMode = "basic" if
+#     flakiness/performance becomes an issue. Having both strict is belt-and-suspenders
+#     that adds CI time without proportional benefit for a codebase this size.
+# =============================================================================
 
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+preview = true  # Enable preview rules (RUF029 unused-async catches real issues)
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "W",    # pycodestyle warnings
+    "UP",   # pyupgrade
+    # --- Phase 1 additions (curated, low-noise, high-signal) ---
+    "S102",   # exec used
+    "S105",   # hardcoded password/secret string
+    "S106",   # hardcoded secret from function argument
+    "S301",   # suspicious pickle usage
+    "S302",   # suspicious marshal usage
+    "S303",   # suspicious insecure hash usage
+    "S304",   # suspicious insecure cipher usage
+    "S323",   # suspicious unverified SSL context usage
+    "S324",   # hashlib insecure hash function (MD5, SHA1)
+    # Ruff-specific diagnostics (high-value, low-noise)
+    "RUF005", # collection-literal-concatenation (use ['a', 'b'] not ['a'] + ['b'])
+    "RUF006", # asyncio-dangling-task (un-awaited asyncio tasks)
+    "RUF007", # zip-instead-of-pairwise (modernization)
+    "RUF008", # mutable-dataclass-default (mutable defaults in dataclasses)
+    "RUF009", # function-call-in-dataclass-default-argument
+    "RUF012", # mutable-class-default (mutable defaults in class attributes)
+    "RUF013", # implicit-optional (catches implicit Optional typing)
+    "RUF015", # unnecessary-iterable-allocation-for-first-element (performance)
+    "RUF016", # invalid-index-type
+    "RUF017", # quadratic-list-summation (performance)
+    "RUF018", # assignment-in-assert
+    "RUF019", # unnecessary-key-check (redundant .get() before 'in' check)
+    "RUF024", # mutable-fromkeys-value (mutable defaults with dict.fromkeys)
+    "RUF029", # unused-async (async functions that don't need to be async)
+]
+exclude = ["tests/"]
+
+[tool.ruff.format]
+# Default Ruff format settings - no custom configuration needed.
+# Using Ruff's defaults ensures consistent formatting across the project.
 
 [tool.mypy]
 python_version = "3.14"

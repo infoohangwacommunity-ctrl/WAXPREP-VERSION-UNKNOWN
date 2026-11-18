@@ -48,7 +48,7 @@ from waxprep.registries.tool import ToolRegistry
 
 def _make_awaitable(response: Response):
     """Return an awaitable that resolves to the given Response."""
-    async def _coro() -> Response:
+    async def _coro() -> Response:  # noqa: RUF029
         return response
 
     return _coro()

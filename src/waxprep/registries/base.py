@@ -22,7 +22,7 @@ class BaseRegistry[T](ABC):
         self._items: dict[str, T] = {}
 
     @abstractmethod
-    def register(self, name: str, item: T) -> None:
+    def register(self, name: str, item: T) -> None:  # noqa: V107
         """Register an item. Must validate before registering."""
 
     def get(self, name: str) -> T:

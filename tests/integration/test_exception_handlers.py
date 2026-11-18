@@ -30,7 +30,7 @@ class TestValidationExceptionHandler:
             count: int
 
         @app.post("/test-validation")
-        async def validate_route(model: TestModel) -> JSONResponse:
+        async def validate_route(model: TestModel) -> JSONResponse:  # noqa: RUF029
             return JSONResponse(content={"ok": True})
 
         with TestClient(app) as test_client:
@@ -99,7 +99,7 @@ class TestGeneralExceptionHandler:
         # This mutates the in-memory app instance only; source files are untouched.
 
         @app.get("/test-raise")
-        async def raise_route() -> JSONResponse:
+        async def raise_route() -> JSONResponse:  # noqa: RUF029
             raise ValueError("test unhandled exception")
 
         with TestClient(app, raise_server_exceptions=False) as test_client:
@@ -146,7 +146,7 @@ class TestGeneralExceptionHandler:
         app = get_app()
 
         @app.get("/test-raise-type")
-        async def raise_type_route() -> JSONResponse:
+        async def raise_type_route() -> JSONResponse:  # noqa: RUF029
             raise RuntimeError("different error type")
 
         with TestClient(app, raise_server_exceptions=False) as test_client:

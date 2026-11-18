@@ -19,6 +19,7 @@ from waxprep.main import get_app
 # Fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def client():
     """Test client for FastAPI app."""
@@ -90,7 +91,7 @@ class TestValidationExceptionHandler:
         class _TestBody(BaseModel):
             name: str
 
-        async def _endpoint(body: _TestBody):
+        async def _endpoint(body:  _TestBody):  # noqa: RUF029
             return body
 
         get_app().add_api_route(
@@ -127,7 +128,7 @@ class TestGeneralExceptionHandler:
         """Call the handler directly: unhandled Exception → logger.exception."""
         from waxprep.main import general_exception_handler
 
-        async def _receive():
+        async def _receive():  # noqa: RUF029
             return {"type": "http.request"}
 
         async def _send(_message):
@@ -222,8 +223,6 @@ class TestReadinessErrorPaths:
             response = client.get("/health/readiness")
         assert response.status_code == 503
         assert response.json()["reason"] == "tool_registry_not_initialized"
-
-
 
 
 # ---------------------------------------------------------------------------
