@@ -14,7 +14,6 @@ from fastapi import FastAPI
 
 from waxprep.main import lifespan
 
-
 # ---------------------------------------------------------------------------
 # Lifespan startup/shutdown globals management
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
-# WaxPrep Foundation - Stages 01-04
+# WaxPrep Foundation - Stages 01-05
 
-**IMPORTANT: This repository contains Stages 01, 02, 03, and 04 (engineering standards).**
+**IMPORTANT: This repository contains Stages 01, 02, 03, 04, and 05 (engineering standards and testing).**
 
 ## Stage 01: Programming Language
 - Python 3.14+ (compatibility proven, not assumed)
@@ -63,13 +63,47 @@ src/waxprep/
     └── fake_tool.py     # FakeTool
 
 tests/
-├── test_config.py       # Proves NO hardcoded values
-├── test_registries.py   # Proves registry behavior
-├── test_main.py         # Proves health endpoints work
-├── test_foundation.py   # Proves foundation stability + middleware + correlation IDs
-├── test_boundaries.py   # Proves architectural boundaries enforced
-└── test_id.py           # Proves UUIDv7 identity generation
+├── unit/
+│   ├── __init__.py
+│   ├── test_core_pure.py              # Pure function logic
+│   ├── test_id.py                     # UUIDv7 correctness, monotonicity, mass uniqueness, format validation
+│   └── test_middleware_skeletons.py   # Middleware skeleton validation
+├── integration/
+│   ├── __init__.py
+│   ├── test_exception_handlers.py     # Exception handler integration
+│   ├── test_foundation.py             # Foundation stability + middleware + correlation IDs
+│   ├── test_main.py                   # Health endpoints
+│   └── test_registries.py            # Registry behavior
+├── contract/
+│   ├── __init__.py
+│   └── test_core_protocols.py         # Protocol compliance
+├── lifecycle/
+│   ├── __init__.py
+│   └── test_lifecycle.py              # Startup/shutdown, failure paths
+├── architecture/
+│   ├── __init__.py
+│   └── test_boundaries.py             # Architectural boundary enforcement
+├── configuration/
+│   ├── __init__.py
+│   └── test_config.py                 # Proves NO hardcoded values
+├── regression/
+│   ├── __init__.py
+│   └── (regression tests)
+├── conftest.py                        # Shared fixtures
+├── test_exception_handler_pattern.py  # Exception handler pattern tests
+└── test_final_coverage.py             # Final coverage verification
 ```
+
+**Old flat test files → new locations:**
+
+| Old file | New location |
+|---|---|
+| `tests/test_config.py` | `tests/configuration/test_config.py` |
+| `tests/test_registries.py` | `tests/integration/test_registries.py` |
+| `tests/test_main.py` | `tests/integration/test_main.py` |
+| `tests/test_foundation.py` | `tests/integration/test_foundation.py` |
+| `tests/test_boundaries.py` | `tests/architecture/test_boundaries.py` |
+| `tests/test_id.py` | `tests/unit/test_id.py` |
 
 ### Boundary Rules
 

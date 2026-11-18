@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from waxprep.main import get_app, lifespan
+from waxprep.main import get_app
 
 # ---------------------------------------------------------------------------
 # Fixture

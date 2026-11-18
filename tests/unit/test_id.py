@@ -1,5 +1,6 @@
 # Test Wax ID - Stage 04
 import pytest
+
 from waxprep.id import generate_id, is_valid_id
 
 

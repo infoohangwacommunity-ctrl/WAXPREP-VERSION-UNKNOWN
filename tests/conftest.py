@@ -20,7 +20,6 @@ from waxprep.registries.channel import ChannelRegistry
 from waxprep.registries.model import ModelRegistry
 from waxprep.registries.tool import ToolRegistry
 
-
 # ---------------------------------------------------------------------------
 # Markers
 # ---------------------------------------------------------------------------
