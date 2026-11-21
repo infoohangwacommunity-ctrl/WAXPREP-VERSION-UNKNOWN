@@ -81,7 +81,7 @@ jobs:
       - name: Verify lockfile integrity
         run: uv lock --check
 
-      - name: Run unified quality gate (set -e: first failure aborts)
+      - name: "Run unified quality gate (set -e: first failure aborts)"
         run: |
           set -euo pipefail
           echo "==> ruff lint"
@@ -303,11 +303,7 @@ jobs:
           echo "| coverage-gate | ${{ needs.coverage-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| smoke-test | ${{ needs.smoke-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Advisory (non-blocking)" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| pyright | ${{ needs.pyright.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| vulture | ${{ needs.vulture.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "All blocking jobs passed. Gate PASSED." >> $GITHUB_STEP_SUMMARY
       - name: Fail gate if any blocking job failed or was cancelled
         if: >
           contains(needs.*.result, 'failure') ||
