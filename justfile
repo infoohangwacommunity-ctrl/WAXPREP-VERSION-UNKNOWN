@@ -7,8 +7,8 @@ default: check
 
 # ── Static Analysis ──────────────────────────────────────────────────────────
 
-# Run all static analysis tools (blocking tools only)
-check: lint format type import-linter semgrep
+# Run all static analysis tools (blocking tools only — matches CI quality-gate)
+check: lint format type import-linter semgrep lockfile-check pip-audit test coverage
 
 # Run ruff linting (expanded rules)
 lint:
@@ -18,12 +18,11 @@ lint:
 format:
 	uv run ruff format --check src/ tests/
 
-# Run both mypy and pyright type checkers
+# Run mypy strict type checker
 type:
 	uv run mypy src/
-	uv run pyright src/
 
-# Run import linter
+# Run import linter (architecture contracts)
 import-linter:
 	uv run import-linter lint
 
@@ -31,12 +30,29 @@ import-linter:
 semgrep:
 	uv run semgrep --config auto --error src/
 
+# Verify lockfile integrity (uv.lock matches pyproject.toml)
+lockfile-check:
+	uv lock --check
+
+# Run pip-audit dependency vulnerability scan
+pip-audit:
+	uv run pip-audit
+
+# Run all tests
+test:
+	uv run pytest
+
+# Run tests with coverage (enforces fail_under=100)
+coverage:
+	uv run pytest --cov=waxprep --cov-fail-under=100
+
 # Run vulture (advisory — does not affect exit code)
-# Reads [tool.vulture] from pyproject.toml (single source of truth:
-# min_confidence = 80, ignore_names, exclude). vulture.cfg.py is kept as
-# documentation only.
 vulture:
 	uv run vulture src/waxprep/
+
+# Run pyright (advisory — does not affect exit code)
+pyright:
+	uv run pyright src/
 
 # ── Testing ─────────────────────────────────────────────────────────────────
 

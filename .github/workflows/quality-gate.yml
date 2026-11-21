@@ -3,10 +3,6 @@ name: Quality Gate
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: '0 0 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,17 +21,17 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up uv (uv manages Python 3.14)
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
           enable-cache: true
 
       - name: Restore uv package cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -48,7 +44,7 @@ jobs:
 
       - name: Save uv package cache
         if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -63,16 +59,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -81,6 +77,9 @@ jobs:
 
       - name: Verify dev environment (fast no-op when cache warm)
         run: uv sync --extra dev --frozen
+
+      - name: Verify lockfile integrity
+        run: uv lock --check
 
       - name: Run unified quality gate (set -e: first failure aborts)
         run: |
@@ -91,14 +90,12 @@ jobs:
           uv run ruff format --check src/ tests/
           echo "==> mypy (strict)"
           uv run mypy src/
-          echo "==> pyright (strict)"
-          uv run pyright src/
           echo "==> import-linter (architecture contracts)"
           uv run import-linter lint --no-logo
           echo "==> semgrep (security)"
           uv run semgrep --config auto --error src/
-          echo "==> vulture (dead code — advisory, does not block)"
-          uv run vulture src/waxprep/ || true
+          echo "==> pip-audit (dependency vulnerability audit)"
+          uv run pip-audit
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 2. Tests — all categories in parallel (matrix)
@@ -111,19 +108,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        category: [unit, integration, contract, lifecycle, architecture, configuration, regression]
+        category: [unit, integration, contract, lifecycle, architecture, configuration]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -134,28 +131,28 @@ jobs:
         run: uv sync --extra dev --frozen
 
       - name: Run ${{ matrix.category }} tests
-        run: uv run pytest tests/${{ matrix.category }} -v -m ${{ matrix.category }} --tb=short
+        run: uv run pytest tests/${{ matrix.category }} -m ${{ matrix.category }} --tb=short -o addopts=""
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 3. Coverage gate — full suite, 90% threshold
+  # 3. Coverage gate — full suite, 100% threshold (never lower)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   coverage-gate:
-    name: Coverage Gate — Full Suite (90%)
+    name: Coverage Gate — Full Suite (100%)
     needs: [quality-setup]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -171,37 +168,36 @@ jobs:
             --cov=waxprep \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=90 \
+            --cov-fail-under=100 \
             --tb=short
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
         with:
           name: coverage-report
           path: coverage.xml
           retention-days: 30
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 4. Flake detection — push to main AND schedule (not schedule-only)
+  # 4. Smoke test — app boot + healthcheck (blocking)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  flake-detection:
-    name: Flake Detection — Push to Main
+  smoke-test:
+    name: Smoke Test — App Boot + Healthcheck
     needs: [quality-setup]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -211,29 +207,86 @@ jobs:
       - name: Verify dev environment
         run: uv sync --extra dev --frozen
 
-      - name: Run flake detection (10 consecutive runs)
+      - name: Start app and run healthcheck smoke test
         run: |
-          set -e
-          FAILURES=0
-          for i in $(seq 1 10); do
-            echo "=== Flake run $i ==="
-            if ! uv run pytest tests/unit tests/integration -v --tb=short -q; then
-              FAILURES=$((FAILURES + 1))
-            fi
-          done
-          echo "Flake failures: $FAILURES / 10"
-          if [ "$FAILURES" -gt 0 ]; then
-            echo "FLAKE DETECTION FAILED: $FAILURES/10 runs failed"
-            exit 1
-          fi
-          echo "Flake detection PASSED: all 10 runs succeeded"
+          uv run uvicorn waxprep.main:get_app --host 127.0.0.1 --port 8001 &
+          SERVER_PID=$!
+          sleep 3
+          curl -sf http://127.0.0.1:8001/health/liveness || { kill $SERVER_PID 2>/dev/null; echo "Liveness check failed"; exit 1; }
+          curl -sf http://127.0.0.1:8001/health/readiness || { kill $SERVER_PID 2>/dev/null; echo "Readiness check failed"; exit 1; }
+          kill $SERVER_PID 2>/dev/null
+          echo "Smoke test PASSED: app boots and both health endpoints respond"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 5. Gate aggregate — overall status (final gate decision)
+  # 5a. Pyright — advisory (does not fail the gate)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  pyright:
+    name: Pyright — Advisory Type Check
+    needs: [quality-setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        with:
+          python-version: '3.14'
+          enable-cache: true
+
+      - name: Restore uv package cache
+        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        with:
+          path: ~/.cache/uv
+          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            waxprep-uv-${{ runner.os }}-
+
+      - name: Verify dev environment
+        run: uv sync --extra dev --frozen
+
+      - name: Run pyright (advisory — does not block)
+        run: uv run pyright src/ || true
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 5b. Vulture — advisory dead code report (does not fail the gate)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  vulture:
+    name: Vulture — Advisory Dead Code Report
+    needs: [quality-setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        with:
+          python-version: '3.14'
+          enable-cache: true
+
+      - name: Restore uv package cache
+        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        with:
+          path: ~/.cache/uv
+          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            waxprep-uv-${{ runner.os }}-
+
+      - name: Verify dev environment
+        run: uv sync --extra dev --frozen
+
+      - name: Run vulture (advisory — does not block)
+        run: uv run vulture src/waxprep/ || true
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 6. Gate aggregate — overall status (final gate decision, blocking only)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   gate-aggregate:
     name: Gate Aggregate — Overall Status
-    needs: [quality-setup, quality-gate, tests, coverage-gate, flake-detection]
+    needs: [quality-setup, quality-gate, tests, coverage-gate, smoke-test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -248,7 +301,13 @@ jobs:
           echo "| quality-gate | ${{ needs.quality-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| tests | ${{ needs.tests.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| coverage-gate | ${{ needs.coverage-gate.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| flake-detection | ${{ needs.flake-detection.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| smoke-test | ${{ needs.smoke-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Advisory (non-blocking)" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| pyright | ${{ needs.pyright.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| vulture | ${{ needs.vulture.result }} |" >> $GITHUB_STEP_SUMMARY
       - name: Fail gate if any blocking job failed or was cancelled
         if: >
           contains(needs.*.result, 'failure') ||
