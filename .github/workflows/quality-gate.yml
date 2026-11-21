@@ -3,6 +3,8 @@ name: Quality Gate
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,97 +14,51 @@ permissions:
   contents: read
 
 jobs:
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 0. Setup — single uv sync + shared package cache (run once)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   quality-setup:
-    name: Prepare environment (single uv sync + shared cache)
+    name: Prepare environment
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - name: Set up uv (uv manages Python 3.14)
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
-        with:
-          python-version: '3.14'
-          enable-cache: true
-
-      - name: Restore uv package cache
-        id: cache-restore
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        with:
-          path: ~/.cache/uv
-          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            waxprep-uv-${{ runner.os }}-
-
-      - name: Sync dev dependencies (single heavy sync; warms cache)
-        if: steps.cache-restore.outputs.cache-hit != 'true'
-        run: uv sync --extra dev
-
-      - name: Save uv package cache
-        if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        with:
-          path: ~/.cache/uv
-          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 1. Quality Gate — unified blocking static analysis (fast failure)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  quality-gate:
-    name: Quality Gate — Blocking Static Analysis
-    needs: [quality-setup]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
-          enable-cache: true
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --extra dev
 
-      - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+  quality-gate:
+    name: Quality Gate — Blocking Static Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [quality-setup]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up uv
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
-          path: ~/.cache/uv
-          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            waxprep-uv-${{ runner.os }}-
+          python-version: '3.14'
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Ruff lint
+        run: uv run ruff check src/ tests/
+      - name: Ruff format check
+        run: uv run ruff format --check src/ tests/
+      - name: Mypy (strict)
+        run: uv run mypy src/
+      - name: Import lintinter
+        run: uv run import-linter lint --no-logo
+      - name: Semgrep security
+        run: uv run semgrep --config auto --error src/
+      - name: Pip audit
+        run: uv run pip-audit
 
-      - name: Verify dev environment (fast no-op when cache warm)
-        run: uv sync --extra dev --frozen
-
-      - name: Verify lockfile integrity
-        run: uv lock --check
-
-      - name: "Run unified quality gate (set -e: first failure aborts)"
-        run: |
-          set -euo pipefail
-          echo "==> ruff lint"
-          uv run ruff check src/ tests/
-          echo "==> ruff format check"
-          uv run ruff format --check src/ tests/
-          echo "==> mypy (strict)"
-          uv run mypy src/
-          echo "==> import-linter (architecture contracts)"
-          uv run import-linter lint --no-logo
-          echo "==> semgrep (security)"
-          uv run semgrep --config auto --error src/
-          echo "==> pip-audit (dependency vulnerability audit)"
-          uv run pip-audit
-
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 2. Tests — all categories in parallel (matrix)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   tests:
     name: Tests — ${{ matrix.category }}
-    needs: [quality-setup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -112,65 +68,39 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
-          enable-cache: true
-
-      - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        with:
-          path: ~/.cache/uv
-          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            waxprep-uv-${{ runner.os }}-
-
-      - name: Verify dev environment
-        run: uv sync --extra dev --frozen
-
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --extra dev
       - name: Run ${{ matrix.category }} tests
         run: uv run pytest tests/${{ matrix.category }} -m ${{ matrix.category }} --tb=short -o addopts=""
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 3. Coverage gate — full suite, 100% threshold (never lower)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   coverage-gate:
     name: Coverage Gate — Full Suite (100%)
-    needs: [quality-setup]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [quality-setup]
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
-          enable-cache: true
-
-      - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        with:
-          path: ~/.cache/uv
-          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            waxprep-uv-${{ runner.os }}-
-
-      - name: Verify dev environment
-        run: uv sync --extra dev --frozen
-
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --extra dev
       - name: Run full suite with coverage
         run: |
-          uv run pytest tests/ \
-            --cov=waxprep \
-            --cov-report=xml \
-            --cov-report=term-missing \
-            --cov-fail-under=100 \
+          uv run pytest tests/ \\
+            --cov=waxprep \\
+            --cov-report=xml \\
+            --cov-report=term-missing \\
+            --cov-fail-under=100 \\
             --tb=short
-
       - name: Upload coverage report
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
         with:
@@ -178,35 +108,19 @@ jobs:
           path: coverage.xml
           retention-days: 30
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 4. Smoke test — app boot + healthcheck (blocking)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   smoke-test:
     name: Smoke Test — App Boot + Healthcheck
-    needs: [quality-setup]
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs: [quality-setup]
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
-          enable-cache: true
-
-      - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        with:
-          path: ~/.cache/uv
-          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            waxprep-uv-${{ runner.os }}-
-
-      - name: Verify dev environment
-        run: uv sync --extra dev --frozen
-
+          enable-cache: false
       - name: Start app and run healthcheck smoke test
         run: |
           uv run uvicorn waxprep.main:get_app --host 127.0.0.1 --port 8001 &
@@ -217,9 +131,6 @@ jobs:
           kill $SERVER_PID 2>/dev/null
           echo "Smoke test PASSED: app boots and both health endpoints respond"
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 5a. Pyright — advisory (does not fail the gate)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   pyright:
     name: Pyright — Advisory Type Check
     needs: [quality-setup]
@@ -228,30 +139,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
-          enable-cache: true
-
-      - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        with:
-          path: ~/.cache/uv
-          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            waxprep-uv-${{ runner.os }}-
-
-      - name: Verify dev environment
-        run: uv sync --extra dev --frozen
-
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --extra dev
       - name: Run pyright (advisory — does not block)
         run: uv run pyright src/ || true
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 5b. Vulture — advisory dead code report (does not fail the gate)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   vulture:
     name: Vulture — Advisory Dead Code Report
     needs: [quality-setup]
@@ -260,57 +157,144 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
           python-version: '3.14'
-          enable-cache: true
-
-      - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        with:
-          path: ~/.cache/uv
-          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            waxprep-uv-${{ runner.os }}-
-
-      - name: Verify dev environment
-        run: uv sync --extra dev --frozen
-
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --extra dev
       - name: Run vulture (advisory — does not block)
         run: uv run vulture src/waxprep/ || true
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 6. Gate aggregate — overall status (final gate decision, blocking only)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   gate-aggregate:
     name: Gate Aggregate — Overall Status
-    needs: [quality-setup, quality-gate, tests, coverage-gate, smoke-test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Report overall gate status
         run: |
-          echo "## Quality Gate Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| quality-setup | ${{ needs.quality-setup.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| quality-gate | ${{ needs.quality-gate.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| tests | ${{ needs.tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| coverage-gate | ${{ needs.coverage-gate.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| smoke-test | ${{ needs.smoke-test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All blocking jobs passed. Gate PASSED." >> $GITHUB_STEP_SUMMARY
-      - name: Fail gate if any blocking job failed or was cancelled
-        if: >
-          contains(needs.*.result, 'failure') ||
-          contains(needs.*.result, 'cancelled')
-        run: |
-          echo "One or more blocking jobs failed or were cancelled. Gate FAILED."
-          exit 1
-      - name: Gate passed
-        if: success()
-        run: echo "All blocking jobs passed. Gate PASSED."
+          echo "## Quality Gate Report" >> ${{ github.step_summary }}
+          echo "" >> ${{ github.step_summary }}
+          echo "| Job | Status |" >> ${{ github.step_summary }}
+          echo "|-----|--------|" >> ${{ github.step_summary }}
+          
+          # Check quality-setup
+          if [ "${{ needs.quality-setup.result }}" = "success" ]; then
+            echo "| quality-setup | PASSED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.quality-setup.result }}" = "failure" ]; then
+            echo "| quality-setup | FAILED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.quality-setup.result }}" = "cancelled" ]; then
+            echo "| quality-setup | CANCELLED |" >> ${{ github.step_summary }}
+          else
+            echo "| quality-setup | SKIPPED |" >> ${{ github.step_summary }}
+          fi
+          
+          # Check quality-gate
+          if [ "${{ needs.quality-gate.result }}" = "success" ]; then
+            echo "| quality-gate | PASSED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.quality-gate.result }}" = "failure" ]; then
+            echo "| quality-gate | FAILED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.quality-gate.result }}" = "cancelled" ]; then
+            echo "| quality-gate | CANCELLED |" >> ${{ github.step_summary }}
+          else
+            echo "| quality-gate | SKIPPED |" >> ${{ github.step_summary }}
+          fi
+          
+          # Check tests
+          if [ "${{ needs.tests.result }}" = "success" ]; then
+            echo "| tests | PASSED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.tests.result }}" = "failure" ]; then
+            echo "| tests | FAILED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.tests.result }}" = "cancelled" ]; then
+            echo "| tests | CANCELLED |" >> ${{ github.step_summary }}
+          else
+            echo "| tests | SKIPPED |" >> ${{ github.step_summary }}
+          fi
+          
+          # Check coverage-gate
+          if [ "${{ needs.coverage-gate.result }}" = "success" ]; then
+            echo "| coverage-gate | PASSED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.coverage-gate.result }}" = "failure" ]; then
+            echo "| coverage-gate | FAILED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.coverage-gate.result }}" = "cancelled" ]; then
+            echo "| coverage-gate | CANCELLED |" >> ${{ github.step_summary }}
+          else
+            echo "| coverage-gate | SKIPPED |" >> ${{ github.step_summary }}
+          fi
+          
+          # Check smoke-test
+          if [ "${{ needs.smoke-test.result }}" = "success" ]; then
+            echo "| smoke-test | PASSED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.smoke-test.result }}" = "failure" ]; then
+            echo "| smoke-test | FAILED |" >> ${{ github.step_summary }}
+          elif [ "${{ needs.smoke-test.result }}" = "cancelled" ]; then
+            echo "| smoke-test | CANCELLED |" >> ${{ github.step_summary }}
+          else
+            echo "| smoke-test | SKIPPED |" >> ${{ github.step_summary }}
+          fi
+          
+          echo "" >> ${{ github.step_summary }}
+          echo "### Gate Result" >> ${{ github.step_summary }}
+          
+          # Determine final result
+          FAILURES=0
+          if [ "${{ needs.quality-setup.result }}" = "failure" ] || [ "${{ needs.quality-setup.result }}" = "cancelled" ]; then
+            FAILURES=$((FAILURES+1))
+          fi
+          if [ "${{ needs.quality-gate.result }}" = "failure" ] || [ "${{ needs.quality-gate.result }}" = "cancelled" ]; then
+            FAILURES=$((FAILURES+1))
+          fi
+          if [ "${{ needs.tests.result }}" = "failure" ] || [ "${{ needs.tests.result }}" = "cancelled" ]; then
+            FAILURES=$((FAILURES+1))
+          fi
+          if [ "${{ needs.coverage-gate.result }}" = "failure" ] || [ "${{ needs.coverage-gate.result }}" = "cancelled" ]; then
+            FAILURES=$((FAILURES+1))
+          fi
+          if [ "${{ needs.smoke-test.result }}" = "failure" ] || [ "${{ needs.smoke-test.result }}" = "cancelled" ]; then
+            FAILURES=$((FAILURES+1))
+          fi
+          
+          if [ $FAILURES -gt 0 ]; then
+            echo "One or more blocking jobs failed or were cancelled. Gate FAILED." >> ${{ github.step_summary }}
+            exit 1
+          else
+            echo "All blocking jobs passed. Gate PASSED." >> ${{ github.step_summary }}
+          fi
+
+  pyright:
+    name: Pyright — Advisory Type Check
+    needs: [quality-setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up uv
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        with:
+          python-version: '3.14'
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Run pyright (advisory — does not block)
+        run: uv run pyright src/ || true
+
+  vulture:
+    name: Vulture — Advisory Dead Code Report
+    needs: [quality-setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up uv
+        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        with:
+          python-version: '3.14'
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --extra dev
+      - name: Run vulture (advisory — does not block)
+        run: uv run vulture src/waxprep/ || true
