@@ -6,9 +6,10 @@ root_package = waxprep
 include_external_packages = true
 
 # Contract 1: Core Isolation
-# src/waxprep/core/ may NOT import from outer layers
+# src/waxprep/core/ may NOT import from any outer layer.
+# Per CONTRIBUTING.md §Architecture Boundaries: core/ imports nothing from waxprep.*
 [importlinter:contract:1]
-name = "Core isolation: core/ must not import from outer layers"
+name = "Core isolation: core/ must not import from any outer layer"
 type = forbidden
 
 source_modules =
@@ -20,23 +21,16 @@ forbidden_modules =
     waxprep.middleware
     waxprep.main
     waxprep.config
+    waxprep.messaging
+    waxprep.context
+    waxprep.services
+    waxprep.id
 
 # Contract 2: Outer-to-Inner directionality
-# Outer layers (main, middleware, registries, adapters) MAY import from core,
-# but core must NOT import from them (this is enforced by Contract 1)
-# This contract documents the allowed direction explicitly
-[importlinter:contract:2]
-name = "Outer-to-Inner: outer layers may import from core"
-type = allowed
-
-source_modules =
-    waxprep.main
-    waxprep.middleware
-    waxprep.registries
-    waxprep.adapters
-
-allowed_modules =
-    waxprep.core
+# REMOVED: type = allowed is not supported by this import-linter version.
+# Contract 1 (forbidden) already enforces the core-isolation rule.
+# Outer-layer → core dependencies are validated by architecture tests instead.
+# (Kept as a documented contract with no enforcement — see tests/architecture/)
 
 # Contract 3: Adapter Isolation
 # waxprep.adapters may NOT import from waxprep.middleware or waxprep.main
@@ -51,15 +45,33 @@ forbidden_modules =
     waxprep.middleware
     waxprep.main
 
-# Contract 4: IMPLEMENTS-style protocol contracts for adapters
-# This verifies that adapters implement the protocols defined in core
-# Adapters should depend on core protocols, but core should not depend on adapters
+# Contract 4: Adapter protocol implementation
+# RESOLVED: Per CONTRIBUTING.md §Architecture Boundaries, adapters may NOT import
+# from core/ (they depend on registry protocols only). Contract 4 is therefore
+# forbidden — adapters must not import core. This aligns .importlinter with docs.
 [importlinter:contract:4]
-name = "Adapter protocol implementation: adapters may import core protocols"
-type = allowed
+name = "Adapter protocol isolation: adapters must NOT import from core"
+type = forbidden
 
 source_modules =
     waxprep.adapters
 
-allowed_modules =
+forbidden_modules =
     waxprep.core
+
+# Contract 5: Adapters must not import concrete outer-layer modules
+# Adapters depend on registry protocols and SDKs only — not on concrete
+# messaging, context, services, or registries modules.
+[importlinter:contract:5]
+name = "Adapter outer-layer isolation: adapters must not import concrete outer modules"
+type = forbidden
+
+source_modules =
+    waxprep.adapters
+
+forbidden_modules =
+    waxprep.messaging
+    waxprep.context
+    waxprep.services
+    waxprep.registries
+    waxprep.id

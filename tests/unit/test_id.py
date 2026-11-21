@@ -48,12 +48,17 @@ class TestGenerateId:
 
     @pytest.mark.unit
     def test_monotonicity(self) -> None:
-        """UUIDv7 IDs must be time-ordered — later calls produce larger IDs."""
-        import time
+        """UUIDv7 IDs must be time-ordered — later calls produce larger IDs.
 
-        id1 = generate_id()
-        time.sleep(0.01)
-        id2 = generate_id()
+        Uses freezegun to deterministically advance time instead of
+        wall-clock sleep, eliminating flakiness under CI load.
+        """
+        from freezegun import freeze_time
+
+        with freeze_time("2026-01-01 00:00:00 UTC"):
+            id1 = generate_id()
+        with freeze_time("2026-01-01 00:00:01 UTC"):
+            id2 = generate_id()
         assert id1 < id2
 
     @pytest.mark.unit

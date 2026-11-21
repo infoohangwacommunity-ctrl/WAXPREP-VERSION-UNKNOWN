@@ -8,6 +8,7 @@ Covers:
 - App/client fixtures
 - Mock fixture
 - pytest markers: unit, integration, contract, lifecycle, regression, architecture, configuration
+- Autouse fixture to reset waxprep.main module globals between tests (Stage 07 reliability)
 """
 
 from unittest.mock import MagicMock
@@ -38,6 +39,41 @@ def pytest_configure(config: pytest.Config) -> None:
     ]
     for marker in markers:
         config.addinivalue_line("markers", marker)
+
+
+# ---------------------------------------------------------------------------
+# Global state isolation (Stage 07 — test reliability)
+# ---------------------------------------------------------------------------
+
+# waxprep.main holds module-level globals (_shutting_down, _registries_ready,
+# _channel_registry, _model_registry, _tool_registry) that lifecycle and
+# integration tests mutate. This autouse fixture guarantees each test starts
+# with a clean slate, eliminating test-order coupling and parallel-execution
+# flakiness through shared module state.
+
+
+@pytest.fixture(autouse=True)
+def _reset_main_globals():
+    """Reset waxprep.main module globals after every test.
+
+    Guarantees test isolation: lifecycle/integration tests cannot poison each
+    other through shared module state. Tests that intentionally mutate globals
+    still work because the fixture restores after each test.
+    """
+    import waxprep.main as main
+
+    before = {
+        "_shutting_down": main._shutting_down,
+        "_registries_ready": main._registries_ready,
+        "_channel_registry": main._channel_registry,
+        "_model_registry": main._model_registry,
+        "_tool_registry": main._tool_registry,
+    }
+    try:
+        yield
+    finally:
+        for k, v in before.items():
+            setattr(main, k, v)
 
 
 # ---------------------------------------------------------------------------

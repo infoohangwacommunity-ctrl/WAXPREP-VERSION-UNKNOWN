@@ -38,12 +38,14 @@ dev = [
 ]
 
 # ── Vulture: dead code detection ─────────────────────────────────────────────
-# Run: uv run vulture src/waxprep/ (auto-reads [tool.vulture] from pyproject.toml)
+# Run: uv run vulture src/waxprep/ --config vulture.cfg.py
 # Config: [tool.vulture] below — excludes tests, min confidence 80, ignores dynamic
 #          registry patterns (register_defaults, FakeAdapters, Protocols, FastAPI
 #          handlers, Pydantic model_config, middleware skeletons).
 # Whitelist: after reviewing findings, run: uv run vulture src/waxprep/ --make-whitelist
 #          to generate vulture_whitelist.py, then commit it.
+# Single source of truth for min_confidence: [tool.vulture] below (vulture.cfg.py
+# mirrors it; CI and justfile pass --config vulture.cfg.py to use this file).
 
 [tool.vulture]
 min_confidence = 80
@@ -151,3 +153,53 @@ strict = true
 [tool.pyright]
 pythonVersion = "3.14"
 typeCheckingMode = "strict"
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Pytest configuration — Stage 07 Quality Gate
+# Single source of truth for test behavior (replaces implicit conftest-only config)
+# ═════════════════════════════════════════════════════════════════════════════
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: unit tests (fast, isolated)",
+    "integration: integration tests (app + real dependencies)",
+    "contract: contract tests (interface compliance)",
+    "lifecycle: lifecycle tests (startup/shutdown)",
+    "regression: regression tests (specific bug fixes)",
+    "architecture: architecture tests (boundaries, dependencies)",
+    "configuration: configuration tests (settings, env)",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+strict_markers = true
+addopts = [
+    "-p no:cacheprovider",
+    "--strict-markers",
+    "--cov=waxprep",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+    "--tb=short",
+]
+filterwarnings = [
+    "error",
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Coverage configuration — Stage 07 Quality Gate
+# Enforced via --cov-fail-under in CI; fail_under here is the local fallback.
+# ═════════════════════════════════════════════════════════════════════════════
+
+[tool.coverage.run]
+source = ["waxprep"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/**/__pycache__/*",
+]
+
+[tool.coverage.report]
+fail_under = 100
+precision = 2
+show_missing = true
