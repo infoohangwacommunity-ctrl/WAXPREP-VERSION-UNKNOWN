@@ -1,6 +1,10 @@
-# WaxPrep Foundation - Stages 01-05
+# WaxPrep Foundation - Stages 01-07
 
-**IMPORTANT: This repository contains Stages 01, 02, 03, 04, and 05 (engineering standards and testing).**
+**IMPORTANT: This repository contains Stages 01 through 07 (engineering foundation, static analysis, and the automated quality gate).**
+
+Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Pip-audit runs with a single tracked exception (GHSA-53pm-wgxf-c6qf); all other dependency vulnerabilities fail the gate.
+
+**Stage 07 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
 ## Stage 01: Programming Language
 - Python 3.14+ (compatibility proven, not assumed)
@@ -176,15 +180,52 @@ Seven test categories with dedicated directories under `tests/`:
 - **lifecycle/** — startup/shutdown, failures
 - **architecture/** — boundary enforcement
 - **configuration/** — config loading
-- **regression/** — behavior preservation
+- **regression/** — behavior preservation (directory present; no tests currently pinned)
 
 ```bash
-uv run --dev pytest tests/unit/ -v          # run unit tests
-uv run --dev pytest tests/integration/ -v   # run integration tests
+uv run pytest tests/unit/ -v          # run unit tests
+uv run pytest tests/integration/ -v   # run integration tests
 # etc.
 ```
 
 **Markers alternative:** Use `@pytest.mark.unit` etc. on test functions instead of directory nesting. Run with `pytest -m unit`.
+
+## Stage 06: Static Analysis
+
+Static-analysis tooling added and configured:
+
+- **Ruff** — linting + format checking (blocking)
+- **Mypy** — strict type checking (blocking)
+- **Pyright** — strict type checking (advisory)
+- **Import Linter** — architecture import contracts (blocking, 4 contracts in `.importlinter`)
+- **Semgrep** — security pattern scanning (blocking, `--config auto --error`)
+- **Vulture** — dead code detection (advisory)
+
+Configuration lives in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`, `[tool.pyright]`, `[tool.vulture]`) and `.importlinter`.
+
+## Stage 07: Quality Gate
+
+Consolidated CI quality gate in `.github/workflows/quality-gate.yml`:
+
+**Trigger:** push to `main` and pull requests targeting `main`.
+
+**Blocking jobs** (all must pass):
+- `quality-setup` — uv sync + shared package cache
+- `quality-gate` — ruff lint, ruff format, mypy (strict), import-linter, semgrep, pip-audit
+- `tests` — matrix of unit, integration, contract, lifecycle, architecture, configuration
+- `coverage-gate` — full suite with `--cov-fail-under=100`
+- `smoke-test` — app boot + liveness/readiness health checks
+
+**Advisory jobs** (run independently, do not block the gate):
+- `pyright` — strict type check (`|| true`)
+- `vulture` — dead code report (`|| true`)
+
+**Aggregate job** (`gate-aggregate`) reports the blocking job status and fails if any blocking job fails or is cancelled.
+
+**Pip-audit exception:** `GHSA-53pm-wgxf-c6qf` (wcmatch 8.5.2) is tracked and ignored via `pip-audit --ignore-vuln`. All other vulnerabilities still fail the gate.
+
+**Local equivalent:** `make check` (Makefile) or `just check` (Justfile) run the same blocking checks locally.
+
 
 ## Supporting Documentation
 
@@ -252,14 +293,32 @@ For WaxPrep:
 
 ## Running Tests
 
+Prerequisite (sync dev dependencies once):
+
 ```bash
-uv run --dev pytest tests/ -v
+uv sync --extra dev
+```
+
+Full suite:
+
+```bash
+uv run pytest tests/ -v
 ```
 
 With coverage:
+
 ```bash
-uv run --dev pytest tests/ -v --cov=src/waxprep --cov-report=term-missing
+uv run pytest tests/ -v --cov=waxprep --cov-report=term-missing
 ```
+
+Local quality gate (matches CI blocking checks):
+
+```bash
+make check
+# or
+just check
+```
+
 
 ## Running the Application
 

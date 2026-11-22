@@ -296,12 +296,12 @@ class BadMessageHandler:
 
 | Rule | Description |
 |------|-------------|
-| ✅ Reachable by messaging/core | Context can be accessed by outer layers |
+| ✅ Reachable by services/main | Context can be accessed by outer orchestration layers |
 | ❌ NO forced categories on students | Context is flexible, not prescriptive |
 
 ### Design Principle
 
-Context should be a **capability** that messaging and core can use, not a **constraint** that forces a particular categorization model.
+Context should be a **capability** that orchestration layers (services, main) can use, not a **constraint** that forces a particular categorization model.
 
 ```python
 # src/waxprep/context/manager.py - FUTURE (valid pattern)

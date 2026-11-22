@@ -62,7 +62,7 @@ src/waxprep/
 │    ├─ Message types (what flows through the system)            │
 │    ├─ Router (decides where a message goes — swappable)        │
 │    └─ Handlers (channel-specific entry/exit points)            │
-│    └─ Depends on: core/ (protocols), context/ (read context)   │
+│    └─ Depends on: core/ (protocols), registries/ (channel/model lookups)   │
 ├─────────────────────────────────────────────────────────────────┤
 │  Context Layer (understanding the learner)                     │
 │  context/                                                       │
@@ -85,7 +85,7 @@ src/waxprep/
 | From | May depend on | Must NOT depend on |
 |------|---------------|-------------------|
 | `services/` | `messaging/`, `context/`, `core/`, `registries/`, `adapters/` | anything outside this list |
-| `messaging/` | `context/`, `core/` | `services/`, infrastructure, adapters directly |
+| `messaging/` | `core/`, `registries/` | `services/`, infrastructure, adapters directly, context/ |
 | `context/` | `core/` | `messaging/`, `services/`, infrastructure |
 | `core/` | nothing | anything |
 
@@ -109,11 +109,11 @@ All Protocols live in `core/`. These define *capability contracts*, not implemen
 
 **Why Protocols instead of abstract base classes?** Protocols let any existing class satisfy the contract without inheritance. A real WhatsApp adapter, a test double, and a future AI-generated adapter can all be used interchangeably without modification.
 
-### 2.2 Messaging → Context: The "Read Context" Boundary
+### 2.2 Messaging Boundary
 
-Messaging handlers may need to know something about the learner before responding. This is the only dependency from messaging into context, and it should be narrow.
+Messaging depends on core protocols and registries only. It does not currently import context; any future need to read learner context would go through the registries (which expose adapter lookups), not through a direct messaging→context import.
 
-**Key constraint:** Messaging never *writes* to context. Writing happens through a separate pathway (observation extraction), keeping the direction clear.
+**Key constraint:** Messaging never *writes* to context. Messaging also never reads context directly today — that boundary remains closed until explicitly reopened with a corresponding architecture test and import-linter contract.
 
 ### 2.3 Context → Core: Pure dependency
 
@@ -162,7 +162,7 @@ To be implemented in later stages:
 - Swappable message router
 - Channel-specific handlers (WhatsApp, Telegram, etc.)
 
-**Responsibility:** Receive messages, decide what to do with them, produce responses. May read learner context. **Never** knows about concrete channel/model/tool implementations.
+**Responsibility:** Receive messages, decide what to do with them, produce responses. Depends on core protocols and registries only. **Never** knows about concrete channel/model/tool implementations.
 
 ### `context/` — Understanding the learner
 

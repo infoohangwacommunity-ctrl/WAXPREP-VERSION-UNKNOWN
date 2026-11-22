@@ -1,8 +1,23 @@
 # Stage 07 — Static Analysis Audit Report
 
+> **⚠️ HISTORICAL SNAPSHOT — Not current implementation state**
+>
+> **Status:** Audit only — no configuration changes implemented (as of original authoring)  
+> **Auditor:** Static Analysis Engineer  
+>
+> This document is a historical snapshot. It describes an **older** repository state and must not be treated as the current implementation specification. It has been superseded by Stage 07 implementation.
+>
+> **What has changed since this report was written:**
+> - CI workflow is now `.github/workflows/quality-gate.yml` (not `test.yml`)
+> - Vulture configuration lives in `pyproject.toml` `[tool.vulture]` (not a separate `vulture.cfg.py`)
+> - Pyright is **advisory** (not blocking)
+> - Pip-audit is present, with a single tracked exception (`GHSA-53pm-wgxf-c6qf`)
+> - Semgrep runs with `--error` (local command previously lacked it)
+> - Import Linter has four active contracts with current rules
+>
+> For the current state, see `.github/workflows/quality-gate.yml`, `pyproject.toml`, `.importlinter`, `Makefile`, and `justfile`.
+
 **Project:** WaxPrep (`waxprep`, Python >= 3.14, hatchling/uv)
-**Auditor:** Static Analysis Engineer
-**Status:** Audit only — no configuration changes implemented
 **Source files reviewed:** `pyproject.toml`, `.importlinter`, `vulture.cfg.py`, `justfile`, `CONTRIBUTING.md`, `docs/ENGINEERING-STANDARDS.md`, `.github/workflows/test.yml`, `src/waxprep/` package tree
 
 ---

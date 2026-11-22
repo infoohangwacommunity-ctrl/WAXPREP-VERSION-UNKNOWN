@@ -27,8 +27,8 @@ Thank you for your interest in contributing to WaxPrep! This guide covers the co
 ### Initial Setup
 
 ```bash
-# Install dependencies
-uv sync --dev
+# Install dependencies (dev optional extra)
+uv sync --extra dev
 
 # Run tests
 uv run pytest

@@ -51,7 +51,7 @@ They do NOT exist to:
 **Outer → Inner. Never the reverse.**
 
 ```
-messaging/ ──→ core/
+messaging/ ──→ core/, registries/
 context/   ──→ core/
 services/  ──→ core/, messaging/, context/, registries/
 main.py    ──→ services/, messaging/, registries/, middleware/

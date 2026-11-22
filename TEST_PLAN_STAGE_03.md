@@ -1,5 +1,11 @@
 # Test Plan: Stage 03 - Structural Boundaries
 
+> **⚠️ HISTORICAL SNAPSHOT — Stage 03**
+>
+> **Version:** 0.3.0  
+>
+> This test plan is a historical Stage 03 snapshot. The "Current Test Status: 75 passing tests" figure reflects the state at the time of writing, not the current repository. Treat this as historical reference, not current guidance.
+
 **Version:** 0.3.0  
 **Current Test Status:** 75 passing tests  
 

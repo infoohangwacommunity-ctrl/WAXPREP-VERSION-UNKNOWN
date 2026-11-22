@@ -1,5 +1,9 @@
 # WaxPrep Foundation Upgrades - Implementation Plan (Stage 01-02)
 
+> **⚠️ HISTORICAL — Completed Stage 01–02 plan**
+>
+> This plan tracked the Stage 01–02 foundation upgrades. That work is complete. Treat this as a historical record, not current guidance.
+
 ## Overview
 
 This plan implements six foundation upgrades WITHOUT adding features. All changes are internal infrastructure improvements that make the foundation more robust for future stages.

@@ -56,10 +56,6 @@ pyright:
 
 # ── Testing ─────────────────────────────────────────────────────────────────
 
-# Run all tests
-test:
-	uv run pytest
-
 # Run unit tests only
 unit:
 	uv run pytest tests/unit/ -v
@@ -67,10 +63,6 @@ unit:
 # Run integration tests only
 integration:
 	uv run pytest tests/integration/ -v
-
-# Run tests with coverage
-coverage:
-	uv run pytest --cov=waxprep --cov-report=term-missing
 
 # ── Setup ───────────────────────────────────────────────────────────────────
 

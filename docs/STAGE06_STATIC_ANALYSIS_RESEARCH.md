@@ -1,9 +1,15 @@
 # Stage 06: Static Analysis — Research Document
 
-**Status:** Research / Planning  
-**Date:** 2026-11-18  
-**Branch:** main  
-**Scope:** Evaluate and recommend static analysis tooling expansion for the WaxPrep codebase.
+> **⚠️ HISTORICAL SNAPSHOT — Not current implementation guidance**
+>
+> **Status:** Research / Planning  
+> **Date:** 2026-11-18  
+> **Branch:** main  
+>
+> This document captures the static-analysis research and planning that preceded Stage 07 implementation. It describes the toolset as it was evaluated on November 18, 2026. Later commits (Stage 07) changed the implementation: for example, Vulture configuration now lives in `pyproject.toml` (not a separate `vulture.cfg.py`), Pyright is advisory rather than blocking, pip-audit is present with a tracked exception, and Semgrep runs with `--error`.
+>
+> Do **not** treat this document as the current implementation specification. The current state is defined by `.github/workflows/quality-gate.yml`, `pyproject.toml`, `.importlinter`, and the Makefile/Justfile.
+
 
 ---
 

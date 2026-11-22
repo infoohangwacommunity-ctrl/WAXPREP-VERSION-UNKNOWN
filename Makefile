@@ -32,10 +32,10 @@ lockfile-check: ## Verify uv.lock matches pyproject.toml
 	uv lock --check
 
 pip-audit: ## Run pip-audit dependency vulnerability scan
-	# NOTE: GHHA-53pm-wgxf-c6qf (wcmatch 8.5.2) is a transitive dependency of semgrep.
+	# NOTE: GHSA-53pm-wgxf-c6qf (wcmatch 8.5.2) is a transitive dependency of semgrep.
 	# semgrep constrains wcmatch to <9, so the fix wcmatch>=11.2 cannot be installed.
-	# This is a known limitation; revisit when semgrep updates its wcmatch bound.
-	@uv run pip-audit || echo "pip-audit exited (known wcmatch CVE, see Makefile comment)"
+	# Only this tracked vulnerability is ignored; every other vulnerability still fails.
+	@uv run pip-audit --ignore-vuln GHSA-53pm-wgxf-c6qf
 
 test: ## Run all tests
 	uv run pytest

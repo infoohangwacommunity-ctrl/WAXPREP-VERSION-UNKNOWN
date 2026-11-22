@@ -21,7 +21,7 @@ Quick checklist for reviewers. Check each item before approving.
 
 - [ ] **Layer placement correct:**
   - `core/` — pure logic, protocols, value objects (no infrastructure imports)
-  - `messaging/` — message handling, routing (depends on core + context only)
+  - `messaging/` — message handling, routing (depends on core + registries only)
   - `context/` — learner state, stores (depends on core only)
   - `services/` — composition root, wiring (only place knowing concrete adapters)
   - `adapters/` — channel/model/tool implementations (implement protocols)
@@ -75,7 +75,7 @@ Quick checklist for reviewers. Check each item before approving.
 |---------------|------------|-----------------|
 | `core/` | standard lib, typing | `adapters/`, `messaging/`, `services/`, FastAPI, SDKs |
 | `context/` | `core/` | `messaging/`, `services/`, `adapters/`, infrastructure |
-| `messaging/` | `core/`, `context/` | `services/`, `adapters/` (use registries), SDKs |
+| `messaging/` | `core/`, `registries/` | `services/`, `adapters/` (use registries), SDKs, `context/` |
 | `registries/` | `registries/base`, typing | `adapters/` (except `register_defaults`) |
 | `adapters/` | registry protocols, SDKs | `core/`, other adapters |
 | `services/` | everything | nothing (it's the outer layer) |

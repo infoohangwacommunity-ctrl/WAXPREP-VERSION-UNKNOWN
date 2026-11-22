@@ -1,6 +1,6 @@
 # Tests Reference — Stage 05
 
-Hermetic, isolated, deterministic tests. Full suite runs in under 30 seconds.
+Hermetic, isolated, deterministic tests.
 
 ## Categories
 
@@ -13,6 +13,8 @@ Hermetic, isolated, deterministic tests. Full suite runs in under 30 seconds.
 | **Architecture** | `@pytest.mark.architecture` | `tests/architecture/` | Boundary and dependency checks — ensures modules don't import across forbidden boundaries. |
 | **Configuration** | `@pytest.mark.configuration` | `tests/configuration/` | Settings and environment variable handling: config load, env precedence, defaults, and validation. |
 | **Regression** | `@pytest.mark.regression` | `tests/regression/` | Pinned bug-fix tests — each test names the bug it guards against. Should never be deleted. |
+
+> **Note:** The `regression/` directory currently contains no pinned tests, and the CI test matrix does not include a separate regression job. Tests added to `tests/regression/` are still executed by the full-suite coverage job (`--cov-fail-under=100`).
 
 Two top-level files (`test_exception_handler_pattern.py`, `test_final_coverage.py`) cover pattern documentation and final coverage assertions respectively.
 
@@ -27,37 +29,39 @@ uv sync --extra dev
 **Full suite:**
 
 ```bash
-uv run --dev pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 **Specific category:**
 
 ```bash
-uv run --dev pytest tests/unit/           -v   # unit only
-uv run --dev pytest tests/integration/    -v   # integration only
-uv run --dev pytest tests/contract/       -v   # contract only
-uv run --dev pytest tests/lifecycle/      -v   # lifecycle only
-uv run --dev pytest tests/architecture/   -v   # architecture only
-uv run --dev pytest tests/configuration/  -v   # configuration only
-uv run --dev pytest tests/regression/     -v   # regression only
+uv run pytest tests/unit/           -v   # unit only
+uv run pytest tests/integration/    -v   # integration only
+uv run pytest tests/contract/       -v   # contract only
+uv run pytest tests/lifecycle/      -v   # lifecycle only
+uv run pytest tests/architecture/   -v   # architecture only
+uv run pytest tests/configuration/  -v   # configuration only
+uv run pytest tests/regression/     -v   # regression only
 ```
 
 **By marker (any directory):**
 
 ```bash
-uv run --dev pytest tests/ -v -m unit
-uv run --dev pytest tests/ -v -m "not regression"
+uv run pytest tests/ -v -m unit
+uv run pytest tests/ -v -m "not regression"
 ```
 
 **Parallel execution** (when you have cores to burn):
 
 ```bash
-uv run --dev pytest tests/ -n auto -v
+uv run pytest tests/ -n auto -v
 ```
 
 ## Fixtures (`conftest.py`)
 
-All fixtures are opt-in — none are `autouse`. Request the ones you need.
+Most fixtures are opt-in — request the ones you need. One fixture is **autouse**:
+
+- `_reset_main_globals` — **autouse**. Resets `waxprep.main` module globals (`_shutting_down`, `_registries_ready`, `_channel_registry`, `_model_registry`, `_tool_registry`) after every test. This guarantees test isolation so lifecycle/integration tests cannot poison each other through shared module state.
 
 ### Time control
 
@@ -102,32 +106,30 @@ All fixtures are opt-in — none are `autouse`. Request the ones you need.
 
 ## CI Workflow
 
-File: `.github/workflows/test.yml` — **Test Suite**.
+File: `.github/workflows/quality-gate.yml` — **Quality Gate**.
 
 **Triggers:**
-- Push to `main` or `develop`
+- Push to `main`
 - Pull requests targeting `main`
-- Daily cron (`0 0 * * *`) — flake detection run
 
-**Jobs (parallel, each with its own Ubuntu runner and 5-minute timeout):**
+**Jobs:**
 
 | Job | Command | Notes |
 |-----|---------|-------|
-| `unit-tests` | `uv run pytest tests/unit/ -v --tb=short` | `TIMEOUT=10` env |
-| `integration-tests` | `uv run pytest tests/integration/ -v --tb=short` | `TIMEOUT=30` env |
-| `contract-tests` | `uv run pytest tests/contract/ -v --tb=short` | |
-| `lifecycle-tests` | `uv run pytest tests/lifecycle/ -v --tb=short` | |
-| `architecture-tests` | `uv run pytest tests/architecture/ -v --tb=short` | |
-| `configuration-tests` | `uv run pytest tests/configuration/ -v --tb=short` | |
-| `full-test-suite` | `uv run pytest tests/ -v --tb=short` | Only on `main` branch, `TIMEOUT=60` |
-| `flake-detection` | 10 consecutive runs of unit + integration | Only on cron schedule; fails if any run fails |
+| `quality-setup` | `uv sync --extra dev` + uv cache | Runs once; warms shared package cache |
+| `quality-gate` | ruff, ruff format, mypy, import-linter, semgrep, pip-audit | Blocking static analysis |
+| `tests` | `pytest tests/<category> -m <category>` | Matrix: unit, integration, contract, lifecycle, architecture, configuration |
+| `coverage-gate` | full suite `--cov-fail-under=100` | Blocking, 100% threshold |
+| `smoke-test` | app boot + liveness/readiness health checks | Blocking |
+| `pyright` | `pyright src/ || true` | Advisory — does not block |
+| `vulture` | `vulture src/waxprep/ || true` | Advisory — does not block |
 
-Concurrency group: `${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true`.
+The `gate-aggregate` job reports blocking-job status and fails if any blocking job fails or is cancelled. Advisory jobs run independently and their results are not part of the aggregate decision.
 
 ## Coverage
 
 - **pytest-cov** is in the dev dependencies.
-- Run with coverage: `uv run --dev pytest tests/ --cov=waxprep --cov-report=term-missing`
+- Run with coverage: `uv run pytest tests/ --cov=waxprep --cov-report=term-missing`
 - `test_final_coverage.py` (top-level) asserts final coverage thresholds — it's part of the suite, not a separate step.
 
 ## Philosophy
@@ -135,6 +137,5 @@ Concurrency group: `${{ github.workflow }}-${{ github.ref }}` with `cancel-in-pr
 1. **Hermetic** — Tests don't read the environment, the filesystem, network, or shared state unless they explicitly opt into it. No hidden dependencies.
 2. **Isolated** — Each test gets fresh fixtures. Registries are never singletons; every test constructs its own. No test influences another.
 3. **Deterministic** — Time and randomness are controlled via opt-in fixtures (`frozen_time`, `seeded_random`). Because they're not autouse, a test that doesn't request them remains visibly non-deterministic.
-4. **Fast** — The full suite is designed to run in under 30 seconds so it can be run constantly.
-5. **Marked** — Every test has a category marker. The CI splits categories into separate jobs so a slow integration test can't hide behind a fast unit test.
-6. **Contract-first** — Interfaces are tested independently of implementations, so refactors catch surprises early.
+4. **Marked** — Every test has a category marker. The CI splits categories into separate jobs so a slow integration test can't hide behind a fast unit test.
+5. **Contract-first** — Interfaces are tested independently of implementations, so refactors catch surprises early.

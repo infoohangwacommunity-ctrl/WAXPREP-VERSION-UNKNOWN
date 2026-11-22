@@ -1,5 +1,5 @@
 """
-WaxPrep Foundation - Stages 01-04.
+WaxPrep Foundation - Stages 01-07.
 
 NO tutor logic. NO channel adapters. NO database schema.
 Only the foundation for the foundation.

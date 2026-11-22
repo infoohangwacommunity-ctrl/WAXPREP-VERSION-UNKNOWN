@@ -1,5 +1,9 @@
 # WaxPrep Foundation - Stage 01-02 Specification
 
+> **⚠️ HISTORICAL SNAPSHOT — Not current implementation state**
+>
+> This specification describes the Stage 01–02 implementation as originally planned. Some claims in this document (notably the absolute "no hardcoding" statements) are overbroad compared with the current codebase, which defines environment-overridable defaults in `src/waxprep/config.py`. Treat this as a historical reference, not current engineering guidance.
+
 **Extracted from source code:** `/workspaces/WAXPREP-VERSION-UNKNOWN`
 **Version:** 0.1.0
 **Python Requirement:** >=3.14
