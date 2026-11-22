@@ -81,7 +81,7 @@ jobs:
       - name: Verify lockfile integrity
         run: uv lock --check
 
-      - name: Run unified quality gate (set -e: first failure aborts)
+      - name: 'Run unified quality gate (set -e: first failure aborts)'
         run: |
           set -euo pipefail
           echo "==> ruff lint"
