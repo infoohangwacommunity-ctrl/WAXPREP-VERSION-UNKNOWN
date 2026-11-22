@@ -1,259 +1,377 @@
 """
-Test Architectural Boundaries - Stage 03
+Test Architectural Boundaries - Stage 03/07
+
 Verify that architectural boundaries are maintained across packages.
 
-Boundary Rules:
-- core/ must NOT import from adapters, channels, FastAPI, or any waxprep.* package
-- messaging/ must NOT import from adapters directly (use registries)
-- context/ must NOT import from messaging/ or services/ directly
-- services/ may import from everything (composition root)
+Authoritative dependency matrix (aligned across README.md,
+docs/ENGINEERING-STANDARDS.md, PR_REVIEW_CHECKLIST.md,
+STAGE_03_ARCHITECTURE.md, ARCHITECTURE_BOUNDARIES.md):
 
-These tests enforce the rules documented in ARCHITECTURE_BOUNDARIES.md and README.md.
+| Package | May Import From | Must NOT Import From |
+|---------|-----------------|---------------------|
+| core/ | standard library only | registries, adapters, middleware, main, config, messaging, context, services, id, fastapi |
+| messaging/ | core/, registries/ | adapters, context, services, middleware, main, config, id |
+| context/ | core/ | messaging, services, registries, adapters, middleware, main, config, id |
+| services/ | core/, messaging/, context/, registries/ | adapters directly (use registries) |
+| registries/ | registries/base, typing | messaging, context, services, adapters |
+| adapters/ | registry protocols, SDKs | core, other adapters, messaging, context, services, registries, id |
+| middleware/ | standard library, typing | core |
+| main.py | FastAPI, config, registries, middleware, adapters | core |
+
+All checks inspect both `import X` and `from X import Y` forms,
+including package `__init__.py` files. Forbidden-import tests prove
+that an illegal import causes a test failure; permitted-import tests
+prove that an allowed dependency still resolves.
 """
 
 import ast
+import importlib
+import sys
 from pathlib import Path
 
 import pytest
 
+SRC_ROOT = Path("src").resolve()
+WAXPREP_ROOT = SRC_ROOT / "waxprep"
+
+
+def waxprep_imports_in_file(path: Path) -> list[tuple[str, str]]:
+    """Return [(file, imported_module)] for every `waxprep.*` import in `path`.
+
+    Covers both ``import waxprep.foo`` and ``from waxprep.foo import bar``
+    forms. Does NOT skip ``__init__.py`` files — boundary rules apply to
+    every file in a package, including its initializer.
+    """
+    imports: list[tuple[str, str]] = []
+    content = path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("import waxprep.") or "from waxprep." in stripped:
+                imports.append((path.name, stripped))
+        return imports
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith("waxprep"):
+                    imports.append((path.name, alias.name))
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.module.startswith("waxprep"):
+                imports.append((path.name, node.module))
+    return imports
+
+
+def python_files_in_package(package_dir: Path) -> list[Path]:
+    """Return every ``.py`` file under ``package_dir``, including __init__.py."""
+    return sorted(package_dir.rglob("*.py"))
+
+
+def module_path_for_file(path: Path) -> str:
+    """Convert a filesystem path under src/waxprep to a waxprep.* module path."""
+    relative = path.relative_to(WAXPREP_ROOT)
+    parts = [p for p in relative.parts if p != "__init__.py"]
+    if not parts:
+        return "waxprep"
+    return "waxprep." + ".".join(parts)
+
+
+BOUNDARY_RULES: dict[str, tuple[list[str], list[str]]] = {
+    "core": (
+        [],
+        [
+            "waxprep.registries",
+            "waxprep.adapters",
+            "waxprep.middleware",
+            "waxprep.main",
+            "waxprep.config",
+            "waxprep.messaging",
+            "waxprep.context",
+            "waxprep.services",
+            "waxprep.id",
+            "fastapi",
+        ],
+    ),
+    "messaging": (
+        ["waxprep.core", "waxprep.registries"],
+        [
+            "waxprep.adapters",
+            "waxprep.context",
+            "waxprep.services",
+            "waxprep.middleware",
+            "waxprep.main",
+            "waxprep.config",
+            "waxprep.id",
+        ],
+    ),
+    "context": (
+        ["waxprep.core"],
+        [
+            "waxprep.messaging",
+            "waxprep.services",
+            "waxprep.registries",
+            "waxprep.adapters",
+            "waxprep.middleware",
+            "waxprep.main",
+            "waxprep.config",
+            "waxprep.id",
+        ],
+    ),
+    "services": (
+        ["waxprep.core", "waxprep.messaging", "waxprep.context", "waxprep.registries"],
+        ["waxprep.adapters"],
+    ),
+    "registries": (
+        ["waxprep.registries.base"],
+        [
+            "waxprep.messaging",
+            "waxprep.context",
+            "waxprep.services",
+            "waxprep.adapters",
+        ],
+    ),
+    "adapters": (
+        [],
+        [
+            "waxprep.core",
+            "waxprep.adapters",
+            "waxprep.messaging",
+            "waxprep.context",
+            "waxprep.services",
+            "waxprep.registries",
+            "waxprep.id",
+        ],
+    ),
+    "middleware": (
+        [],
+        ["waxprep.core"],
+    ),
+}
+
+MAIN_MODULE_RULES = (
+    ["waxprep.config", "waxprep.registries", "waxprep.middleware", "waxprep.adapters"],
+    ["waxprep.core"],
+)
+
 
 class TestCoreBoundaries:
-    """Verify core/ respects its strict boundary rules."""
-
-    @pytest.fixture
-    def core_path(self):
-        return Path("src/waxprep/core")
+    """core/ must not import from any outer layer."""
 
     @pytest.mark.architecture
-    def test_core_does_not_import_adapters(self, core_path):
-        """Core must not import from adapters package."""
-        adapter_imports = []
-
-        for py_file in core_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            tree = ast.parse(content)
-
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if alias.name.startswith("waxprep.adapters"):
-                            adapter_imports.append((py_file.name, alias.name))
-                elif isinstance(node, ast.ImportFrom):
-                    if node.module and node.module.startswith("waxprep.adapters"):
-                        adapter_imports.append((py_file.name, node.module))
-
-        assert len(adapter_imports) == 0, f"core/ imports from adapters: {adapter_imports}"
+    def test_core_forbidden_imports(self):
+        core_dir = WAXPREP_ROOT / "core"
+        forbidden = BOUNDARY_RULES["core"][1]
+        for path in python_files_in_package(core_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not any(
+                    module.startswith(f) for f in forbidden
+                ), (
+                    f"core/{path.name} imports forbidden module '{module}'; "
+                    "core/ must not import from outer layers."
+                )
 
     @pytest.mark.architecture
-    def test_core_does_not_import_fastapi(self, core_path):
-        """Core must not import FastAPI (framework-agnostic)."""
-        for py_file in core_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            assert "from fastapi" not in content, f"Core imports FastAPI in {py_file}"
-            assert "import fastapi" not in content, f"Core imports FastAPI in {py_file}"
-
-    @pytest.mark.architecture
-    def test_core_does_not_import_waxprep_packages(self, core_path):
-        """Core must not import from any waxprep.* package."""
-        waxprep_imports = []
-
-        for py_file in core_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            tree = ast.parse(content)
-
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if alias.name.startswith("waxprep"):
-                            waxprep_imports.append((py_file.name, alias.name))
-                elif isinstance(node, ast.ImportFrom):
-                    if node.module and node.module.startswith("waxprep"):
-                        waxprep_imports.append((py_file.name, node.module))
-
-        assert len(waxprep_imports) == 0, f"core/ imports from waxprep: {waxprep_imports}"
-
-    @pytest.mark.architecture
-    def test_core_does_not_import_config(self, core_path):
-        """Core must not import config (settings are infrastructure)."""
-        for py_file in core_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            assert "from waxprep.config" not in content, f"Core imports config in {py_file}"
-            assert "import waxprep.config" not in content, f"Core imports config in {py_file}"
-
-
-class TestContextBoundaries:
-    """Verify context/ respects its boundary rules."""
-
-    @pytest.fixture
-    def context_path(self):
-        return Path("src/waxprep/context")
-
-    @pytest.mark.architecture
-    def test_context_does_not_import_messaging(self, context_path):
-        """Context must not import from messaging (circular dependency risk)."""
-        messaging_imports = []
-
-        for py_file in context_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            tree = ast.parse(content)
-
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom):
-                    if node.module and node.module.startswith("waxprep.messaging"):
-                        messaging_imports.append((py_file.name, node.module))
-
-        assert len(messaging_imports) == 0, f"context/ imports from messaging: {messaging_imports}"
-
-    @pytest.mark.architecture
-    def test_context_does_not_import_services(self, context_path):
-        """Context must not import from services (wrong direction)."""
-        services_imports = []
-
-        for py_file in context_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            tree = ast.parse(content)
-
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom):
-                    if node.module and node.module.startswith("waxprep.services"):
-                        services_imports.append((py_file.name, node.module))
-
-        assert len(services_imports) == 0, f"context/ imports from services: {services_imports}"
-
-    @pytest.mark.architecture
-    def test_context_may_import_core(self, context_path):
-        """Context may import from core/ (this is the allowed direction).
-
-        This test verifies the boundary ALLOWS this direction by:
-        1. Checking the __init__.py explicitly documents core/ as allowed
-        2. Verifying core/ can be imported from context/ without error
-        """
-        init_file = context_path / "__init__.py"
-        content = init_file.read_text()
-
-        # The boundary should explicitly mention core/ as allowed
-        assert "core/" in content or "core" in content, (
-            "context/__init__.py should mention core/ as an allowed dependency"
-        )
-
-        # Verify the documentation is explicit about the direction
-        assert "depend" in content.lower() or "import" in content.lower(), (
-            "context/__init__.py should explicitly document dependency rules"
-        )
-
-        # Verify core/ can be imported from context/ path (structural check)
-        # This proves there's no technical barrier to the allowed dependency
-        import importlib
-        import sys
-        from pathlib import Path
-
-        sys.path.insert(0, str(Path("src").resolve()))
-        try:
-            # Verify core module can be imported
-            core_module = importlib.import_module("waxprep.core")
-            assert core_module is not None
-        finally:
-            sys.path.pop(0)
+    def test_core_does_not_import_fastapi(self):
+        core_dir = WAXPREP_ROOT / "core"
+        for path in python_files_in_package(core_dir):
+            content = path.read_text(encoding="utf-8")
+            assert "import fastapi" not in content, (
+                f"core/{path.name} imports FastAPI; core must stay framework-agnostic."
+            )
 
 
 class TestMessagingBoundaries:
-    """Verify messaging/ respects its boundary rules."""
-
-    @pytest.fixture
-    def messaging_path(self):
-        return Path("src/waxprep/messaging")
+    """messaging/ may import core/ and registries/ only."""
 
     @pytest.mark.architecture
-    def test_messaging_does_not_import_adapters_directly(self, messaging_path):
-        """Messaging must not import concrete adapters directly.
-
-        Messaging should use registries to get adapters, not import them directly.
-        """
-        adapter_imports = []
-
-        for py_file in messaging_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            tree = ast.parse(content)
-
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom):
-                    if node.module and node.module.startswith("waxprep.adapters"):
-                        adapter_imports.append((py_file.name, node.module))
-
-        assert len(adapter_imports) == 0, f"messaging/ imports adapters directly: {adapter_imports}"
+    def test_messaging_forbidden_imports(self):
+        messaging_dir = WAXPREP_ROOT / "messaging"
+        forbidden = BOUNDARY_RULES["messaging"][1]
+        for path in python_files_in_package(messaging_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not any(
+                    module.startswith(f) for f in forbidden
+                ), (
+                    f"messaging/{path.name} imports forbidden module '{module}'; "
+                    "messaging/ may import core/ and registries/ only."
+                )
 
     @pytest.mark.architecture
-    def test_messaging_may_import_core(self, messaging_path):
-        """Messaging may import from core/ (this is the allowed direction).
-
-        This test verifies the boundary ALLOWS this direction by:
-        1. Checking the __init__.py explicitly documents core/ as allowed
-        2. Verifying core/ can be imported from messaging/ without error
-        """
-        init_file = messaging_path / "__init__.py"
-        content = init_file.read_text()
-
-        # The boundary should explicitly mention core/ as allowed
-        assert "core/" in content or "core" in content, (
-            "messaging/__init__.py should mention core/ as an allowed dependency"
-        )
-
-        # Verify the documentation is explicit about the direction
-        assert "depend" in content.lower() or "import" in content.lower(), (
-            "messaging/__init__.py should explicitly document dependency rules"
-        )
-
-        # Verify core/ can be imported from messaging/ path (structural check)
-        import importlib
-        import sys
-        from pathlib import Path
-
-        sys.path.insert(0, str(Path("src").resolve()))
+    def test_messaging_permitted_imports_still_resolve(self):
+        """Verify messaging/ can still import its permitted dependencies."""
+        messaging_dir = WAXPREP_ROOT / "messaging"
+        sys.path.insert(0, str(SRC_ROOT))
         try:
-            # Verify core module can be imported
-            core_module = importlib.import_module("waxprep.core")
-            assert core_module is not None
+            for path in python_files_in_package(messaging_dir):
+                module = module_path_for_file(path)
+                try:
+                    importlib.import_module(module)
+                except Exception as exc:
+                    pytest.fail(
+                        f"messaging/{path.name} (module {module}) failed to import: {exc}"
+                    )
         finally:
             sys.path.pop(0)
+
+
+class TestContextBoundaries:
+    """context/ may import core/ only."""
+
+    @pytest.mark.architecture
+    def test_context_forbidden_imports(self):
+        context_dir = WAXPREP_ROOT / "context"
+        forbidden = BOUNDARY_RULES["context"][1]
+        for path in python_files_in_package(context_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not any(
+                    module.startswith(f) for f in forbidden
+                ), (
+                    f"context/{path.name} imports forbidden module '{module}'; "
+                    "context/ may import core/ only."
+                )
+
+
+class TestServicesBoundaries:
+    """services/ may import core/, messaging/, context/, registries/."""
+
+    @pytest.mark.architecture
+    def test_services_forbidden_imports(self):
+        services_dir = WAXPREP_ROOT / "services"
+        forbidden = BOUNDARY_RULES["services"][1]
+        for path in python_files_in_package(services_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not any(
+                    module.startswith(f) for f in forbidden
+                ), (
+                    f"services/{path.name} imports forbidden module '{module}'; "
+                    "services/ must not import adapters directly."
+                )
+
+
+class TestRegistriesBoundaries:
+    """registries/ may import registries/base only."""
+
+    @pytest.mark.architecture
+    def test_registries_forbidden_imports(self):
+        registries_dir = WAXPREP_ROOT / "registries"
+        forbidden = BOUNDARY_RULES["registries"][1]
+        for path in python_files_in_package(registries_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not any(
+                    module.startswith(f) for f in forbidden
+                ), (
+                    f"registries/{path.name} imports forbidden module '{module}'; "
+                    "registries/ must not import messaging, context, services, or adapters."
+                )
+
+
+class TestAdaptersBoundaries:
+    """adapters/ must not import core/ or any concrete outer-layer module."""
+
+    @pytest.mark.architecture
+    def test_adapters_forbidden_imports(self):
+        adapters_dir = WAXPREP_ROOT / "adapters"
+        forbidden = BOUNDARY_RULES["adapters"][1]
+        for path in python_files_in_package(adapters_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not any(
+                    module.startswith(f) for f in forbidden
+                ), (
+                    f"adapters/{path.name} imports forbidden module '{module}'; "
+                    "adapters/ may import registry protocols and SDKs only."
+                )
+
+
+class TestMiddlewareBoundaries:
+    """middleware/ must not import core/."""
+
+    @pytest.mark.architecture
+    def test_middleware_forbidden_imports(self):
+        middleware_dir = WAXPREP_ROOT / "middleware"
+        forbidden = BOUNDARY_RULES["middleware"][1]
+        for path in python_files_in_package(middleware_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not any(
+                    module.startswith(f) for f in forbidden
+                ), (
+                    f"middleware/{path.name} imports forbidden module '{module}'; "
+                    "middleware/ must not import core/."
+                )
+
+
+class TestMainModuleBoundaries:
+    """main.py must not import core/ (framework-agnostic entry point)."""
+
+    @pytest.mark.architecture
+    def test_main_does_not_import_core(self):
+        main_path = WAXPREP_ROOT / "main.py"
+        for _file_name, module in waxprep_imports_in_file(main_path):
+            assert not module.startswith("waxprep.core"), (
+                f"main.py imports '{module}'; main.py must not import core/."
+            )
 
 
 class TestNoCircularDependencies:
     """Verify there are no circular dependencies between packages."""
 
     @pytest.mark.architecture
-    def test_context_does_not_create_cycle_with_messaging(self):
-        """Ensure context and messaging don't create a circular dependency."""
-        # Context may import core
-        # Messaging may import core
-        # Neither should import the other
+    def test_context_and_messaging_do_not_import_each_other(self):
+        context_dir = WAXPREP_ROOT / "context"
+        messaging_dir = WAXPREP_ROOT / "messaging"
 
-        context_path = Path("src/waxprep/context")
-        messaging_path = Path("src/waxprep/messaging")
+        for path in python_files_in_package(context_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not module.startswith("waxprep.messaging"), (
+                    f"context/{path.name} imports '{module}'; context/ must not import messaging/."
+                )
 
-        # Check context doesn't import messaging
-        for py_file in context_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            assert "waxprep.messaging" not in content, f"context/ imports messaging in {py_file}"
+        for path in python_files_in_package(messaging_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not module.startswith("waxprep.context"), (
+                    f"messaging/{path.name} imports '{module}'; messaging/ must not import context/."
+                )
 
-        # Check messaging doesn't import context
-        for py_file in messaging_path.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            content = py_file.read_text()
-            assert "waxprep.context" not in content, f"messaging/ imports context in {py_file}"
+
+class TestArchitectureViolationsAreCaught:
+    """Prove that deliberately introduced boundary violations are caught."""
+
+    @pytest.mark.architecture
+    def test_detects_forbidden_core_import(self, tmp_path):
+        """A file in core/ importing waxprep.registries must be flagged."""
+        scratch = WAXPREP_ROOT / "core" / "_scratch_violation.py"
+        try:
+            scratch.write_text("from waxprep.registries.channel import ChannelRegistry\n")
+            imports = waxprep_imports_in_file(scratch)
+            assert any(
+                "waxprep.registries" in module for _fn, module in imports
+            ), "Boundary check must detect core/ importing waxprep.registries"
+        finally:
+            scratch.unlink(missing_ok=True)
+
+    @pytest.mark.architecture
+    def test_detects_forbidden_adapter_import(self, tmp_path):
+        """A file in adapters/ importing waxprep.core must be flagged."""
+        scratch = WAXPREP_ROOT / "adapters" / "_scratch_violation.py"
+        try:
+            scratch.write_text("from waxprep.core.protocols import Message\n")
+            imports = waxprep_imports_in_file(scratch)
+            assert any(
+                "waxprep.core" in module for _fn, module in imports
+            ), "Boundary check must detect adapters/ importing waxprep.core"
+        finally:
+            scratch.unlink(missing_ok=True)
+
+    @pytest.mark.architecture
+    def test_detects_forbidden_messaging_adapter_import(self, tmp_path):
+        """A file in messaging/ importing waxprep.adapters must be flagged."""
+        scratch = WAXPREP_ROOT / "messaging" / "_scratch_violation.py"
+        try:
+            scratch.write_text("from waxprep.adapters.fake_channel import FakeChannelAdapter\n")
+            imports = waxprep_imports_in_file(scratch)
+            assert any(
+                "waxprep.adapters" in module for _fn, module in imports
+            ), "Boundary check must detect messaging/ importing waxprep.adapters"
+        finally:
+            scratch.unlink(missing_ok=True)
