@@ -3,6 +3,8 @@ name: Quality Gate
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,9 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 0. Setup — single uv sync + shared package cache (run once)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   quality-setup:
     name: Prepare environment (single uv sync + shared cache)
     runs-on: ubuntu-latest
@@ -49,9 +51,9 @@ jobs:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 1. Quality Gate — unified blocking static analysis (fast failure)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   quality-gate:
     name: Quality Gate — Blocking Static Analysis
     needs: [quality-setup]
@@ -94,16 +96,14 @@ jobs:
           uv run import-linter lint --no-logo
           echo "==> semgrep (security)"
           uv run semgrep --config auto --error src/
-          # pip-audit: known transitive vulnerability in wcmatch 8.5.2 (GHSA-53pm-wgxf-c6qf)
-          # semgrep pins wcmatch < 9; this is tracked as a known advisory.
-          # Making this advisory-only for now until semgrep updates its dependency.
-          set +e
-          uv run pip-audit || true
-          set -e
+          # pip-audit: known transitive vulnerability in wcmatch 8.5.2 (GHSA-53pm-wgxf-c6qf).
+          # semgrep constrains wcmatch to < 9, so the fix (wcmatch>=11.2) cannot be installed yet.
+          # Only this tracked vulnerability is ignored; every other vulnerability still fails the gate.
+          uv run pip-audit --ignore-vuln GHSA-53pm-wgxf-c6qf
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 2. Tests — all categories in parallel (matrix)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   tests:
     name: Tests — ${{ matrix.category }}
     needs: [quality-setup]
@@ -137,9 +137,9 @@ jobs:
       - name: Run ${{ matrix.category }} tests
         run: uv run pytest tests/${{ matrix.category }} -m ${{ matrix.category }} --tb=short -o addopts=""
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 3. Coverage gate — full suite, 100% threshold (never lower)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   coverage-gate:
     name: Coverage Gate — Full Suite (100%)
     needs: [quality-setup]
@@ -182,9 +182,9 @@ jobs:
           path: coverage.xml
           retention-days: 30
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 4. Smoke test — app boot + healthcheck (blocking)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   smoke-test:
     name: Smoke Test — App Boot + Healthcheck
     needs: [quality-setup]
@@ -215,15 +215,27 @@ jobs:
         run: |
           uv run uvicorn waxprep.main:get_app --host 127.0.0.1 --port 8001 &
           SERVER_PID=$!
-          sleep 3
-          curl -sf http://127.0.0.1:8001/health/liveness || { kill $SERVER_PID 2>/dev/null; echo "Liveness check failed"; exit 1; }
-          curl -sf http://127.0.0.1:8001/health/readiness || { kill $SERVER_PID 2>/dev/null; echo "Readiness check failed"; exit 1; }
-          kill $SERVER_PID 2>/dev/null
+          # Poll for readiness instead of relying on a fixed sleep.
+          READY=0
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8001/health/liveness >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ]; then
+            kill "$SERVER_PID" 2>/dev/null || true
+            echo "Liveness check failed: app did not become ready within 30 seconds"
+            exit 1
+          fi
+          curl -sf http://127.0.0.1:8001/health/readiness || { kill "$SERVER_PID" 2>/dev/null; echo "Readiness check failed"; exit 1; }
+          kill "$SERVER_PID" 2>/dev/null
           echo "Smoke test PASSED: app boots and both health endpoints respond"
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 5a. Pyright — advisory (does not fail the gate)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   pyright:
     name: Pyright — Advisory Type Check
     needs: [quality-setup]
@@ -253,9 +265,9 @@ jobs:
       - name: Run pyright (advisory — does not block)
         run: uv run pyright src/ || true
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 5b. Vulture — advisory dead code report (does not fail the gate)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   vulture:
     name: Vulture — Advisory Dead Code Report
     needs: [quality-setup]
@@ -285,9 +297,9 @@ jobs:
       - name: Run vulture (advisory — does not block)
         run: uv run vulture src/waxprep/ || true
 
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 6. Gate aggregate — overall status (final gate decision, blocking only)
-  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   gate-aggregate:
     name: Gate Aggregate — Overall Status
     needs: [quality-setup, quality-gate, tests, coverage-gate, smoke-test]
@@ -308,10 +320,13 @@ jobs:
           echo "| smoke-test | ${{ needs.smoke-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Advisory (non-blocking)" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| pyright | ${{ needs.pyright.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| vulture | ${{ needs.vulture.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following jobs run independently of the aggregate and do not block the gate:" >> $GITHUB_STEP_SUMMARY
+          echo "- pyright (advisory type check)" >> $GITHUB_STEP_SUMMARY
+          echo "- vulture (advisory dead code report)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Their results are reported in their own job summaries, not here, so an advisory" >> $GITHUB_STEP_SUMMARY
+          echo "failure can never be mistaken for a blocking gate failure." >> $GITHUB_STEP_SUMMARY
       - name: Fail gate if any blocking job failed or was cancelled
         if: >
           contains(needs.*.result, 'failure') ||
