@@ -31,7 +31,7 @@ jobs:
 
       - name: Restore uv package cache
         id: cache-restore
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        uses: actions/cache/restore@29a23cd87e65e7fd5c342a7c8fbe0a9b3c2d1e50
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -44,7 +44,7 @@ jobs:
 
       - name: Save uv package cache
         if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        uses: actions/cache/save@29a23cd87e65e7fd5c342a7c8fbe0a9b3c2d1e50
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -68,7 +68,7 @@ jobs:
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        uses: actions/cache/restore@29a23cd87e65e7fd5c342a7c8fbe0a9b3c2d1e50
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -124,7 +124,7 @@ jobs:
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        uses: actions/cache/restore@29a23cd87e65e7fd5c342a7c8fbe0a9b3c2d1e50
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -156,7 +156,7 @@ jobs:
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        uses: actions/cache/restore@29a23cd87e65e7fd5c342a7c8fbe0a9b3c2d1e50
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -201,7 +201,7 @@ jobs:
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        uses: actions/cache/restore@29a23cd87e65e7fd5c342a7c8fbe0a9b3c2d1e50
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -240,7 +240,7 @@ jobs:
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        uses: actions/cache/restore@29a23cd87e65e7fd5c342a7c8fbe0a9b3c2d1e50
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -272,7 +272,7 @@ jobs:
           enable-cache: true
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
+        uses: actions/cache/restore@29a23cd87e65e7fd5c342a7c8fbe0a9b3c2d1e50
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
