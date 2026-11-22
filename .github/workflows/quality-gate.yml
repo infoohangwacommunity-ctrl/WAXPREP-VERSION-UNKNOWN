@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: \( {{ github.workflow }}- \){{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -95,11 +95,11 @@ jobs:
         run: uv sync --extra dev
       - name: Run full suite with coverage
         run: |
-          uv run pytest tests/ \\
-            --cov=waxprep \\
-            --cov-report=xml \\
-            --cov-report=term-missing \\
-            --cov-fail-under=100 \\
+          uv run pytest tests/ \
+            --cov=waxprep \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=100 \
             --tb=short
       - name: Upload coverage report
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
@@ -172,6 +172,12 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs:
+      - quality-setup
+      - quality-gate
+      - tests
+      - coverage-gate
+      - smoke-test
     steps:
       - name: Report overall gate status
         run: |
@@ -179,7 +185,7 @@ jobs:
           echo "" >> ${{ github.step_summary }}
           echo "| Job | Status |" >> ${{ github.step_summary }}
           echo "|-----|--------|" >> ${{ github.step_summary }}
-          
+
           # Check quality-setup
           if [ "${{ needs.quality-setup.result }}" = "success" ]; then
             echo "| quality-setup | PASSED |" >> ${{ github.step_summary }}
@@ -190,7 +196,7 @@ jobs:
           else
             echo "| quality-setup | SKIPPED |" >> ${{ github.step_summary }}
           fi
-          
+
           # Check quality-gate
           if [ "${{ needs.quality-gate.result }}" = "success" ]; then
             echo "| quality-gate | PASSED |" >> ${{ github.step_summary }}
@@ -201,7 +207,7 @@ jobs:
           else
             echo "| quality-gate | SKIPPED |" >> ${{ github.step_summary }}
           fi
-          
+
           # Check tests
           if [ "${{ needs.tests.result }}" = "success" ]; then
             echo "| tests | PASSED |" >> ${{ github.step_summary }}
@@ -212,7 +218,7 @@ jobs:
           else
             echo "| tests | SKIPPED |" >> ${{ github.step_summary }}
           fi
-          
+
           # Check coverage-gate
           if [ "${{ needs.coverage-gate.result }}" = "success" ]; then
             echo "| coverage-gate | PASSED |" >> ${{ github.step_summary }}
@@ -223,7 +229,7 @@ jobs:
           else
             echo "| coverage-gate | SKIPPED |" >> ${{ github.step_summary }}
           fi
-          
+
           # Check smoke-test
           if [ "${{ needs.smoke-test.result }}" = "success" ]; then
             echo "| smoke-test | PASSED |" >> ${{ github.step_summary }}
@@ -234,67 +240,31 @@ jobs:
           else
             echo "| smoke-test | SKIPPED |" >> ${{ github.step_summary }}
           fi
-          
+
           echo "" >> ${{ github.step_summary }}
           echo "### Gate Result" >> ${{ github.step_summary }}
-          
+
           # Determine final result
           FAILURES=0
-          if [ "${{ needs.quality-setup.result }}" = "failure" ] || [ "${{ needs.quality-setup.result }}" = "cancelled" ]; then
+          if [ "\( {{ needs.quality-setup.result }}" = "failure" ] || [ " \){{ needs.quality-setup.result }}" = "cancelled" ]; then
             FAILURES=$((FAILURES+1))
           fi
-          if [ "${{ needs.quality-gate.result }}" = "failure" ] || [ "${{ needs.quality-gate.result }}" = "cancelled" ]; then
+          if [ "\( {{ needs.quality-gate.result }}" = "failure" ] || [ " \){{ needs.quality-gate.result }}" = "cancelled" ]; then
             FAILURES=$((FAILURES+1))
           fi
-          if [ "${{ needs.tests.result }}" = "failure" ] || [ "${{ needs.tests.result }}" = "cancelled" ]; then
+          if [ "\( {{ needs.tests.result }}" = "failure" ] || [ " \){{ needs.tests.result }}" = "cancelled" ]; then
             FAILURES=$((FAILURES+1))
           fi
-          if [ "${{ needs.coverage-gate.result }}" = "failure" ] || [ "${{ needs.coverage-gate.result }}" = "cancelled" ]; then
+          if [ "\( {{ needs.coverage-gate.result }}" = "failure" ] || [ " \){{ needs.coverage-gate.result }}" = "cancelled" ]; then
             FAILURES=$((FAILURES+1))
           fi
-          if [ "${{ needs.smoke-test.result }}" = "failure" ] || [ "${{ needs.smoke-test.result }}" = "cancelled" ]; then
+          if [ "\( {{ needs.smoke-test.result }}" = "failure" ] || [ " \){{ needs.smoke-test.result }}" = "cancelled" ]; then
             FAILURES=$((FAILURES+1))
           fi
-          
+
           if [ $FAILURES -gt 0 ]; then
             echo "One or more blocking jobs failed or were cancelled. Gate FAILED." >> ${{ github.step_summary }}
             exit 1
           else
             echo "All blocking jobs passed. Gate PASSED." >> ${{ github.step_summary }}
           fi
-
-  pyright:
-    name: Pyright — Advisory Type Check
-    needs: [quality-setup]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
-        with:
-          python-version: '3.14'
-          enable-cache: false
-      - name: Install dependencies
-        run: uv sync --extra dev
-      - name: Run pyright (advisory — does not block)
-        run: uv run pyright src/ || true
-
-  vulture:
-    name: Vulture — Advisory Dead Code Report
-    needs: [quality-setup]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
-        with:
-          python-version: '3.14'
-          enable-cache: false
-      - name: Install dependencies
-        run: uv sync --extra dev
-      - name: Run vulture (advisory — does not block)
-        run: uv run vulture src/waxprep/ || true
