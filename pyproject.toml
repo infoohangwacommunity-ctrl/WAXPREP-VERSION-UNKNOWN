@@ -108,6 +108,7 @@ target-version = "py314"
 preview = true  # Enable preview rules (RUF029 unused-async catches real issues)
 
 [tool.ruff.lint]
+ignore = ["E501"]  # Allow long lines in tables for documentation
 select = [
     "E",    # pycodestyle errors
     "F",    # pyflakes

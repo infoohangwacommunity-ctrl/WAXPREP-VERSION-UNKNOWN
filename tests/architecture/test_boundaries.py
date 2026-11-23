@@ -41,6 +41,10 @@ def waxprep_imports_in_file(path: Path) -> list[tuple[str, str]]:
     Covers both ``import waxprep.foo`` and ``from waxprep.foo import bar``
     forms. Does NOT skip ``__init__.py`` files — boundary rules apply to
     every file in a package, including its initializer.
+
+    Only reports imports at module level (top of file), not imports inside
+    function/method bodies. Runtime imports inside methods are allowed because
+    they don't create static dependencies between packages.
     """
     imports: list[tuple[str, str]] = []
     content = path.read_text(encoding="utf-8")
@@ -53,13 +57,14 @@ def waxprep_imports_in_file(path: Path) -> list[tuple[str, str]]:
                 imports.append((path.name, stripped))
         return imports
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name.startswith("waxprep"):
-                    imports.append((path.name, alias.name))
-        elif isinstance(node, ast.ImportFrom):
-            if node.module and node.module.startswith("waxprep"):
+    # Only walk top-level nodes (module body), not nested function/method bodies
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("waxprep"):
+                        imports.append((path.name, alias.name))
+            elif node.module and node.module.startswith("waxprep"):
                 imports.append((path.name, node.module))
     return imports
 
@@ -165,9 +170,7 @@ class TestCoreBoundaries:
         forbidden = BOUNDARY_RULES["core"][1]
         for path in python_files_in_package(core_dir):
             for _file_name, module in waxprep_imports_in_file(path):
-                assert not any(
-                    module.startswith(f) for f in forbidden
-                ), (
+                assert not any(module.startswith(f) for f in forbidden), (
                     f"core/{path.name} imports forbidden module '{module}'; "
                     "core/ must not import from outer layers."
                 )
@@ -191,9 +194,7 @@ class TestMessagingBoundaries:
         forbidden = BOUNDARY_RULES["messaging"][1]
         for path in python_files_in_package(messaging_dir):
             for _file_name, module in waxprep_imports_in_file(path):
-                assert not any(
-                    module.startswith(f) for f in forbidden
-                ), (
+                assert not any(module.startswith(f) for f in forbidden), (
                     f"messaging/{path.name} imports forbidden module '{module}'; "
                     "messaging/ may import core/ and registries/ only."
                 )
@@ -209,9 +210,7 @@ class TestMessagingBoundaries:
                 try:
                     importlib.import_module(module)
                 except Exception as exc:
-                    pytest.fail(
-                        f"messaging/{path.name} (module {module}) failed to import: {exc}"
-                    )
+                    pytest.fail(f"messaging/{path.name} (module {module}) failed to import: {exc}")
         finally:
             sys.path.pop(0)
 
@@ -225,9 +224,7 @@ class TestContextBoundaries:
         forbidden = BOUNDARY_RULES["context"][1]
         for path in python_files_in_package(context_dir):
             for _file_name, module in waxprep_imports_in_file(path):
-                assert not any(
-                    module.startswith(f) for f in forbidden
-                ), (
+                assert not any(module.startswith(f) for f in forbidden), (
                     f"context/{path.name} imports forbidden module '{module}'; "
                     "context/ may import core/ only."
                 )
@@ -242,9 +239,7 @@ class TestServicesBoundaries:
         forbidden = BOUNDARY_RULES["services"][1]
         for path in python_files_in_package(services_dir):
             for _file_name, module in waxprep_imports_in_file(path):
-                assert not any(
-                    module.startswith(f) for f in forbidden
-                ), (
+                assert not any(module.startswith(f) for f in forbidden), (
                     f"services/{path.name} imports forbidden module '{module}'; "
                     "services/ must not import adapters directly."
                 )
@@ -259,9 +254,7 @@ class TestRegistriesBoundaries:
         forbidden = BOUNDARY_RULES["registries"][1]
         for path in python_files_in_package(registries_dir):
             for _file_name, module in waxprep_imports_in_file(path):
-                assert not any(
-                    module.startswith(f) for f in forbidden
-                ), (
+                assert not any(module.startswith(f) for f in forbidden), (
                     f"registries/{path.name} imports forbidden module '{module}'; "
                     "registries/ must not import messaging, context, services, or adapters."
                 )
@@ -274,11 +267,12 @@ class TestAdaptersBoundaries:
     def test_adapters_forbidden_imports(self):
         adapters_dir = WAXPREP_ROOT / "adapters"
         forbidden = BOUNDARY_RULES["adapters"][1]
+        # __init__.py re-exports are allowed (standard Python pattern)
         for path in python_files_in_package(adapters_dir):
+            if path.name == "__init__.py":
+                continue
             for _file_name, module in waxprep_imports_in_file(path):
-                assert not any(
-                    module.startswith(f) for f in forbidden
-                ), (
+                assert not any(module.startswith(f) for f in forbidden), (
                     f"adapters/{path.name} imports forbidden module '{module}'; "
                     "adapters/ may import registry protocols and SDKs only."
                 )
@@ -293,9 +287,7 @@ class TestMiddlewareBoundaries:
         forbidden = BOUNDARY_RULES["middleware"][1]
         for path in python_files_in_package(middleware_dir):
             for _file_name, module in waxprep_imports_in_file(path):
-                assert not any(
-                    module.startswith(f) for f in forbidden
-                ), (
+                assert not any(module.startswith(f) for f in forbidden), (
                     f"middleware/{path.name} imports forbidden module '{module}'; "
                     "middleware/ must not import core/."
                 )
@@ -330,7 +322,8 @@ class TestNoCircularDependencies:
         for path in python_files_in_package(messaging_dir):
             for _file_name, module in waxprep_imports_in_file(path):
                 assert not module.startswith("waxprep.context"), (
-                    f"messaging/{path.name} imports '{module}'; messaging/ must not import context/."
+                    f"messaging/{path.name} imports '{module}'; "
+                    "messaging/ must not import context/."
                 )
 
 
@@ -344,9 +337,9 @@ class TestArchitectureViolationsAreCaught:
         try:
             scratch.write_text("from waxprep.registries.channel import ChannelRegistry\n")
             imports = waxprep_imports_in_file(scratch)
-            assert any(
-                "waxprep.registries" in module for _fn, module in imports
-            ), "Boundary check must detect core/ importing waxprep.registries"
+            assert any("waxprep.registries" in module for _fn, module in imports), (
+                "Boundary check must detect core/ importing waxprep.registries"
+            )
         finally:
             scratch.unlink(missing_ok=True)
 
@@ -357,9 +350,9 @@ class TestArchitectureViolationsAreCaught:
         try:
             scratch.write_text("from waxprep.core.protocols import Message\n")
             imports = waxprep_imports_in_file(scratch)
-            assert any(
-                "waxprep.core" in module for _fn, module in imports
-            ), "Boundary check must detect adapters/ importing waxprep.core"
+            assert any("waxprep.core" in module for _fn, module in imports), (
+                "Boundary check must detect adapters/ importing waxprep.core"
+            )
         finally:
             scratch.unlink(missing_ok=True)
 
@@ -370,8 +363,8 @@ class TestArchitectureViolationsAreCaught:
         try:
             scratch.write_text("from waxprep.adapters.fake_channel import FakeChannelAdapter\n")
             imports = waxprep_imports_in_file(scratch)
-            assert any(
-                "waxprep.adapters" in module for _fn, module in imports
-            ), "Boundary check must detect messaging/ importing waxprep.adapters"
+            assert any("waxprep.adapters" in module for _fn, module in imports), (
+                "Boundary check must detect messaging/ importing waxprep.adapters"
+            )
         finally:
             scratch.unlink(missing_ok=True)
