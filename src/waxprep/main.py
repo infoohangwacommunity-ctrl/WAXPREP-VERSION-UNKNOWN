@@ -10,7 +10,6 @@ Includes:
 - Composition root for Stage 03 services (when added)
 """
 
-import types
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import cast
@@ -299,9 +298,6 @@ async def readiness() -> JSONResponse:
             },
         },
     )
-
-
-
 
 
 # Root endpoint

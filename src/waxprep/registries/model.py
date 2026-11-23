@@ -25,7 +25,7 @@ class ModelAdapter(Protocol):
 class ModelRegistry(BaseRegistry):
     """Registry for model adapters."""
 
-    def register(self, name: str, item: ModelAdapter) -> None:
+    def register(self, name: str, item: object) -> None:
         """Register a model adapter. Validates protocol compliance."""
         if not hasattr(item, "name"):
             raise ValueError("Model adapter must have a 'name' attribute")

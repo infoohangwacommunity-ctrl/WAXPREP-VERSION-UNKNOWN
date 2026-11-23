@@ -4,7 +4,7 @@ Abstract base class for all registries.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, TypeVar
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -19,10 +19,10 @@ class BaseRegistry(ABC):
     """Base registry class. NO hardcoded adapters."""
 
     def __init__(self) -> None:
-        self._items: Dict[str, Any] = {}
+        self._items: dict[str, Any] = {}
 
     @abstractmethod
-    def register(self, name: str, item: T) -> None:  # noqa: V107
+    def register(self, name: str, item: object) -> None:  # noqa: V107
         """Register an item. Must validate before registering."""
 
     def get(self, name: str) -> Any:

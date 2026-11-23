@@ -25,7 +25,7 @@ class Tool(Protocol):
 class ToolRegistry(BaseRegistry):
     """Registry for tools."""
 
-    def register(self, name: str, item: Tool) -> None:
+    def register(self, name: str, item: object) -> None:
         """Register a tool. Validates protocol compliance."""
         if not hasattr(item, "name"):
             raise ValueError("Tool must have a 'name' attribute")

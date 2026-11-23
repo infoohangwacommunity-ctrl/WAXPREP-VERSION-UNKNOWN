@@ -7,7 +7,6 @@ idempotency.
 """
 
 import asyncio
-from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -66,6 +65,3 @@ class TestLifespan:
             assert main._app_state.tool_registry is None
 
         asyncio.run(_run())
-
-
-

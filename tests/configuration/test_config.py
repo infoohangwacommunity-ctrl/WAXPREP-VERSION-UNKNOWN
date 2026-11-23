@@ -4,8 +4,6 @@ Verify configuration values are configurable via environment variables.
 Some defaults are intentional development defaults, not forbidden hardcoding.
 """
 
-import os
-
 import pytest
 
 from waxprep.config import settings

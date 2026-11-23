@@ -25,7 +25,7 @@ class ChannelAdapter(Protocol):
 class ChannelRegistry(BaseRegistry):
     """Registry for channel adapters."""
 
-    def register(self, name: str, item: ChannelAdapter) -> None:
+    def register(self, name: str, item: object) -> None:
         """Register a channel adapter. Validates protocol compliance."""
         if not hasattr(item, "name"):
             raise ValueError("Channel adapter must have a 'name' attribute")

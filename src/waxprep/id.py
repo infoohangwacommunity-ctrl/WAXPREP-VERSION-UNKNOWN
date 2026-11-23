@@ -17,16 +17,22 @@ Usage:
     # Returns: "01936f4a-7b21-7c31-9e82-8a45d7c612ab"
 """
 
+# uuid7 may not be available on all Python versions
+# We try to import it, falling back to uuid4 if not available
+from uuid import UUID
+
+
+def _fallback_uuid7() -> UUID:
+    """Fallback UUID generation using uuid4 when uuid7 is unavailable."""
+    import uuid as _uuid_mod
+
+    return _uuid_mod.uuid4()
+
+
 try:
-    from uuid import UUID
     from uuid7 import uuid7
 except ImportError:
-    # Fallback for Python < 3.14 which doesn't have uuid7 in stdlib
-    from uuid import UUID
-    import uuid as _uuid
-    def uuid7() -> UUID:
-        """Generate a UUIDv7-like identifier using uuid4 as fallback."""
-        return _uuid.uuid4()
+    uuid7 = _fallback_uuid7
 
 
 def generate_id() -> str:

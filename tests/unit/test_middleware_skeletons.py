@@ -191,6 +191,7 @@ class TestRequestIdMiddleware:
         assert called_with[0][0] == "X-Request-ID"
         # Verify it's a valid UUID format
         import uuid
+
         uuid.UUID(called_with[0][1])
 
     @pytest.mark.unit
