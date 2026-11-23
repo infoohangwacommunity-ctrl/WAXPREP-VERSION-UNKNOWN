@@ -25,10 +25,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      - name: Set up Python
+        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        with:
+          python-version: '3.12'
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
-          python-version: '3.12'
           enable-cache: true
 
       - name: Restore uv package cache
@@ -63,10 +66,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      - name: Set up Python
+        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        with:
+          python-version: '3.12'
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
-          python-version: '3.12'
           enable-cache: true
 
       - name: Restore uv package cache
@@ -123,10 +129,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      - name: Set up Python
+        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        with:
+          python-version: '3.12'
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
-          python-version: '3.12'
           enable-cache: true
 
       - name: Restore uv package cache
@@ -155,10 +164,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      - name: Set up Python
+        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        with:
+          python-version: '3.12'
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
-          python-version: '3.12'
           enable-cache: true
 
       - name: Restore uv package cache
@@ -200,10 +212,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      - name: Set up Python
+        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        with:
+          python-version: '3.12'
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
-          python-version: '3.12'
           enable-cache: true
 
       - name: Restore uv package cache
@@ -251,10 +266,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      - name: Set up Python
+        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        with:
+          python-version: '3.12'
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
-          python-version: '3.12'
           enable-cache: true
 
       - name: Restore uv package cache
@@ -283,10 +301,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      - name: Set up Python
+        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        with:
+          python-version: '3.12'
       - name: Set up uv
         uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
         with:
-          python-version: '3.12'
           enable-cache: true
 
       - name: Restore uv package cache
