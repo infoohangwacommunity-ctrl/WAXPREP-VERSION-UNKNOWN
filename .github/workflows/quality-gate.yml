@@ -28,12 +28,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Restore uv package cache
         id: cache-restore
@@ -70,12 +70,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -134,12 +134,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -170,12 +170,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -219,12 +219,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -274,12 +274,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -310,12 +310,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
