@@ -171,8 +171,8 @@ markers = [
     "regression: regression tests (specific bug fixes)",
     "architecture: architecture tests (boundaries, dependencies)",
     "configuration: configuration tests (settings, env)",
+    "asyncio: asyncio tests",
 ]
-asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 strict_markers = true
 addopts = [

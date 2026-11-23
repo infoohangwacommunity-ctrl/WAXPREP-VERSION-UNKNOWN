@@ -16,16 +16,18 @@ from typing import Any
 
 def normalize_text(text: str) -> str:
     """
-    Normalize text for consistent processing.
+    Normalize text by collapsing whitespace.
 
     - Strips leading/trailing whitespace
-    - Collapses multiple spaces
-    - Normalizes unicode (basic)
+    - Collapses multiple spaces into single spaces
 
     Does NOT:
+    - Perform Unicode normalization (NFC/NFKC)
     - Perform spell correction
     - Categorize content
     - Add any domain-specific transformations
+
+    This is a limited text utility, not a comprehensive normalization function.
     """
     if not text:
         return ""
@@ -37,14 +39,22 @@ def normalize_text(text: str) -> str:
 
 def extract_keywords(text: str, min_length: int = 3) -> list[str]:
     """
-    Extract potential keywords from text.
+    Extract potential keywords from ASCII text.
 
-    This is a simple heuristic extractor. It does NOT:
+    This is a simple ASCII-centric heuristic extractor. It does NOT:
     - Use NLP models
     - Categorize into subjects
     - Score by importance
+    - Support non-Latin scripts
+    - Perform linguistic tokenization
+    - Normalize Unicode into canonical forms
 
-    Returns unique words that might be meaningful.
+    Returns unique alphanumeric tokens that might be meaningful.
+
+    LIMITATIONS:
+    - ASCII-only regex ([a-zA-Z0-9]+) excludes many non-Latin scripts
+    - Includes numeric-only tokens (e.g., "123")
+    - Not suitable as a universal student-language understanding mechanism
     """
     if not text:
         return []

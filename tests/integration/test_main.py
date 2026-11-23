@@ -72,8 +72,8 @@ class TestRootEndpoint:
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["message"] == "WaxPrep Foundation - Stages 01-04"
-        assert data["stages"] == ["01", "02", "03", "04"]
+        assert data["message"] == "WaxPrep Foundation"
+        assert data["version"] == "0.1.0"
         assert data["status"] == "running"
 
 
@@ -180,43 +180,67 @@ class TestReadinessErrorPaths:
 
     @pytest.mark.integration
     def test_readiness_fails_when_registries_not_ready(self, client):
-        """Line 212: _registries_ready=False → 503 registries_not_initialized."""
-        with patch("waxprep.main._registries_ready", False):
+        """Verify readiness fails when registries are not ready via app state."""
+        import waxprep.main as main_mod
+
+        original = main_mod._app_state.registries_ready
+        try:
+            main_mod._app_state.registries_ready = False
             response = client.get("/health/readiness")
-        assert response.status_code == 503
-        assert response.json()["reason"] == "registries_not_initialized"
+            assert response.status_code == 503
+            assert response.json()["reason"] == "registries_not_initialized"
+        finally:
+            main_mod._app_state.registries_ready = original
 
     @pytest.mark.integration
     def test_readiness_fails_when_channel_registry_empty(self, client):
-        """Line 219: _channel_registry=None → 503."""
-        with (
-            patch("waxprep.main._registries_ready", True),
-            patch("waxprep.main._channel_registry", None),
-        ):
+        """Verify readiness fails when channel registry is empty via app state."""
+        import waxprep.main as main_mod
+        from waxprep.registries.channel import ChannelRegistry
+
+        channel_registry = ChannelRegistry()
+        # Don't register defaults - should fail
+
+        original_ready = main_mod._app_state.registries_ready
+        original_channel = main_mod._app_state.channel_registry
+        try:
+            main_mod._app_state.registries_ready = True
+            main_mod._app_state.channel_registry = channel_registry
             response = client.get("/health/readiness")
-        assert response.status_code == 503
-        assert response.json()["reason"] == "channel_registry_not_initialized"
+            assert response.status_code == 503
+            assert response.json()["reason"] == "channel_registry_not_initialized"
+        finally:
+            main_mod._app_state.registries_ready = original_ready
+            main_mod._app_state.channel_registry = original_channel
 
     @pytest.mark.integration
     def test_readiness_fails_when_model_registry_empty(self, client):
-        """Line 225: _model_registry=None → 503 (channel must be OK to reach here)."""
+        """Verify readiness fails when model registry is empty via app state."""
+        import waxprep.main as main_mod
         from waxprep.registries.channel import ChannelRegistry
 
         channel_registry = ChannelRegistry()
         channel_registry.register_defaults()  # registers "fake"
 
-        with (
-            patch("waxprep.main._registries_ready", True),
-            patch("waxprep.main._channel_registry", channel_registry),
-            patch("waxprep.main._model_registry", None),
-        ):
+        original_ready = main_mod._app_state.registries_ready
+        original_channel = main_mod._app_state.channel_registry
+        original_model = main_mod._app_state.model_registry
+        try:
+            main_mod._app_state.registries_ready = True
+            main_mod._app_state.channel_registry = channel_registry
+            main_mod._app_state.model_registry = None
             response = client.get("/health/readiness")
-        assert response.status_code == 503
-        assert response.json()["reason"] == "model_registry_not_initialized"
+            assert response.status_code == 503
+            assert response.json()["reason"] == "model_registry_not_initialized"
+        finally:
+            main_mod._app_state.registries_ready = original_ready
+            main_mod._app_state.channel_registry = original_channel
+            main_mod._app_state.model_registry = original_model
 
     @pytest.mark.integration
     def test_readiness_fails_when_tool_registry_empty(self, client):
-        """Line 231: _tool_registry=None → 503 (channel+model must be OK to reach here)."""
+        """Verify readiness fails when tool registry is empty via app state."""
+        import waxprep.main as main_mod
         from waxprep.registries.channel import ChannelRegistry
         from waxprep.registries.model import ModelRegistry
 
@@ -225,15 +249,23 @@ class TestReadinessErrorPaths:
         model_registry = ModelRegistry()
         model_registry.register_defaults()
 
-        with (
-            patch("waxprep.main._registries_ready", True),
-            patch("waxprep.main._channel_registry", channel_registry),
-            patch("waxprep.main._model_registry", model_registry),
-            patch("waxprep.main._tool_registry", None),
-        ):
+        original_ready = main_mod._app_state.registries_ready
+        original_channel = main_mod._app_state.channel_registry
+        original_model = main_mod._app_state.model_registry
+        original_tool = main_mod._app_state.tool_registry
+        try:
+            main_mod._app_state.registries_ready = True
+            main_mod._app_state.channel_registry = channel_registry
+            main_mod._app_state.model_registry = model_registry
+            main_mod._app_state.tool_registry = None
             response = client.get("/health/readiness")
-        assert response.status_code == 503
-        assert response.json()["reason"] == "tool_registry_not_initialized"
+            assert response.status_code == 503
+            assert response.json()["reason"] == "tool_registry_not_initialized"
+        finally:
+            main_mod._app_state.registries_ready = original_ready
+            main_mod._app_state.channel_registry = original_channel
+            main_mod._app_state.model_registry = original_model
+            main_mod._app_state.tool_registry = original_tool
 
 
 # ---------------------------------------------------------------------------

@@ -23,9 +23,6 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
 
-    # Shutdown - configurable, NOT hardcoded
-    shutdown_grace_period: int = Field(default=30)
-
     # Logging
     log_level: str = Field(default="info")
 

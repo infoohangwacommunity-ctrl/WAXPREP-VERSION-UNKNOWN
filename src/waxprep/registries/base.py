@@ -4,7 +4,7 @@ Abstract base class for all registries.
 """
 
 from abc import ABC, abstractmethod
-from typing import TypeVar
+from typing import Any, Dict, TypeVar
 
 T = TypeVar("T")
 
@@ -15,17 +15,17 @@ class DuplicateRegistrationError(ValueError):
     pass
 
 
-class BaseRegistry[T](ABC):
+class BaseRegistry(ABC):
     """Base registry class. NO hardcoded adapters."""
 
     def __init__(self) -> None:
-        self._items: dict[str, T] = {}
+        self._items: Dict[str, Any] = {}
 
     @abstractmethod
     def register(self, name: str, item: T) -> None:  # noqa: V107
         """Register an item. Must validate before registering."""
 
-    def get(self, name: str) -> T:
+    def get(self, name: str) -> Any:
         """Get a registered item by name."""
         if name not in self._items:
             raise KeyError(f"No item registered with name: {name}")

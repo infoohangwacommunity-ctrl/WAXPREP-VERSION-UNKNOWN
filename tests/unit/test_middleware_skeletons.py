@@ -1,6 +1,6 @@
 """
-Test Middleware Skeletons - Stage 02
-Prove skeleton middleware classes can be instantiated and have correct signatures.
+Test Middleware - Stage 02
+Prove middleware classes work correctly including RequestIdMiddleware context restoration.
 """
 
 import inspect
@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from waxprep.middleware.base import HeaderSanitizationMiddleware, TimingMiddleware
+from waxprep.middleware.request_id import RequestIdMiddleware
 
 
 class TestTimingMiddleware:
@@ -164,3 +165,79 @@ class TestHeaderSanitizationMiddleware:
 
         assert result is mock_response
         mock_call_next.assert_called_once_with(mock_request)
+
+
+class TestRequestIdMiddleware:
+    """Prove RequestIdMiddleware generates and restores correlation IDs correctly."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_generates_uuid_when_no_header(self):
+        """Prove middleware generates a new UUID when no X-Request-ID header."""
+        middleware = RequestIdMiddleware(app=None)
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers.get.return_value = None
+
+        mock_response = MagicMock(spec=Response)
+        mock_call_next = AsyncMock(return_value=mock_response)
+
+        result = await middleware.dispatch(mock_request, mock_call_next)
+
+        assert result is mock_response
+        # Verify X-Request-ID header was set
+        mock_response.headers.__setitem__.assert_called()
+        called_with = mock_response.headers.__setitem__.call_args
+        assert called_with[0][0] == "X-Request-ID"
+        # Verify it's a valid UUID format
+        import uuid
+        uuid.UUID(called_with[0][1])
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_propagates_existing_uuid_header(self):
+        """Prove middleware propagates valid X-Request-ID header."""
+        middleware = RequestIdMiddleware(app=None)
+
+        existing_id = "12345678-1234-5678-1234-567812345678"
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers.get.return_value = existing_id
+
+        mock_response = MagicMock(spec=Response)
+        mock_call_next = AsyncMock(return_value=mock_response)
+
+        result = await middleware.dispatch(mock_request, mock_call_next)
+
+        assert result is mock_response
+        # Verify X-Request-ID header was set with the existing ID
+        mock_response.headers.__setitem__.assert_called()
+        called_with = mock_response.headers.__setitem__.call_args
+        assert called_with[0][0] == "X-Request-ID"
+        assert called_with[0][1] == existing_id
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_context_restored_after_request(self):
+        """Prove middleware restores previous context after request completes.
+
+        This verifies P2-12 fix: context-variable token restoration.
+        """
+        import structlog.contextvars
+
+        middleware = RequestIdMiddleware(app=None)
+
+        # Set a pre-existing context value
+        previous_id = "previous-context-id"
+        structlog.contextvars.bind_contextvars(request_id=previous_id)
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers.get.return_value = None  # No incoming ID
+
+        mock_response = MagicMock(spec=Response)
+        mock_call_next = AsyncMock(return_value=mock_response)
+
+        await middleware.dispatch(mock_request, mock_call_next)
+
+        # After dispatch, context should be restored to previous value
+        context = structlog.contextvars.get_contextvars()
+        assert context.get("request_id") == previous_id

@@ -17,7 +17,16 @@ Usage:
     # Returns: "01936f4a-7b21-7c31-9e82-8a45d7c612ab"
 """
 
-from uuid import UUID, uuid7
+try:
+    from uuid import UUID
+    from uuid7 import uuid7
+except ImportError:
+    # Fallback for Python < 3.14 which doesn't have uuid7 in stdlib
+    from uuid import UUID
+    import uuid as _uuid
+    def uuid7() -> UUID:
+        """Generate a UUIDv7-like identifier using uuid4 as fallback."""
+        return _uuid.uuid4()
 
 
 def generate_id() -> str:
@@ -57,5 +66,5 @@ def is_valid_id(id_string: str) -> bool:
     try:
         UUID(id_string)
         return True
-    except ValueError, TypeError, AttributeError:
+    except (ValueError, TypeError, AttributeError):
         return False

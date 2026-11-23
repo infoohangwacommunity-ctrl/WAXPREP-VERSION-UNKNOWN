@@ -36,7 +36,14 @@ lockfile-check:
 
 # Run pip-audit dependency vulnerability scan
 pip-audit:
-	uv run pip-audit
+	# PIP-AUDIT EXCEPTION (tracked):
+	#   Vulnerability: GHSA-53pm-wgxf-c6qf (wcmatch 8.5.2)
+	#   Owner:         WaxPrep Engineering Team
+	#   Justification: semgrep constrains wcmatch to < 9; the fix (wcmatch>=11.2)
+	#                  cannot be installed until semgrep updates its wcmatch bound.
+	#   Review date:   2026-12-22 (reassess when semgrep updates or wcmatch is pinned)
+	# Only this tracked vulnerability is ignored; every other vulnerability still fails.
+	uv run pip-audit --ignore-vuln GHSA-53pm-wgxf-c6qf
 
 # Run all tests
 test:

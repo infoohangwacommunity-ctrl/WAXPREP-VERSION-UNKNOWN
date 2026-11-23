@@ -134,7 +134,6 @@ BOUNDARY_RULES: dict[str, tuple[list[str], list[str]]] = {
             "waxprep.messaging",
             "waxprep.context",
             "waxprep.services",
-            "waxprep.adapters",
         ],
     ),
     "adapters": (

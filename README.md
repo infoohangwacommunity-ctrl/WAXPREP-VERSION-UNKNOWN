@@ -1,13 +1,13 @@
-# WaxPrep Foundation - Stages 01-07
+# WaxPrep Foundation
 
-**IMPORTANT: This repository contains Stages 01 through 07 (engineering foundation, static analysis, and the automated quality gate).**
+**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 07).**
 
 Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Pip-audit runs with a single tracked exception (GHSA-53pm-wgxf-c6qf); all other dependency vulnerabilities fail the gate.
 
 **Stage 07 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
 ## Stage 01: Programming Language
-- Python 3.14+ (compatibility proven, not assumed)
+- Python 3.14+ (tested on 3.14; compatibility with later versions not proven)
 - uv for dependency management
 - Pydantic v2 for data validation
 - Static type checking (mypy/pyright)
@@ -16,25 +16,56 @@ Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.
 - ASGI application (FastAPI + Uvicorn)
 - Registry pattern with fake adapters (proves architecture)
 - Explicit registry registration (no import-time side effects)
-- Graceful shutdown (ASGI server-managed, lifespan cleanup)
+- Graceful shutdown (ASGI server-managed via lifespan; no custom signal handler)
+- Application state isolated in AppState container (not module-global)
 - Health endpoints (liveness ≠ readiness, readiness checks registry state)
-- Structured logging with correlation IDs (middleware-bound)
+- Structured logging with correlation IDs (middleware-bound, context properly restored)
 - Request ID validation (incoming IDs validated before trust)
-- Global exception handling (no stack traces leaked)
+- Global exception handling (no stack traces leaked; HTTP exceptions sanitized)
 
 ## Stage 03: Project Architecture and Structural Boundaries
 
 - Package structure with explicit domain boundaries
 - `core/` - Pure logic & protocols (no infrastructure imports)
-- `messaging/` - Message handling & conversation flow (placeholder)
-- `context/` - Understanding the learner (open land, placeholder)
-- `services/` - Light orchestration (placeholder)
-- Boundary rules documented and enforced
+- `messaging/` - Message handling & conversation flow (placeholder - no implementation)
+- `context/` - Understanding the learner (placeholder - no implementation)
+- `services/` - Light orchestration (placeholder - no implementation)
+- Boundary rules documented and enforced via import-linter
 - Dependency direction: Outer → Inner. Never the reverse.
 - "Land not house" philosophy - architecture enables future builds without dictating them
 
 ### Package Structure (Stage 03)
 
+```
+src/waxprep/
+├── main.py              # ASGI app, health endpoints, lifespan, middleware
+├── config.py            # Settings (configurable defaults, not hardcoded)
+├── id.py                # UUIDv7 identity generation (Stage 04 identity foundation)
+├── core/                # Pure logic & protocols (NO infrastructure imports)
+│   ├── __init__.py      # Boundary rules, purpose statement
+│   ├── protocols.py     # Message/MessageHandler/ContextProvider protocols
+│   └── pure.py          # Pure functions (normalize_text, extract_keywords, etc.)
+├── messaging/           # Message handling & conversation flow (placeholder - no implementation)
+│   └── __init__.py      # Boundary rules, reserved architectural area
+├── context/             # Understanding the learner (placeholder - no implementation)
+│   └── __init__.py      # Boundary rules, reserved architectural area
+├── services/            # Light orchestration (placeholder - no implementation)
+│   └── __init__.py      # Boundary rules, reserved architectural area
+├── middleware/          # Request ID and base middleware patterns
+│   ├── __init__.py
+│   ├── request_id.py    # Correlation ID middleware
+│   └── base.py          # Middleware skeletons (unimplemented - not active protection)
+├── registries/          # Channel, Model, Tool registries
+│   ├── __init__.py
+│   ├── base.py          # BaseRegistry[T] - generic registry
+│   ├── channel.py       # ChannelRegistry + ChannelAdapter protocol
+│   ├── model.py         # ModelRegistry + ModelAdapter protocol
+│   └── tool.py          # ToolRegistry + Tool protocol
+└── adapters/            # Fake adapter implementations (source of truth)
+    ├── __init__.py
+    ├── fake_channel.py  # FakeChannelAdapter
+    ├── fake_model.py    # FakeModelAdapter
+    └── fake_tool.py     # FakeTool
 ```
 src/waxprep/
 ├── main.py              # ASGI app, health endpoints, lifespan, middleware
@@ -117,16 +148,18 @@ tests/
 Outer layers (infrastructure, orchestration) may import Inner layers.
 Inner layers (core, protocols) MUST NOT import Outer layers.
 
-messaging/ ──→ core/
+messaging/ ──→ core/, registries/
 context/   ──→ core/
 services/  ──→ core/, messaging/, context/, registries/
-main.py    ──→ services/, messaging/, registries/, middleware/
-adapters/  ──→ registry protocols (NOT core/)
-registries/-→ base, typing (defines protocols that adapters implement)
+main.py    ──→ config, registries, middleware, adapters
+adapters/  ──→ registry protocols (NOT core/, NOT registries/)
+registries/-→ base, typing (defines protocols; imports concrete fakes for defaults)
 core/      ──→ Nothing from waxprep (pure logic only)
 
 NEVER reverse this: core/ must not import from messaging/, services/, adapters/, or anywhere that contains infrastructure details.
 ```
+
+Note: The registry layer contains protocols and imports concrete fake adapters for default registration. This is a deliberate design choice using structural typing (runtime_checkable Protocol). Adapters must NOT import from registries/ - they implement the protocols defined there.
 
 ### Package Naming Rules
 - ❌ NO packages named after student types (e.g., "beginners", "advanced")
@@ -142,9 +175,12 @@ NEVER reverse this: core/ must not import from messaging/, services/, adapters/,
 | `core/` | standard library only | adapters, channels, FastAPI, SDKs, any waxprep.* |
 | `messaging/` | core/, registries/ | concrete adapters, direct SDKs, context/, services/ |
 | `context/` | core/ | messaging/, services/, concrete adapters |
-| `services/` | core/, messaging/, context/, registries/ | (composition root - knows about everything) |
+| `services/` | core/, messaging/, context/, registries/ | adapters directly (use registries) |
 | `main.py` | FastAPI, config, registries, middleware, adapters | core/ (framework-agnostic) |
-| `adapters/` | registry protocols, SDKs | core/, other adapters (except via registries) |
+| `adapters/` | registry protocols (structural typing), SDKs | core/, registries/, other adapters, messaging/, context/, services/ |
+| `registries/` | registries/base, typing | messaging/, context/, services/ |
+
+Adapters depend on registry protocols via structural typing (duck typing). They do not import from the registries/ package.
 
 ### What is NOT included (later stages):
 - ❌ NO WhatsApp handlers
@@ -235,18 +271,37 @@ Consolidated CI quality gate in `.github/workflows/quality-gate.yml`:
 - STAGE_03_ARCHITECTURE.md — Stage 03 architectural decisions and boundaries
 - ARCHITECTURE_BOUNDARIES.md — Package dependency rules and what each layer may import
 
-## NO Hardcoding Rule
-- ❌ NO model names hardcoded
-- ❌ NO API keys hardcoded
-- ❌ NO ports hardcoded
-- ❌ NO timeouts hardcoded
-- ❌ NO grace periods hardcoded
-- ❌ NO channel identifiers hardcoded
-- ❌ NO student levels hardcoded
-- ❌ NO greetings hardcoded
-- ❌ NO keyword routes hardcoded
+## Configuration Policy
 
-All configuration lives in environment variables or test fixtures.
+WaxPrep uses configurable defaults via environment variables (WAXPREP_ prefix).
+
+### What Must Be Configurable
+- Environment name
+- Host binding
+- Port
+- Log level
+
+### What Are Acceptable Fixed Defaults
+- Development defaults (e.g., default log level "info", default environment "development")
+- Standard HTTP status codes
+- UUID validation rules
+- Response structures
+
+### What Is Legacy (Removed)
+- shutdown_grace_period (removed; shutdown is ASGI server-managed)
+
+### What Is Not Hardcoding
+- A configurable default is not a hardcoded value
+- Test constants are not operational hardcoding
+- Architectural invariants (e.g., HTTP methods, status codes) are not configuration
+
+### What Would Be Hardcoding (Forbidden)
+- Operational values that should vary across environments without configuration
+- Model names, API keys, credentials
+- Channel identifiers that should be configurable
+- Student levels, greetings, keyword routes that are domain-specific
+
+Configuration lives in environment variables via Pydantic Settings.
 
 ## Registry Pattern
 
@@ -345,8 +400,9 @@ All configuration uses the `WAXPREP_` prefix to avoid conflicts with sandbox env
 | `WAXPREP_ENVIRONMENT` | development | Environment name (development/testing/production) |
 | `WAXPREP_HOST` | 0.0.0.0 | Bind host |
 | `WAXPREP_PORT` | 8000 | Bind port |
-| `WAXPREP_SHUTDOWN_GRACE_PERIOD` | 30 | Graceful shutdown seconds |
 | `WAXPREP_LOG_LEVEL` | info | Log level (debug/info/warning/error/critical) |
+
+Note: `WAXPREP_SHUTDOWN_GRACE_PERIOD` has been removed. Graceful shutdown is managed by the ASGI server (uvicorn) lifecycle.
 
 ## Health Endpoints
 
@@ -359,9 +415,11 @@ Returns whether the process is alive. Always returns 200 if the app is running.
 
 ### Readiness (`GET /health/readiness`)
 Returns whether the application is ready to serve requests. Checks:
-- Configuration is loaded
+- Configuration has a non-empty environment value
 - Registries are initialized
-- Default adapters are registered
+- Default adapters are registered in each registry
+
+Reports only what the application can independently verify. Does not include middleware status since that is not independently checked.
 
 ```json
 {
@@ -370,8 +428,7 @@ Returns whether the application is ready to serve requests. Checks:
     "configuration": "ok",
     "channel_registry": "ok",
     "model_registry": "ok",
-    "tool_registry": "ok",
-    "correlation_id_middleware": "active"
+    "tool_registry": "ok"
   }
 }
 ```

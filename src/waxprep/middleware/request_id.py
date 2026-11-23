@@ -22,7 +22,7 @@ def _validate_request_id(request_id: str) -> bool:
     try:
         uuid.UUID(request_id)
         return True
-    except ValueError, TypeError, AttributeError:
+    except (ValueError, TypeError, AttributeError):
         return False
 
 
@@ -44,7 +44,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         else:
             request_id = str(uuid.uuid4())
 
-        # Bind to structlog context
+        # Save previous context value and bind new request ID
+        previous_request_id = structlog.contextvars.get_contextvars().get("request_id")
         structlog.contextvars.bind_contextvars(request_id=request_id)
 
         try:
@@ -56,5 +57,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
             return response
         finally:
-            # Clear context after request
-            structlog.contextvars.unbind_contextvars("request_id")
+            # Restore previous context value or remove if none existed
+            if previous_request_id is not None:
+                structlog.contextvars.bind_contextvars(request_id=previous_request_id)
+            else:
+                structlog.contextvars.unbind_contextvars("request_id")

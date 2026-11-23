@@ -22,7 +22,7 @@ class Tool(Protocol):
         ...
 
 
-class ToolRegistry(BaseRegistry[Tool]):
+class ToolRegistry(BaseRegistry):
     """Registry for tools."""
 
     def register(self, name: str, item: Tool) -> None:

@@ -119,12 +119,18 @@ class TestHealthEndpoints:
         assert "checks" in data
 
     @pytest.mark.integration
-    def test_readiness_includes_correlation_id_check(self, client):
-        """Prove readiness reports correlation ID middleware status."""
+    def test_readiness_does_not_include_middleware_check(self, client):
+        """Verify readiness does NOT report unverified middleware status.
+
+        The middleware status was previously reported without independent
+        verification. Now readiness only reports what the application can
+        honestly verify.
+        """
         response = client.get("/health/readiness")
         data = response.json()
         checks = data.get("checks", {})
-        assert "correlation_id_middleware" in checks
+        # Middleware status should not be included
+        assert "correlation_id_middleware" not in checks
 
     @pytest.mark.integration
     def test_liveness_and_readiness_are_different_endpoints(self, client):
@@ -196,8 +202,8 @@ class TestRootEndpoint:
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["message"] == "WaxPrep Foundation - Stages 01-04"
-        assert data["stages"] == ["01", "02", "03", "04"]
+        assert data["message"] == "WaxPrep Foundation"
+        assert data["version"] == "0.1.0"
         assert data["status"] == "running"
 
     @pytest.mark.integration

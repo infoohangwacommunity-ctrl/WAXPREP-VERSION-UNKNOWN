@@ -45,35 +45,37 @@ def pytest_configure(config: pytest.Config) -> None:
 # Global state isolation (Stage 07 — test reliability)
 # ---------------------------------------------------------------------------
 
-# waxprep.main holds module-level globals (_shutting_down, _registries_ready,
-# _channel_registry, _model_registry, _tool_registry) that lifecycle and
-# integration tests mutate. This autouse fixture guarantees each test starts
-# with a clean slate, eliminating test-order coupling and parallel-execution
-# flakiness through shared module state.
+# waxprep.main holds module-level state via AppState (_app_state) that lifecycle
+# and integration tests mutate. This autouse fixture resets the app state before
+# each test to ensure clean slate, eliminating test-order coupling and
+# parallel-execution flakiness through shared module state.
 
 
 @pytest.fixture(autouse=True)
 def _reset_main_globals():
-    """Reset waxprep.main module globals after every test.
+    """Reset waxprep.main module state to clean defaults before each test.
 
     Guarantees test isolation: lifecycle/integration tests cannot poison each
-    other through shared module state. Tests that intentionally mutate globals
-    still work because the fixture restores after each test.
+    other through shared module state. State is reset BEFORE the test, not
+    just restored after.
     """
     import waxprep.main as main
 
-    before = {
-        "_shutting_down": main._shutting_down,
-        "_registries_ready": main._registries_ready,
-        "_channel_registry": main._channel_registry,
-        "_model_registry": main._model_registry,
-        "_tool_registry": main._tool_registry,
-    }
-    try:
-        yield
-    finally:
-        for k, v in before.items():
-            setattr(main, k, v)
+    # Reset to clean defaults BEFORE test
+    main._app_state.shutting_down = False
+    main._app_state.registries_ready = False
+    main._app_state.channel_registry = None
+    main._app_state.model_registry = None
+    main._app_state.tool_registry = None
+
+    yield
+
+    # Reset again after test to ensure clean state for next test
+    main._app_state.shutting_down = False
+    main._app_state.registries_ready = False
+    main._app_state.channel_registry = None
+    main._app_state.model_registry = None
+    main._app_state.tool_registry = None
 
 
 # ---------------------------------------------------------------------------

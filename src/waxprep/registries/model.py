@@ -22,7 +22,7 @@ class ModelAdapter(Protocol):
         ...
 
 
-class ModelRegistry(BaseRegistry[ModelAdapter]):
+class ModelRegistry(BaseRegistry):
     """Registry for model adapters."""
 
     def register(self, name: str, item: ModelAdapter) -> None:

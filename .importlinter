@@ -60,8 +60,8 @@ forbidden_modules =
     waxprep.core
 
 # Contract 5: Adapters must not import concrete outer-layer modules
-# Adapters depend on registry protocols and SDKs only — not on concrete
-# messaging, context, services, or registries modules.
+# Adapters depend on registry protocols (structural typing) and SDKs only.
+# They must NOT import from registries/ (protocols are accessed via duck typing).
 [importlinter:contract:5]
 name = "Adapter outer-layer isolation: adapters must not import concrete outer modules"
 type = forbidden

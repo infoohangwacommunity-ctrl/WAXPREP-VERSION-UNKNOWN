@@ -285,7 +285,7 @@ class TestHeaderSanitizationMiddleware:
 
 class TestBaseRegistryGetError:
     def test_get_raises_keyerror_for_missing_name(self):
-        class ConcreteRegistry(BaseRegistry[str]):
+        class ConcreteRegistry(BaseRegistry):
             def register(self, name: str, item: str) -> None:
                 self._validate_not_duplicate(name)
                 self._items[name] = item
@@ -501,55 +501,52 @@ class TestMainReadinessFailurePaths:
             config_mod.settings.environment = original_env
 
     def test_readiness_fails_when_registries_not_initialized(self, readiness_client):
-        """Line 212: _registries_ready is False → 503."""
+        """Verify readiness fails when registries are not initialized via app state."""
         import waxprep.main as main_mod
 
-        original_ready = main_mod._registries_ready
+        original_ready = main_mod._app_state.registries_ready
         try:
-            main_mod._registries_ready = False
+            main_mod._app_state.registries_ready = False
             response = readiness_client.get("/health/readiness")
             assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
             data = response.json()
             assert data["reason"] == "registries_not_initialized"
         finally:
-            main_mod._registries_ready = original_ready
+            main_mod._app_state.registries_ready = original_ready
 
     def test_readiness_fails_when_channel_not_registered(self, readiness_client):
-        """Line 219: channel 'fake' not registered → 503."""
+        """Verify readiness fails when channel 'fake' not registered."""
         import waxprep.main as main_mod
 
-        main_mod._channel_registry._items.clear()
+        main_mod._app_state.channel_registry._items.clear()
         response = readiness_client.get("/health/readiness")
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         data = response.json()
         assert data["reason"] == "channel_registry_not_initialized"
 
     def test_readiness_fails_when_model_not_registered(self, readiness_client):
-        """Line 225: model 'fake' not registered → 503.
-        Channel is populated (via fixture), model is empty (via fixture)."""
+        """Verify readiness fails when model 'fake' not registered."""
         import waxprep.main as main_mod
         from waxprep.adapters.fake_channel import FakeChannelAdapter
 
         # Channel was cleared by the channel test — re-populate it.
-        # Model stays empty (from fixture) — this is what we're testing.
-        main_mod._channel_registry._items["fake"] = FakeChannelAdapter()
+        # Model stays empty — this is what we're testing.
+        main_mod._app_state.channel_registry._items["fake"] = FakeChannelAdapter()
         response = readiness_client.get("/health/readiness")
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         data = response.json()
         assert data["reason"] == "model_registry_not_initialized"
 
     def test_readiness_fails_when_tool_not_registered(self, readiness_client):
-        """Line 231: tool 'fake_tool' not registered → 503.
-        Channel and model are populated; tool is cleared for this test."""
+        """Verify readiness fails when tool 'fake_tool' not registered."""
         import waxprep.main as main_mod
         from waxprep.adapters.fake_channel import FakeChannelAdapter
         from waxprep.adapters.fake_model import FakeModelAdapter
 
-        # Channel was cleared by the channel test — re-populate it AND model.
-        # Tool is cleared for this test.
-        main_mod._channel_registry._items["fake"] = FakeChannelAdapter()
-        main_mod._model_registry._items["fake"] = FakeModelAdapter()
-        main_mod._tool_registry._items.clear()
+        # Channel and model are populated; tool is cleared for this test.
+        main_mod._app_state.channel_registry._items["fake"] = FakeChannelAdapter()
+        main_mod._app_state.model_registry._items["fake"] = FakeModelAdapter()
+        main_mod._app_state.tool_registry._items.clear()
         response = readiness_client.get("/health/readiness")
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         data = response.json()
@@ -557,29 +554,16 @@ class TestMainReadinessFailurePaths:
 
 
 class TestMainShutdownHandler:
-    def test_shutdown_handler_early_exit_when_already_shutting_down(self):
-        """Lines 262-263: if _shutting_down is True, return immediately."""
+    def test_shutdown_handler_removed(self):
+        """Verify handle_shutdown has been removed - shutdown is ASGI server-managed.
+
+        The custom signal handler was disconnected from actual signal handling
+        and has been removed. Uvicorn manages signals and triggers lifespan shutdown.
+        """
         import waxprep.main as main_mod
 
-        original = main_mod._shutting_down
-        try:
-            main_mod._shutting_down = True
-            main_mod.handle_shutdown(15, None)
-            assert main_mod._shutting_down is True
-        finally:
-            main_mod._shutting_down = original
-
-    def test_shutdown_handler_sets_flag_on_first_call(self):
-        """Lines 265-266: first call sets _shutting_down = True and logs."""
-        import waxprep.main as main_mod
-
-        original = main_mod._shutting_down
-        try:
-            main_mod._shutting_down = False
-            main_mod.handle_shutdown(15, None)
-            assert main_mod._shutting_down is True
-        finally:
-            main_mod._shutting_down = original
+        # Verify the handler no longer exists
+        assert not hasattr(main_mod, "handle_shutdown")
 
 
 class TestMainModuleGuard:

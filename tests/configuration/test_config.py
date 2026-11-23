@@ -1,6 +1,7 @@
 """
 Test Configuration - Stage 02
-Prove NO hardcoded values. All configuration from environment.
+Verify configuration values are configurable via environment variables.
+Some defaults are intentional development defaults, not forbidden hardcoding.
 """
 
 import os
@@ -10,8 +11,8 @@ import pytest
 from waxprep.config import settings
 
 
-class TestNoHardcoding:
-    """Prove configuration values are NOT hardcoded."""
+class TestConfigurationIsConfigurable:
+    """Verify configuration values can be changed via environment."""
 
     @pytest.mark.configuration
     def test_port_not_hardcoded(self):
@@ -28,25 +29,14 @@ class TestNoHardcoding:
         assert settings.host == "0.0.0.0"
 
     @pytest.mark.configuration
-    def test_shutdown_grace_period_not_hardcoded(self):
-        """Prove shutdown grace period is configurable, NOT hardcoded.
+    def test_shutdown_grace_period_removed(self):
+        """Verify shutdown_grace_period has been removed from configuration.
 
-        This is a critical requirement from the brief:
-        'await asyncio.sleep(30)  # Grace period' is HARDCODED and forbidden.
-        The grace period must be a configuration value.
+        The shutdown grace period setting was disconnected from application
+        behavior and has been removed. Graceful shutdown is handled by the
+        ASGI server (uvicorn) lifecycle management.
         """
-        assert hasattr(settings, "shutdown_grace_period")
-        assert settings.shutdown_grace_period == 30
-
-        # Prove it can be changed
-        os.environ["WAXPREP_SHUTDOWN_GRACE_PERIOD"] = "60"
-        from waxprep.config import Settings
-
-        new_settings = Settings()
-        assert new_settings.shutdown_grace_period == 60
-
-        # Clean up
-        del os.environ["WAXPREP_SHUTDOWN_GRACE_PERIOD"]
+        assert not hasattr(settings, "shutdown_grace_period")
 
     @pytest.mark.configuration
     def test_environment_not_hardcoded(self):

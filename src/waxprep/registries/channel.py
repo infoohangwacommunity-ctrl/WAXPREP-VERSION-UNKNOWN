@@ -22,7 +22,7 @@ class ChannelAdapter(Protocol):
         ...
 
 
-class ChannelRegistry(BaseRegistry[ChannelAdapter]):
+class ChannelRegistry(BaseRegistry):
     """Registry for channel adapters."""
 
     def register(self, name: str, item: ChannelAdapter) -> None:
