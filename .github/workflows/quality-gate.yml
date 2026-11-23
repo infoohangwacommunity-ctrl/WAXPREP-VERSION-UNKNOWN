@@ -30,9 +30,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
+          python-version: '3.12'
 
       - name: Restore uv package cache
         id: cache-restore
@@ -71,9 +72,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
+          python-version: '3.12'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -134,9 +136,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
+          python-version: '3.12'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -169,9 +172,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
+          python-version: '3.12'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -217,9 +221,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
+          python-version: '3.12'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -271,9 +276,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
+          python-version: '3.12'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
@@ -306,9 +312,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Set up uv
-        uses: astral-sh/setup-uv@aeb46491c743cadc4cba26bb752a065b9c7593be
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
           enable-cache: true
+          python-version: '3.12'
 
       - name: Restore uv package cache
         uses: actions/cache/restore@v4
