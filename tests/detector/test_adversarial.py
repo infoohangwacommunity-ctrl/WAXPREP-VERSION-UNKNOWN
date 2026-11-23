@@ -87,7 +87,9 @@ def check(message: str) -> str:
         findings = adversarial_detector.scan_file(file_path)
 
         # Should detect the comparison via WHD-001
-        assert any(f.rule_id == "WHD-001" for f in findings), "Ternary with string comparison should be detected"
+        assert any(f.rule_id == "WHD-001" for f in findings), (
+            "Ternary with string comparison should be detected"
+        )
 
     def test_match_statement(
         self,
@@ -118,9 +120,12 @@ def handle(message: str) -> str:
             # Current AST-based detector focuses on if/elif chains
             # This is a known limitation requiring additional pattern matching
             # Documented limitation: match statement not fully detected
-            assert any(f.rule_id in ("WHD-001", "WHD-003", "WHD-006") for f in findings) or \
-                len([f for f in findings if f.rule_id == "WHD-006"]) >= 0, \
+            assert (
+                any(f.rule_id in ("WHD-001", "WHD-003", "WHD-006") for f in findings)
+                or len([f for f in findings if f.rule_id == "WHD-006"]) >= 0
+            ), (
                 "Match/case should at minimum be scanned; if nothing detected, document as limitation"
+            )
 
 
 class TestAdversarialMovedData:
@@ -161,9 +166,9 @@ def check_message(message: str) -> bool:
         # This is a documented limitation - the test verifies AST-only behavior
         # The membership test pattern should be detected if the list is inline
         # Since this uses an import, it's a known cross-file analysis gap
-        assert any(f.rule_id == "WHD-002" for f in findings) or \
-            len(findings) >= 0, \
+        assert any(f.rule_id == "WHD-002" for f in findings) or len(findings) >= 0, (
             "Cross-file import detection is a known limitation requiring data-flow analysis"
+        )
 
     def test_constant_in_config(
         self,
@@ -195,9 +200,9 @@ def is_response_word(text: str) -> bool:
         # The inline list membership should be caught by WHD-002
         # For imported constants, data-flow analysis across files is needed
         # This is a documented limitation - importing from config.py
-        assert any(f.rule_id == "WHD-002" for f in findings) or \
-            len(findings) >= 0, \
+        assert any(f.rule_id == "WHD-002" for f in findings) or len(findings) >= 0, (
             "Cross-file import detection is a known limitation requiring data-flow analysis"
+        )
 
 
 class TestAdversarialHelperIndirection:
@@ -252,9 +257,9 @@ def check(message: str) -> bool:
         # WHD-001 detects direct comparisons in the same function
         # For comparisons through helper chains, call graph analysis is needed
         # This is a documented limitation - the test verifies AST-only behavior
-        assert any(f.rule_id == "WHD-001" for f in findings) or \
-            len(findings) >= 0, \
+        assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0, (
             "Indirect comparisons through helper chains require call graph analysis"
+        )
 
 
 class TestAdversarialVocabularyReplacement:
@@ -310,9 +315,9 @@ def decode(code: str) -> str:
         # when the dictionary variable name suggests a mapping
         # This test uses .get() with a variable key, not a literal
         # Variable key mapping requires semantic analysis - documented limitation
-        assert any(f.rule_id == "WHD-005" for f in findings) or \
-            len(findings) >= 0, \
+        assert any(f.rule_id == "WHD-005" for f in findings) or len(findings) >= 0, (
             "Dictionary lookups with variable keys require semantic analysis"
+        )
 
 
 class TestAdversarialDataStorage:
@@ -373,9 +378,9 @@ topic_keywords:
         # Current YAML inspector uses line-based parsing for simple formats
         # Complex nested YAML structures require full YAML parsing
         # This is a documented limitation - the test verifies current behavior
-        assert any(f.rule_id == "WHD-010" for f in findings) or \
-            len(findings) >= 0, \
+        assert any(f.rule_id == "WHD-010" for f in findings) or len(findings) >= 0, (
             "Complex YAML nested structures require full YAML parsing"
+        )
 
 
 class TestAdversarialObfuscation:
@@ -403,9 +408,9 @@ def check(message: str) -> bool:
         # Dynamic string construction at runtime is harder to detect statically
         # The concatenation happens in a separate statement, making it indirect
         # This is a documented limitation - requires constant propagation analysis
-        assert any(f.rule_id == "WHD-001" for f in findings) or \
-            len(findings) >= 0, \
+        assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0, (
             "Dynamic string construction requires constant propagation analysis"
+        )
 
     def test_variable_indirection(
         self,
@@ -431,9 +436,9 @@ def handle(input_text: str) -> str:
         # Variable indirection requires data-flow tracking
         # The comparison is against 'check' which holds 'word' which holds 'hello'
         # This is a documented limitation - requires alias analysis
-        assert any(f.rule_id == "WHD-001" for f in findings) or \
-            len(findings) >= 0, \
+        assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0, (
             "Variable indirection requires data-flow tracking"
+        )
 
 
 # =============================================================================
@@ -541,9 +546,10 @@ def check(message: str) -> bool:
         # This pattern requires different detection logic
         # The literal "hello" is on the left, message is on the right
         # This is a documented limitation - requires bidirectional analysis
-        assert any(f.rule_id in ("WHD-001", "WHD-002", "WHD-006") for f in findings) or \
-            len(findings) >= 0, \
-            "Reverse membership requires bidirectional pattern analysis"
+        assert (
+            any(f.rule_id in ("WHD-001", "WHD-002", "WHD-006") for f in findings)
+            or len(findings) >= 0
+        ), "Reverse membership requires bidirectional pattern analysis"
 
     def test_mutation_literal_to_variable(
         self,
@@ -569,9 +575,9 @@ def check(message: str) -> bool:
         # Variable-based comparisons require data-flow analysis
         # The literal is not directly in the comparison expression
         # This is a documented limitation - requires constant propagation
-        assert any(f.rule_id == "WHD-001" for f in findings) or \
-            len(findings) >= 0, \
+        assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0, (
             "Variable-based comparisons require data-flow analysis"
+        )
 
 
 # =============================================================================
@@ -633,7 +639,9 @@ def handle_command(command: str) -> str:
         if findings:
             # Any findings should be review-level, not blocking HIGH
             blocking = [f for f in findings if f.blocks_merge and f.severity.value == "HIGH"]
-            assert len(blocking) == 0, "Technical command routing should not produce blocking findings"
+            assert len(blocking) == 0, (
+                "Technical command routing should not produce blocking findings"
+            )
 
 
 # =============================================================================

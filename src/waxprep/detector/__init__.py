@@ -141,7 +141,7 @@ class UniversalHardcodingDetector:
 
         try:
             source = file_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return []
 
         try:
@@ -570,7 +570,9 @@ class UniversalHardcodingDetector:
                             val = node.value.value
                             # Check for word boundary patterns (\b in raw string becomes \x08)
                             # or patterns containing regex-like syntax
-                            has_word_boundary = "\x08" in val  # backspace char from \b in raw string
+                            has_word_boundary = (
+                                "\x08" in val
+                            )  # backspace char from \b in raw string
                             has_regex_syntax = len(val) > 5 and ("(" in val or "[" in val)
                             if has_word_boundary or has_regex_syntax:
                                 regex_patterns[target.id] = val
@@ -993,7 +995,7 @@ class DataFileInspector:
         suffix = file_path.suffix.lower()
         try:
             content = file_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return []
 
         if suffix == ".json":
