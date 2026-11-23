@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Set up uv
@@ -67,7 +67,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Set up uv
@@ -130,7 +130,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Set up uv
@@ -165,7 +165,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Set up uv
@@ -213,7 +213,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Set up uv
@@ -267,7 +267,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Set up uv
@@ -302,7 +302,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@8f1ec5e7e2527fe821a7e18f7c452603659f3f4d
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Set up uv
