@@ -1,7 +1,6 @@
 # Additional coverage tests for detector gaps (Stage 08)
 from __future__ import annotations
 
-import ast
 import json
 from pathlib import Path
 
@@ -9,11 +8,8 @@ import pytest
 
 from waxprep.detector import (
     DataFileInspector,
-    Severity,
     UniversalHardcodingDetector,
-    Finding,
 )
-
 
 # =============================================================================
 # Data file inspector tests
@@ -27,12 +23,7 @@ class TestDataFileInspectorYaml:
         """YAML with >=5 string list entries triggers WHD-010."""
         yaml_file = tmp_path / "vocab.yml"
         yaml_file.write_text(
-            "words:\n"
-            '  - "hello"\n'
-            '  - "goodbye"\n'
-            '  - "yes"\n'
-            '  - "no"\n'
-            '  - "maybe"\n'
+            'words:\n  - "hello"\n  - "goodbye"\n  - "yes"\n  - "no"\n  - "maybe"\n'
         )
         inspector = DataFileInspector(str(tmp_path))
         findings = inspector.inspect_directory(str(tmp_path))
@@ -42,11 +33,7 @@ class TestDataFileInspectorYaml:
     def test_yaml_string_mappings(self, tmp_path: Path) -> None:
         """YAML with >=3 key:value string pairs triggers WHD-009."""
         yaml_file = tmp_path / "mappings.yml"
-        yaml_file.write_text(
-            'hello: "greeting"\n'
-            'goodbye: "farewell"\n'
-            'yes: "affirmative"\n'
-        )
+        yaml_file.write_text('hello: "greeting"\ngoodbye: "farewell"\nyes: "affirmative"\n')
         inspector = DataFileInspector(str(tmp_path))
         findings = inspector.inspect_directory(str(tmp_path))
         yaml_findings = [f for f in findings if f.rule_id in ("WHD-009", "WHD-010")]
@@ -67,11 +54,7 @@ class TestDataFileInspectorToml:
     def test_toml_string_array(self, tmp_path: Path) -> None:
         """TOML with 3 separate string arrays triggers WHD-010."""
         toml_file = tmp_path / "config.toml"
-        toml_file.write_text(
-            'words = ["hello"]\n'
-            'phrases = ["goodbye"]\n'
-            'terms = ["yes"]\n'
-        )
+        toml_file.write_text('words = ["hello"]\nphrases = ["goodbye"]\nterms = ["yes"]\n')
         inspector = DataFileInspector(str(tmp_path))
         findings = inspector.inspect_directory(str(tmp_path))
         toml_findings = [f for f in findings if f.rule_id in ("WHD-010", "WHD-009")]
@@ -177,14 +160,10 @@ class TestErrorHandlingPaths:
         src_dir = tmp_path / "pkg"
         src_dir.mkdir()
         (src_dir / "check.py").write_text(
-            "def handle(message):\n"
-            "    if message == 'hello':\n"
-            "        return 'greeting'\n"
+            "def handle(message):\n    if message == 'hello':\n        return 'greeting'\n"
         )
         (src_dir / "test_check.py").write_text(
-            "def handle(message):\n"
-            "    if message == 'hello':\n"
-            "        return 'greeting'\n"
+            "def handle(message):\n    if message == 'hello':\n        return 'greeting'\n"
         )
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_directory(str(tmp_path))
@@ -221,10 +200,7 @@ class TestDetectorLiteralResponses:
     def test_function_returns_string_in_non_protected(self, tmp_path: Path) -> None:
         """Function returning strings in non-protected module is fine."""
         test_file = tmp_path / "helper.py"
-        test_file.write_text(
-            "def get_greeting():\n"
-            "    return 'hello'\n"
-        )
+        test_file.write_text("def get_greeting():\n    return 'hello'\n")
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
         assert not any(f.rule_id == "WHD-007" for f in findings)
@@ -236,9 +212,7 @@ class TestDetectorVocabularyDetection:
     def test_string_set_assignment(self, tmp_path: Path) -> None:
         """Set of strings assigned to vocabulary-like name."""
         test_file = tmp_path / "vocab.py"
-        test_file.write_text(
-            "WORDS = {'hello', 'goodbye', 'yes'}\n"
-        )
+        test_file.write_text("WORDS = {'hello', 'goodbye', 'yes'}\n")
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
         assert isinstance(findings, list)
@@ -250,10 +224,7 @@ class TestDetectorDictLookup:
     def test_dict_subscript_with_string_key(self, tmp_path: Path) -> None:
         """Dictionary subscript with string key in non-protected module."""
         test_file = tmp_path / "reader.py"
-        test_file.write_text(
-            "responses = {'hello': 'greeting'}\n"
-            "x = responses['hello']\n"
-        )
+        test_file.write_text("responses = {'hello': 'greeting'}\nx = responses['hello']\n")
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
         dict_findings = [f for f in findings if f.rule_id == "WHD-005"]
@@ -268,9 +239,7 @@ class TestDetectorMembership:
         """`message in ['hello', 'hi']` pattern."""
         test_file = tmp_path / "check.py"
         test_file.write_text(
-            "def process(message):\n"
-            "    if message in ['hello', 'hi']:\n"
-            "        return 'greeting'\n"
+            "def process(message):\n    if message in ['hello', 'hi']:\n        return 'greeting'\n"
         )
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
@@ -284,9 +253,7 @@ class TestDetectorFixedStringComparison:
         """String comparison against constant."""
         test_file = tmp_path / "compare.py"
         test_file.write_text(
-            "def check(message):\n"
-            "    if message == 'hello':\n"
-            "        return True\n"
+            "def check(message):\n    if message == 'hello':\n        return True\n"
         )
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
@@ -300,9 +267,7 @@ class TestDetectorAstHelperPaths:
         """_looks_like_input recognizes function calls like get_message() (lines 287-293)."""
         test_file = tmp_path / "input_func.py"
         test_file.write_text(
-            "def handle():\n"
-            "    if get_message() == 'hello':\n"
-            "        return 'greeting'\n"
+            "def handle():\n    if get_message() == 'hello':\n        return 'greeting'\n"
         )
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
@@ -337,10 +302,7 @@ class TestDetectorAstHelperPaths:
     def test_return_string_extract_list(self, tmp_path: Path) -> None:
         """Function returning list of strings covers _extract_strings for lists (lines 846-847)."""
         test_file = tmp_path / "return_list.py"
-        test_file.write_text(
-            "def get_responses():\n"
-            "    return ['hello', 'world']\n"
-        )
+        test_file.write_text("def get_responses():\n    return ['hello', 'world']\n")
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
         assert isinstance(findings, list)
@@ -348,10 +310,7 @@ class TestDetectorAstHelperPaths:
     def test_return_string_extract_tuple(self, tmp_path: Path) -> None:
         """Function returning tuple of strings covers _extract_strings for tuples (lines 849-850)."""
         test_file = tmp_path / "return_tuple.py"
-        test_file.write_text(
-            "def get_responses():\n"
-            "    return ('hello', 'world')\n"
-        )
+        test_file.write_text("def get_responses():\n    return ('hello', 'world')\n")
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
         assert isinstance(findings, list)
@@ -360,9 +319,7 @@ class TestDetectorAstHelperPaths:
         """Deeply nested collection in membership test covers recursive calls (lines 357-358, 415)."""
         test_file = tmp_path / "deep_nested_membership.py"
         test_file.write_text(
-            "def handle(message):\n"
-            "    if message in [[['hello']]]:\n"
-            "        return 'greeting'\n"
+            "def handle(message):\n    if message in [[['hello']]]:\n        return 'greeting'\n"
         )
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
@@ -386,9 +343,7 @@ class TestDetectorAstHelperPaths:
     def test_vocab_nested_collection(self, tmp_path: Path) -> None:
         """Vocabulary with nested collection covers _extract_strings recursion (lines 936-937)."""
         test_file = tmp_path / "nested_vocab.py"
-        test_file.write_text(
-            "WORDS = [['hello'], ['world']]\n"
-        )
+        test_file.write_text("WORDS = [['hello'], ['world']]\n")
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
         assert isinstance(findings, list)
@@ -430,7 +385,7 @@ def test_data_inspector_yaml_complex(tmp_path: Path) -> None:
     """YAML with vocabulary list and string mappings covers YAML inspector paths."""
     yaml_file = tmp_path / "complex.yml"
     yaml_file.write_text(
-        'words:\n'
+        "words:\n"
         '  - "hello"\n'
         '  - "world"\n'
         '  - "greeting"\n'
@@ -448,11 +403,7 @@ def test_data_inspector_yaml_complex(tmp_path: Path) -> None:
 def test_data_inspector_toml_multiple_arrays(tmp_path: Path) -> None:
     """TOML with 3 separate string arrays covers TOML inspector."""
     toml_file = tmp_path / "multi.toml"
-    toml_file.write_text(
-        'words = ["hello"]\n'
-        'phrases = ["goodbye"]\n'
-        'terms = ["yes"]\n'
-    )
+    toml_file.write_text('words = ["hello"]\nphrases = ["goodbye"]\nterms = ["yes"]\n')
     inspector = DataFileInspector(str(tmp_path))
     findings = inspector.inspect_directory(str(tmp_path))
     toml_findings = [f for f in findings if f.rule_id in ("WHD-010", "WHD-009")]
@@ -487,67 +438,80 @@ def test_data_inspector_markdown_templates(tmp_path: Path) -> None:
 class TestRunDetectionFunction:
     """Cover run_detection() function gaps."""
 
-    def test_run_detection_json_format(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_run_detection_json_format(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """run_detection with json format outputs valid JSON."""
         test_file = tmp_path / "dummy.py"
         test_file.write_text("x = 1\n")
         from waxprep.detector import run_detection
+
         result = run_detection(str(tmp_path), "json")
         captured = capsys.readouterr()
         report = json.loads(captured.out)
         assert report["total_findings"] >= 0
         assert result == 0
 
-    def test_run_detection_summary_format(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_run_detection_summary_format(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """run_detection with summary format prints summary."""
         test_file = tmp_path / "dummy.py"
         test_file.write_text("x = 1\n")
         from waxprep.detector import run_detection
+
         run_detection(str(tmp_path), "summary")
         captured = capsys.readouterr()
         assert "Universal Hardcoding Detection Report" in captured.out
 
-    def test_run_detection_text_format_empty(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_run_detection_text_format_empty(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """run_detection text format with no findings prints 'No hardcoded...'."""
         test_file = tmp_path / "clean.py"
         test_file.write_text("x = 1\n")
         from waxprep.detector import run_detection
+
         run_detection(str(tmp_path), "text")
         captured = capsys.readouterr()
         assert "No hardcoded conversational patterns detected" in captured.out
 
-    def test_run_detection_summary_blocking_branch(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_run_detection_summary_blocking_branch(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """run_detection summary format with blocking findings covers blocking>0 branch (lines 1348-1356)."""
         test_file = tmp_path / "blocker.py"
         test_file.write_text(
-            "def handle(message):\n"
-            "    if message == 'hello':\n"
-            "        return 'greeting'\n"
+            "def handle(message):\n    if message == 'hello':\n        return 'greeting'\n"
         )
         import waxprep.detector as det
+
         original = det.is_protected_module
         det.is_protected_module = lambda p: True
         try:
             from waxprep.detector import run_detection
+
             run_detection(str(tmp_path), "summary")
         finally:
             det.is_protected_module = original
         captured = capsys.readouterr()
         assert "BLOCKING FINDINGS DETECTED" in captured.out
 
-    def test_run_detection_text_format_with_findings(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_run_detection_text_format_with_findings(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """run_detection text format with findings covers the else branch (lines 1359-1367)."""
         test_file = tmp_path / "found.py"
         test_file.write_text(
-            "def handle(message):\n"
-            "    if message == 'hello':\n"
-            "        return 'greeting'\n"
+            "def handle(message):\n    if message == 'hello':\n        return 'greeting'\n"
         )
         import waxprep.detector as det
+
         original = det.is_protected_module
         det.is_protected_module = lambda p: True
         try:
             from waxprep.detector import run_detection
+
             run_detection(str(tmp_path), "text")
         finally:
             det.is_protected_module = original

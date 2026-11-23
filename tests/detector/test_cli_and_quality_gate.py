@@ -8,10 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from waxprep.detector import UniversalHardcodingDetector
 from waxprep.detector.cli import main as cli_main
-from waxprep.detector.quality_gate import check_hardcoding, main as qg_main
-
+from waxprep.detector.quality_gate import check_hardcoding
+from waxprep.detector.quality_gate import main as qg_main
 
 # =============================================================================
 # CLI tests
@@ -69,7 +68,7 @@ def test_check_hardcoding_passed_for_empty_dir(tmp_path: Path) -> None:
 
 def test_check_hardcoding_json_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """check_hardcoding with json format prints valid JSON."""
-    result = check_hardcoding(tmp_path, output_format="json")
+    check_hardcoding(tmp_path, output_format="json")
     captured = capsys.readouterr()
     parsed = json.loads(captured.out)
     assert parsed["passed"] is True
@@ -84,14 +83,18 @@ def test_check_hardcoding_json_output_file(tmp_path: Path) -> None:
     assert data["passed"] is True
 
 
-def test_check_hardcoding_summary_format(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+def test_check_hardcoding_summary_format(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
     """check_hardcoding with summary format prints human-readable summary."""
     check_hardcoding(tmp_path, output_format="summary")
     captured = capsys.readouterr()
     assert "Universal Hardcoding Detection:" in captured.out
 
 
-def test_check_hardcoding_unknown_format_falls_back_to_summary(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+def test_check_hardcoding_unknown_format_falls_back_to_summary(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
     """Unknown format falls back to summary output."""
     check_hardcoding(tmp_path, output_format="unknown")
     captured = capsys.readouterr()
@@ -117,9 +120,12 @@ def test_cli_name_main_block(tmp_path: Path) -> None:
     test_file = tmp_path / "dummy.py"
     test_file.write_text("x = 1\n")
     result = subprocess.run(
-        [sys.executable, "-c",
-         f"import sys; sys.argv = ['cli', '{tmp_path}', 'text']; "
-         f"from waxprep.detector.cli import main; sys.exit(main())"],
+        [
+            sys.executable,
+            "-c",
+            f"import sys; sys.argv = ['cli', '{tmp_path}', 'text']; "
+            f"from waxprep.detector.cli import main; sys.exit(main())",
+        ],
         capture_output=True,
         text=True,
     )
@@ -129,9 +135,12 @@ def test_cli_name_main_block(tmp_path: Path) -> None:
 def test_qg_name_main_block(tmp_path: Path) -> None:
     """Quality gate __main__ block covers line 179 of quality_gate.py."""
     result = subprocess.run(
-        [sys.executable, "-c",
-         f"import sys; sys.argv = ['qg', '{tmp_path}', '--format', 'json']; "
-         f"from waxprep.detector.quality_gate import main; sys.exit(main())"],
+        [
+            sys.executable,
+            "-c",
+            f"import sys; sys.argv = ['qg', '{tmp_path}', '--format', 'json']; "
+            f"from waxprep.detector.quality_gate import main; sys.exit(main())",
+        ],
         capture_output=True,
         text=True,
     )
