@@ -207,16 +207,20 @@ rules:
     pattern-either:
       - pattern: |
           re.search(r"\b$WORD\b", ...)
-        metavariable-regex:
-          metavariable: $WORD
-          regex: "(hello|hi|help|exam|test|study|biology|anatomy|math|science|confused|understand)"
       - pattern: |
           re.match(r"\b$WORD\b", ...)
+      - pattern: |
+          re.search("$LONG_PATTERN", ...)
         metavariable-regex:
-          metavariable: $WORD
-          regex: "(hello|hi|help|exam|test|study|biology|anatomy|math|science|confused|understand)"
+          metavariable: $LONG_PATTERN
+          regex: ".{10,}"
+      - pattern: |
+          re.match("$LONG_PATTERN", ...)
+        metavariable-regex:
+          metavariable: $LONG_PATTERN
+          regex: ".{10,}"
     message: |
-      Regex pattern with word boundaries matching common conversational terms.
+      Regex pattern with word boundaries or long patterns detected.
       Review whether this pattern is necessary for conversational routing.
     severity: WARNING
     languages: [python]

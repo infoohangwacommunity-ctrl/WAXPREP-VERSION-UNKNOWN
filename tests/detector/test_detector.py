@@ -324,12 +324,15 @@ def check_phrase(text: str) -> bool:
 
         findings = detector.scan_file(protected_module_file)
 
-        assert any(f.rule_id == "WHD-004" for f in findings)
+        # WHD-004 detects regex with word boundaries in protected modules
+        # The pattern \bhello\b has word boundaries, which is suspicious
+        assert any(f.rule_id == "WHD-004" for f in findings), \
+            "Regex with word boundaries in protected module should be flagged"
 
     def test_detects_re_match_usage(
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
-        """Detector should flag re.match usage."""
+        """Detector should flag re.match usage with word boundaries."""
         code = """
 import re
 
@@ -340,7 +343,10 @@ def match_input(message: str) -> bool:
 
         findings = detector.scan_file(protected_module_file)
 
-        assert any(f.rule_id == "WHD-004" for f in findings)
+        # WHD-004 detects regex with word boundaries in protected modules
+        # The pattern \bhelp\b has word boundaries, which is suspicious
+        assert any(f.rule_id == "WHD-004" for f in findings), \
+            "Regex with word boundaries in protected module should be flagged"
 
     def test_does_not_flag_simple_validation_regex(
         self, detector: UniversalHardcodingDetector, allowed_module_file: Path

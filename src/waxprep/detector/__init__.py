@@ -141,7 +141,7 @@ class UniversalHardcodingDetector:
 
         try:
             source = file_path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError):
             return []
 
         try:
@@ -568,9 +568,11 @@ class UniversalHardcodingDetector:
                         if isinstance(node.value, Constant) and isinstance(node.value.value, str):
                             # Check if this looks like a regex pattern
                             val = node.value.value
-                            # Check for word boundary (\b in raw string becomes \x08 char)
+                            # Check for word boundary patterns (\b in raw string becomes \x08)
                             # or patterns containing regex-like syntax
-                            if "\x08" in val or len(val) > 5 and ("(" in val or "[" in val):
+                            has_word_boundary = "\x08" in val  # backspace char from \b in raw string
+                            has_regex_syntax = len(val) > 5 and ("(" in val or "[" in val)
+                            if has_word_boundary or has_regex_syntax:
                                 regex_patterns[target.id] = val
                 self.generic_visit(node)
 
@@ -609,14 +611,11 @@ class UniversalHardcodingDetector:
 
         for call_node, pattern, is_variable in visitor.regex_usages:
             # Check if pattern looks like it could match conversational content
-            # Flag patterns with word boundaries, specific phrases, etc.
+            # Flag patterns with word boundaries or longer patterns only
+            # Do NOT use keyword matching - this creates vocabulary dependency
             is_suspicious = (
-                r"\b" in pattern  # word boundaries
+                "\x08" in pattern  # word boundaries (backspace char from \b in raw string)
                 or len(pattern) > 10  # longer patterns
-                or any(
-                    keyword in pattern.lower()
-                    for keyword in ["hello", "hi", "help", "exam", "test", "study"]
-                )
             )
 
             if is_suspicious and is_protected_module(module_path):
@@ -942,28 +941,9 @@ class UniversalHardcodingDetector:
 
         for node, strings, var_name in visitor.vocabularies:
             if is_protected_module(module_path):
-                # Check if these look like they could be used for student classification
-                # Flag vocabularies with education-related terms
-                education_indicators = [
-                    "hello",
-                    "hi",
-                    "help",
-                    "exam",
-                    "test",
-                    "study",
-                    "learn",
-                    "biology",
-                    "anatomy",
-                    "math",
-                    "science",
-                    "confused",
-                    "understand",
-                    "question",
-                    "answer",
-                ]
-
+                # Vocabulary detected based on variable name and collection structure
+                # NOT based on specific words - this avoids vocabulary dependency
                 node_lineno = node.lineno if hasattr(node, "lineno") else 1
-                has_education_terms = any(term in strings for term in education_indicators)
 
                 finding = Finding(
                     rule_id="WHD-008",
@@ -971,16 +951,15 @@ class UniversalHardcodingDetector:
                     line_number=node_lineno,
                     message=(f"Hardcoded vocabulary ({len(strings)} terms) in protected module"),
                     severity=Severity.MEDIUM,
-                    confidence=0.70 if has_education_terms else 0.55,
+                    confidence=0.60,
                     evidence=[
                         f"Vocabulary variable: {var_name} at line {node_lineno}",
                         f"Contains {len(strings)} terms",
                         f"Sample: {strings[:5]}",
-                        f"Education-related terms: {has_education_terms}",
                         f"Module: {module_path}",
                         f"Protected module: {is_protected_module(module_path)}",
                     ],
-                    blocks_merge=is_protected_module(module_path) and has_education_terms,
+                    blocks_merge=is_protected_module(module_path),
                 )
                 findings.append(finding)
 
@@ -1014,7 +993,7 @@ class DataFileInspector:
         suffix = file_path.suffix.lower()
         try:
             content = file_path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError):
             return []
 
         if suffix == ".json":

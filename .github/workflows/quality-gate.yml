@@ -102,8 +102,8 @@ jobs:
           uv run mypy src/
           echo "==> import-linter (architecture contracts)"
           uv run import-linter lint --no-logo
-          echo "==> semgrep (security)"
-          uv run semgrep --config auto --error src/
+          echo "==> semgrep (security + Stage 08 custom rules)"
+          uv run semgrep --config .semgrep --error src/
           # pip-audit: known transitive vulnerability in wcmatch 8.5.2 (GHSA-53pm-wgxf-c6qf).
           # semgrep constrains wcmatch to < 9, so the fix (wcmatch>=11.2) cannot be installed yet.
           # PIP-AUDIT EXCEPTION (tracked):
@@ -114,6 +114,8 @@ jobs:
           #   Review date:   2026-12-22 (reassess when semgrep updates or wcmatch is pinned)
           # Only this tracked vulnerability is ignored; every other vulnerability still fails the gate.
           uv run pip-audit --ignore-vuln GHSA-53pm-wgxf-c6qf
+          echo "==> Universal Hardcoding Detector (Stage 08)"
+          uv run python -m waxprep.detector.cli src/ --format summary
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 2. Tests — all categories in parallel (matrix)
