@@ -103,7 +103,8 @@ jobs:
           echo "==> import-linter (architecture contracts)"
           uv run import-linter lint --no-logo
           echo "==> semgrep (security + Stage 08 custom rules)"
-          uv run semgrep --config .semgrep --error src/
+          # Exclude detector directory - the Python AST detector handles it
+          uv run semgrep --config .semgrep --error --exclude src/waxprep/detector src/
           # pip-audit: known transitive vulnerability in wcmatch 8.5.2 (GHSA-53pm-wgxf-c6qf).
           # semgrep constrains wcmatch to < 9, so the fix (wcmatch>=11.2) cannot be installed yet.
           # PIP-AUDIT EXCEPTION (tracked):
