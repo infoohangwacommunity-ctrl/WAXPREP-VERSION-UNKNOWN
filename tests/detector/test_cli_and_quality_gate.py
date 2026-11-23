@@ -155,7 +155,7 @@ def test_cli_name_main_direct_script(tmp_path: Path) -> None:
         [sys.executable, "src/waxprep/detector/cli.py", str(tmp_path), "text"],
         capture_output=True,
         text=True,
-        cwd="/workspace",
+        cwd=str(Path(__file__).resolve().parent.parent.parent),
     )
     assert result.returncode == 0
 
@@ -163,9 +163,15 @@ def test_cli_name_main_direct_script(tmp_path: Path) -> None:
 def test_qg_name_main_direct_script(tmp_path: Path) -> None:
     """Direct script execution covers quality_gate.py __main__ block."""
     result = subprocess.run(
-        [sys.executable, "src/waxprep/detector/quality_gate.py", str(tmp_path), "--format", "json"],
+        [
+            sys.executable,
+            "src/waxprep/detector/quality_gate.py",
+            str(tmp_path),
+            "--format",
+            "json",
+        ],
         capture_output=True,
         text=True,
-        cwd="/workspace",
+        cwd=str(Path(__file__).resolve().parent.parent.parent),
     )
     assert result.returncode == 0
