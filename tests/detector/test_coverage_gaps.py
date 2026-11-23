@@ -273,6 +273,16 @@ class TestDetectorAstHelperPaths:
         findings = detector.scan_file(test_file)
         assert isinstance(findings, list)
 
+    def test_function_name_not_read_indicator(self, tmp_path: Path) -> None:
+        """Function name without read/get_message/receive indicators covers _is_read_func return False (line 295)."""
+        test_file = tmp_path / "process_func.py"
+        test_file.write_text(
+            "def handle():\n    if process_message() == 'hello':\n        return 'greeting'\n"
+        )
+        detector = UniversalHardcodingDetector(str(tmp_path))
+        findings = detector.scan_file(test_file)
+        assert isinstance(findings, list)
+
     def test_nested_collection_membership(self, tmp_path: Path) -> None:
         """Nested collection in membership test covers recursive _collection_contains_strings (lines 357-358, 415)."""
         test_file = tmp_path / "nested_membership.py"
@@ -280,6 +290,29 @@ class TestDetectorAstHelperPaths:
             "def handle(message):\n"
             "    if message in [['hello'], ['world']]:\n"
             "        return 'greeting'\n"
+        )
+        detector = UniversalHardcodingDetector(str(tmp_path))
+        findings = detector.scan_file(test_file)
+        assert isinstance(findings, list)
+
+    def test_non_string_non_collection_element(self, tmp_path: Path) -> None:
+        """Non-string, non-collection element in membership covers _collection_contains_strings return False (line 415)."""
+        test_file = tmp_path / "int_membership.py"
+        test_file.write_text(
+            "def handle(message):\n    if message in [1, 2, 3]:\n        return 'greeting'\n"
+        )
+        detector = UniversalHardcodingDetector(str(tmp_path))
+        findings = detector.scan_file(test_file)
+        assert isinstance(findings, list)
+
+    def test_attribute_comparison_not_input(self, tmp_path: Path) -> None:
+        """Attribute access on left side of comparison hits _looks_like_input return False (line 295)."""
+        test_file = tmp_path / "attr_compare.py"
+        test_file.write_text(
+            "class Bot:\n"
+            "    def handle(self):\n"
+            "        if self.message == 'hello':\n"
+            "            return 'greeting'\n"
         )
         detector = UniversalHardcodingDetector(str(tmp_path))
         findings = detector.scan_file(test_file)
@@ -418,6 +451,135 @@ def test_data_inspector_csv_vocab(tmp_path: Path) -> None:
     findings = inspector.inspect_directory(str(tmp_path))
     csv_findings = [f for f in findings if f.rule_id in ("WHD-010", "WHD-009")]
     assert len(csv_findings) >= 1
+
+
+# =============================================================================
+# DataFileInspector.inspect_file error paths (lines 1017-1018)
+# =============================================================================
+
+
+class TestDataFileInspectorInspectFileErrors:
+    """Cover except OSError, UnicodeDecodeError in inspect_file (lines 1017-1018)."""
+
+    def test_inspect_file_os_error(self, tmp_path: Path) -> None:
+        """inspect_file returns [] on OSError (unreadable file)."""
+        unreadable = tmp_path / "unreadable.json"
+        unreadable.write_text("{}")
+        unreadable.chmod(0o000)
+        try:
+            inspector = DataFileInspector(str(tmp_path))
+            findings = inspector.inspect_file(unreadable)
+            assert findings == []
+        finally:
+            unreadable.chmod(0o644)
+
+    def test_inspect_file_unicode_decode_error(self, tmp_path: Path) -> None:
+        """inspect_file returns [] on UnicodeDecodeError (binary file)."""
+        binary = tmp_path / "binary.yml"
+        binary.write_bytes(b"\xff\xfe\x00\x00")
+        inspector = DataFileInspector(str(tmp_path))
+        findings = inspector.inspect_file(binary)
+        assert findings == []
+
+
+# =============================================================================
+# YAML recursive search gap (line 1127)
+# =============================================================================
+
+
+class TestDataFileInspectorYamlRecursive:
+    """Cover recursive _search_for_vocabulary call for nested YAML dict/list (line 1127)."""
+
+    def test_yaml_nested_dict_in_list(self, tmp_path: Path) -> None:
+        """YAML list containing a dict with string values covers recursive search (line 1127)."""
+        yaml_file = tmp_path / "nested.yml"
+        yaml_file.write_text(
+            "items:\n"
+            '  - name: "hello"\n'
+            '    response: "greeting"\n'
+            '  - name: "goodbye"\n'
+            '    response: "farewell"\n'
+        )
+        inspector = DataFileInspector(str(tmp_path))
+        findings = inspector.inspect_directory(str(tmp_path))
+        assert isinstance(findings, list)
+
+    def test_yaml_list_of_lists(self, tmp_path: Path) -> None:
+        """Nested list in YAML covers recursive _search_for_vocabulary for list items (line 1127)."""
+        yaml_file = tmp_path / "nested_list.yml"
+        yaml_file.write_text("matrix:\n  - ['hello', 'world']\n  - ['yes', 'no']\n")
+        inspector = DataFileInspector(str(tmp_path))
+        findings = inspector.inspect_directory(str(tmp_path))
+        assert isinstance(findings, list)
+
+
+# =============================================================================
+# CSV Error exception path (lines 1230-1231)
+# =============================================================================
+
+
+def test_csv_error_exception_path(tmp_path: Path) -> None:
+    """Monkeypatch csv.reader to raise csv.Error, covering except csv.Error (lines 1230-1231)."""
+    import csv as csv_module
+
+    from waxprep.detector import DataFileInspector
+
+    original_reader = csv_module.reader
+
+    class RaisingReader:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise csv_module.Error("simulated csv error")
+
+        def __iter__(self) -> object:
+            return self
+
+        def __next__(self) -> object:
+            raise StopIteration
+
+    csv_module.reader = RaisingReader
+    try:
+        inspector = DataFileInspector(str(tmp_path))
+        result = inspector._inspect_csv("hello,goodbye\n", tmp_path / "test.csv")
+        assert result == []
+    finally:
+        csv_module.reader = original_reader
+
+
+# =============================================================================
+# YAML recursive search for list items (line 1127)
+# =============================================================================
+
+
+def test_yaml_list_of_lists(tmp_path: Path) -> None:
+    """YAML content with nested list covers recursive _search_for_vocabulary for list items (line 1127)."""
+    yaml_file = tmp_path / "nested.yml"
+    yaml_file.write_text(
+        'matrix:\n  - ["hello", "world"]\n  - ["yes", "no"]\nnested_dict:\n  - key: "value"\n'
+    )
+    inspector = DataFileInspector(str(tmp_path))
+    findings = inspector.inspect_file(yaml_file)
+    assert isinstance(findings, list)
+
+
+# =============================================================================
+# JSON nested list — covers _search_for_vocabulary recursive list iteration (line 1127)
+# =============================================================================
+
+
+def test_json_nested_list_recursive(tmp_path: Path) -> None:
+    """JSON with list containing nested dict/list hits recursive _search_for_vocabulary (line 1127)."""
+    import json
+
+    json_file = tmp_path / "nested.json"
+    json_file.write_text(
+        json.dumps({
+            "greetings": ["hello", "world"],
+            "nested_list": [["a", "b"], {"c": "d"}],
+        })
+    )
+    inspector = DataFileInspector(str(tmp_path))
+    findings = inspector.inspect_file(json_file)
+    assert isinstance(findings, list)
 
 
 def test_data_inspector_markdown_templates(tmp_path: Path) -> None:

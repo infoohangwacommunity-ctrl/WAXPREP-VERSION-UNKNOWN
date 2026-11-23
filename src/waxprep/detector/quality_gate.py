@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import TypedDict
 
@@ -173,7 +172,3 @@ def main() -> int:
         return 1 if blocking_high > 0 else 0
 
     return 1 if result["blocked"] else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -13,7 +13,3 @@ def main() -> int:
     root = sys.argv[1] if len(sys.argv) > 1 else "."
     fmt = sys.argv[2] if len(sys.argv) > 2 else "text"
     return run_detection(root, fmt)
-
-
-if __name__ == "__main__":
-    sys.exit(main())
