@@ -347,7 +347,7 @@ def match_input(message: str) -> bool:
         self, detector: UniversalHardcodingDetector, allowed_module_file: Path
     ) -> None:
         """Legitimate validation regex should not flag in allowed modules."""
-        code = '''
+        code = r'''
 import re
 
 def validate_email(email: str) -> bool:
