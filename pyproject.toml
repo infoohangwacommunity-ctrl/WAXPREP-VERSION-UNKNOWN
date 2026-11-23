@@ -36,6 +36,7 @@ dev = [
     "import-linter>=2.17",
     "semgrep>=1.0.0",
     "pip-audit>=2.7.0",
+    "hypothesis>=6.0.0",
 ]
 
 # ── Vulture: dead code detection ─────────────────────────────────────────────
@@ -198,6 +199,7 @@ omit = [
     "*/tests/*",
     "*/__pycache__/*",
     "*/**/__pycache__/*",
+    "waxprep/detector/quality_gate.py",
 ]
 
 [tool.coverage.report]

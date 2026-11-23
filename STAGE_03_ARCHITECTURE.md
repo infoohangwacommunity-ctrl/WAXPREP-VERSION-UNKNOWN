@@ -229,3 +229,9 @@ These belong to later stages, when the AI has learned enough to make informed de
 ## Next Steps
 
 This document defines the *land*. The placeholders (`messaging/`, `context/`, `services/`) are ready for future implementation when the needs are better understood.
+
+## Related: Stage 08 — Universal Hardcoding Detection
+
+Stage 08 adds an independent detection system that protects the architectural boundaries defined here. It ensures that `messaging/`, `context/`, and `services/` modules do not contain hardcoded conversational behavior that would undermine the flexibility this architecture is designed to provide.
+
+See `docs/DETECTOR_SPECIFICATION.md` for details.

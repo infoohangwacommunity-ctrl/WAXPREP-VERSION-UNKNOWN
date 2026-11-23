@@ -262,6 +262,50 @@ Consolidated CI quality gate in `.github/workflows/quality-gate.yml`:
 
 **Local equivalent:** `make check` (Makefile) or `just check` (Justfile) run the same blocking checks locally.
 
+## Stage 08: Universal Hardcoding Detection System
+
+Independent, deterministic source-code detection system that identifies prohibited hardcoded conversational behavior in WaxPrep.
+
+**Purpose:** The detector investigates HOW source code makes decisions about student messages, not just what words appear in the code. It prevents developers and AI coding agents from quietly introducing fixed input-dependent behavior into parts of WaxPrep where decisions are expected to be contextual, flexible, or delegated to an approved intelligence layer.
+
+**Key characteristics:**
+- Development-time tool only — not part of the production tutor response pipeline
+- Operates deterministically without AI or network access
+- Uses Python AST analysis and Semgrep structural rules
+- Integrates with the existing Quality Gate
+- Does not rely on a manually maintained forbidden-word list
+
+**Detection rules (Living Specification):** See `docs/DETECTOR_SPECIFICATION.md`
+
+| Rule ID | Description | Severity |
+|---------|-------------|----------|
+| WHD-001 | Fixed-string comparisons against student input | HIGH |
+| WHD-002 | Fixed vocabulary membership tests | HIGH |
+| WHD-003 | Fixed decision trees (if/elif chains) | MEDIUM |
+| WHD-004 | Regex-based phrase detection | MEDIUM |
+| WHD-005 | Word-to-action dictionary lookups | MEDIUM |
+| WHD-006 | Deeply nested conditional structures | LOW |
+| WHD-007 | Predetermined string responses | MEDIUM |
+| WHD-008 | Hardcoded vocabularies | MEDIUM |
+| WHD-009 | JSON string-to-string mappings | MEDIUM |
+| WHD-010 | Vocabulary lists in data files | LOW |
+| WHD-011 | Response templates in Markdown | LOW |
+
+**Protected modules** (hardcoded conversational behavior prohibited):
+- `waxprep.messaging` — Message handling & conversation flow
+- `waxprep.context` — Understanding the learner
+- `waxprep.services` — Light orchestration
+
+**Usage:**
+```bash
+# Run the detector
+python -m waxprep.detector [path] [format]
+
+# Run as quality gate check
+python -m waxprep.detector.quality_gate [path] --format summary
+```
+
+**Test suite:** `tests/detector/` contains unit tests, adversarial tests, mutation tests, and property-based tests.
 
 ## Supporting Documentation
 

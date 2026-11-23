@@ -1,0 +1,6 @@
+# Semgrep configuration for Universal Hardcoding Detection
+#
+# This configuration includes all rules for the Stage 08 detector.
+
+rules:
+  - .semgrep/rules/hardcoding-detection.yml
