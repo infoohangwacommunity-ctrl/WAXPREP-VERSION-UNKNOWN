@@ -39,14 +39,12 @@ dev = [
 ]
 
 # ── Vulture: dead code detection ─────────────────────────────────────────────
-# Run: uv run vulture src/waxprep/ --config vulture.cfg.py
 # Config: [tool.vulture] below — excludes tests, min confidence 80, ignores dynamic
 #          registry patterns (register_defaults, FakeAdapters, Protocols, FastAPI
 #          handlers, Pydantic model_config, middleware skeletons).
 # Whitelist: after reviewing findings, run: uv run vulture src/waxprep/ --make-whitelist
 #          to generate vulture_whitelist.py, then commit it.
-# Single source of truth for min_confidence: [tool.vulture] below (vulture.cfg.py
-# mirrors it; CI and justfile pass --config vulture.cfg.py to use this file).
+# Single source of truth for min_confidence: [tool.vulture] below.
 
 [tool.vulture]
 min_confidence = 80
