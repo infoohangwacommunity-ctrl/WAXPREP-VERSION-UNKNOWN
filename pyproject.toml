@@ -149,7 +149,7 @@ exclude = ["tests/"]
 # Using Ruff's defaults ensures consistent formatting across the project.
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 strict = true
 ignore_missing_imports = true
 
