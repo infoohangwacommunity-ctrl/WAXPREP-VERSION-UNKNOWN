@@ -10,28 +10,23 @@
 from __future__ import annotations
 
 import ast
-import json
-import sys
-from collections.abc import Iterable
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import TypeAlias
 
 # Constant is available in Python 3.8+ but was moved in 3.14
 # For compatibility, we use the appropriate import
-try:
-    from ast import Constant
-except ImportError:
-    # Fallback for older Python versions
-    Constant = ast.Constant
+import ast as _ast
+import json
+from dataclasses import dataclass, field
+from enum import StrEnum
+from pathlib import Path
+
+Constant = _ast.Constant
 
 # =============================================================================
 # Severity levels
 # =============================================================================
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     """Detection severity levels."""
 
     HIGH = "HIGH"  # Blocking — strong evidence of prohibited behavior
@@ -58,7 +53,7 @@ class Finding:
     is_deterministic: bool = True
     blocks_merge: bool = False
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         """Serialize finding to dictionary."""
         return {
             "rule_id": self.rule_id,
@@ -146,7 +141,7 @@ class UniversalHardcodingDetector:
 
         try:
             source = file_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return []
 
         try:
@@ -158,30 +153,14 @@ class UniversalHardcodingDetector:
         module_path = self._get_module_path(file_path)
 
         # Run all detection rules
-        findings.extend(self._detect_fixed_string_comparisons(
-            tree, source, file_path, module_path
-        ))
-        findings.extend(self._detect_membership_tests(
-            tree, source, file_path, module_path
-        ))
-        findings.extend(self._detect_if_elif_chains(
-            tree, source, file_path, module_path
-        ))
-        findings.extend(self._detect_regex_matching(
-            tree, source, file_path, module_path
-        ))
-        findings.extend(self._detect_dictionary_lookups(
-            tree, source, file_path, module_path
-        ))
-        findings.extend(self._detect_nested_conditions(
-            tree, source, file_path, module_path
-        ))
-        findings.extend(self._detect_literal_responses(
-            tree, source, file_path, module_path
-        ))
-        findings.extend(self._detect_hardcoded_vocabularies(
-            tree, source, file_path, module_path
-        ))
+        findings.extend(self._detect_fixed_string_comparisons(tree, source, file_path, module_path))
+        findings.extend(self._detect_membership_tests(tree, source, file_path, module_path))
+        findings.extend(self._detect_if_elif_chains(tree, source, file_path, module_path))
+        findings.extend(self._detect_regex_matching(tree, source, file_path, module_path))
+        findings.extend(self._detect_dictionary_lookups(tree, source, file_path, module_path))
+        findings.extend(self._detect_nested_conditions(tree, source, file_path, module_path))
+        findings.extend(self._detect_literal_responses(tree, source, file_path, module_path))
+        findings.extend(self._detect_hardcoded_vocabularies(tree, source, file_path, module_path))
 
         self.findings.extend(findings)
         return findings
@@ -210,7 +189,7 @@ class UniversalHardcodingDetector:
         """Scan the entire project from the configured root."""
         return self.scan_directory(self.root_path)
 
-    def get_report(self) -> dict:
+    def get_report(self) -> dict[str, object]:
         """Generate a structured detection report."""
         high_risk = [f for f in self.findings if f.severity == Severity.HIGH]
         medium_risk = [f for f in self.findings if f.severity == Severity.MEDIUM]
@@ -262,7 +241,7 @@ class UniversalHardcodingDetector:
         lines = source.splitlines()
 
         class ComparisonVisitor(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.Comparisons: list[tuple[ast.expr, ast.Constant]] = []
 
             def visit_Compare(self, node: ast.Compare) -> None:
@@ -288,9 +267,17 @@ class UniversalHardcodingDetector:
                 if isinstance(node, ast.Name):
                     name = node.id.lower()
                     input_indicators = {
-                        "message", "text", "content", "input",
-                        "student_message", "user_message", "query",
-                        "prompt", "body", "data", "payload",
+                        "message",
+                        "text",
+                        "content",
+                        "input",
+                        "student_message",
+                        "user_message",
+                        "query",
+                        "prompt",
+                        "body",
+                        "data",
+                        "payload",
                     }
                     return name in input_indicators or any(
                         indicator in name for indicator in input_indicators
@@ -312,15 +299,14 @@ class UniversalHardcodingDetector:
 
         for left, constant in visitor.Comparisons:
             line_no = left.lineno if hasattr(left, "lineno") else constant.lineno
-            line_content = lines[line_no - 1].strip() if line_no else ""
+            lines[line_no - 1].strip() if line_no else ""
 
             finding = Finding(
                 rule_id="WHD-001",
                 file_path=str(file_path),
                 line_number=line_no,
                 message=(
-                    f"Student-input-dependent comparison against fixed literal "
-                    f"in protected module"
+                    "Student-input-dependent comparison against fixed literal in protected module"
                 ),
                 severity=Severity.HIGH,
                 confidence=0.85,
@@ -348,7 +334,7 @@ class UniversalHardcodingDetector:
         fixed vocabularies in protected modules.
         """
         findings: list[Finding] = []
-        lines = source.splitlines()
+        source.splitlines()
 
         # First pass: collect all string list/set/tuple assignments
         string_collections: dict[str, ast.List | ast.Set | ast.Tuple] = {}
@@ -375,8 +361,10 @@ class UniversalHardcodingDetector:
         CollectionCollector().visit(tree)
 
         class MembershipVisitor(ast.NodeVisitor):
-            def __init__(self):
-                self.memberships: list[tuple[ast.expr, ast.List | ast.Set | ast.Tuple | ast.Name]] = []
+            def __init__(self) -> None:
+                self.memberships: list[
+                    tuple[ast.expr, ast.List | ast.Set | ast.Tuple | ast.Name]
+                ] = []
 
             def visit_Compare(self, node: ast.Compare) -> None:
                 for op in node.ops:
@@ -387,14 +375,10 @@ class UniversalHardcodingDetector:
                             # Check if right side is a literal collection
                             if isinstance(comp, (ast.List, ast.Set, ast.Tuple)):
                                 if self._collection_contains_strings(comp):
-                                    self.memberships.append(
-                                        (node.left, comp)
-                                    )
+                                    self.memberships.append((node.left, comp))
                             # Check if right side is a name that was assigned a string collection
                             elif isinstance(comp, ast.Name) and comp.id in string_collections:
-                                self.memberships.append(
-                                    (node.left, comp)
-                                )
+                                self.memberships.append((node.left, comp))
 
                 self.generic_visit(node)
 
@@ -403,9 +387,17 @@ class UniversalHardcodingDetector:
                 if isinstance(node, ast.Name):
                     name = node.id.lower()
                     input_indicators = {
-                        "message", "text", "content", "input",
-                        "student_message", "user_message", "query",
-                        "prompt", "body", "data", "payload",
+                        "message",
+                        "text",
+                        "content",
+                        "input",
+                        "student_message",
+                        "user_message",
+                        "query",
+                        "prompt",
+                        "body",
+                        "data",
+                        "payload",
                     }
                     return name in input_indicators or any(
                         indicator in name for indicator in input_indicators
@@ -451,9 +443,7 @@ class UniversalHardcodingDetector:
                 rule_id="WHD-002",
                 file_path=str(file_path),
                 line_number=line_no if line_no else 1,
-                message=(
-                    f"Membership test against fixed vocabulary in protected module"
-                ),
+                message=("Membership test against fixed vocabulary in protected module"),
                 severity=Severity.HIGH,
                 confidence=0.80,
                 evidence=[
@@ -481,10 +471,10 @@ class UniversalHardcodingDetector:
         based on string comparisons in protected modules.
         """
         findings: list[Finding] = []
-        lines = source.splitlines()
+        source.splitlines()
 
         class IfChainVisitor(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.chains: list[tuple[ast.If, int]] = []
 
             def visit_If(self, node: ast.If) -> None:
@@ -498,9 +488,7 @@ class UniversalHardcodingDetector:
                     next_if = current.orelse[0]
                     if isinstance(next_if, ast.If):
                         chain_length += 1
-                        string_comparisons += self._count_string_comparisons(
-                            next_if.test
-                        )
+                        string_comparisons += self._count_string_comparisons(next_if.test)
                         current = next_if
                     else:
                         break
@@ -513,19 +501,16 @@ class UniversalHardcodingDetector:
 
             def _count_string_comparisons(self, test: ast.expr) -> int:
                 """Count string literal comparisons in a test expression."""
-                count = 0
 
                 class StringCompareCounter(ast.NodeVisitor):
-                    def __init__(self):
+                    def __init__(self) -> None:
                         self.count = 0
 
                     def visit_Compare(self, node: ast.Compare) -> None:
                         for op in node.ops:
                             if isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)):
                                 for comp in node.comparators:
-                                    if isinstance(comp, Constant) and isinstance(
-                                        comp.value, str
-                                    ):
+                                    if isinstance(comp, Constant) and isinstance(comp.value, str):
                                         self.count += 1
                         self.generic_visit(node)
 
@@ -549,7 +534,7 @@ class UniversalHardcodingDetector:
                 confidence=0.70,
                 evidence=[
                     f"If/elif chain with {chain_length} branches at line {if_node.lineno}",
-                    f"Multiple string comparisons detected",
+                    "Multiple string comparisons detected",
                     f"Module: {module_path}",
                     f"Protected module: {is_protected_module(module_path)}",
                 ],
@@ -571,7 +556,7 @@ class UniversalHardcodingDetector:
         used for hidden phrase detection in protected modules.
         """
         findings: list[Finding] = []
-        lines = source.splitlines()
+        source.splitlines()
 
         # First pass: collect regex pattern assignments
         regex_patterns: dict[str, str] = {}
@@ -592,8 +577,10 @@ class UniversalHardcodingDetector:
         PatternCollector().visit(tree)
 
         class RegexVisitor(ast.NodeVisitor):
-            def __init__(self):
-                self.regex_usages: list[tuple[ast.Call, str, bool]] = []  # (call, pattern, is_variable)
+            def __init__(self) -> None:
+                self.regex_usages: list[
+                    tuple[ast.Call, str, bool]
+                ] = []  # (call, pattern, is_variable)
 
             def visit_Call(self, node: ast.Call) -> None:
                 # Look for re.match, re.search, re.findall, re.fullmatch
@@ -603,7 +590,6 @@ class UniversalHardcodingDetector:
                             if node.func.value.id == "re":
                                 # Extract the pattern - could be literal or variable
                                 pattern = None
-                                is_variable = False
 
                                 if node.args and isinstance(node.args[0], Constant):
                                     pattern = node.args[0].value
@@ -638,10 +624,7 @@ class UniversalHardcodingDetector:
                     rule_id="WHD-004",
                     file_path=str(file_path),
                     line_number=call_node.lineno,
-                    message=(
-                        f"Regex pattern matching that may detect phrases "
-                        f"in protected module"
-                    ),
+                    message=("Regex pattern matching that may detect phrases in protected module"),
                     severity=Severity.MEDIUM,
                     confidence=0.65,
                     evidence=[
@@ -669,24 +652,31 @@ class UniversalHardcodingDetector:
         and values may represent actions/responses in protected modules.
         """
         findings: list[Finding] = []
-        lines = source.splitlines()
+        source.splitlines()
 
         class DictLookupVisitor(ast.NodeVisitor):
-            def __init__(self):
-                self.lookups: list[tuple[ast.Subscript, ast.Dict]] = []
+            def __init__(self) -> None:
+                self.lookups: list[tuple[ast.Subscript, ast.Name]] = []
 
             def visit_Subscript(self, node: ast.Subscript) -> None:
                 # Check if this is a dictionary subscript with string key
                 if isinstance(node.value, ast.Name):
                     # Could be a variable name suggesting a mapping
                     name = node.value.id.lower()
-                    if any(indicator in name for indicator in [
-                        "mapping", "response", "action", "template",
-                        "reply", "message_map", "vocab", "phrase_map",
-                    ]):
-                        if isinstance(node.slice, Constant) and isinstance(
-                            node.slice.value, str
-                        ):
+                    if any(
+                        indicator in name
+                        for indicator in [
+                            "mapping",
+                            "response",
+                            "action",
+                            "template",
+                            "reply",
+                            "message_map",
+                            "vocab",
+                            "phrase_map",
+                        ]
+                    ):
+                        if isinstance(node.slice, Constant) and isinstance(node.slice.value, str):
                             # Try to find the dictionary definition
                             # This is a simplified check; full data-flow would be needed
                             self.lookups.append((node, node.value))
@@ -697,20 +687,21 @@ class UniversalHardcodingDetector:
         visitor.visit(tree)
 
         for subscript_node, dict_name in visitor.lookups:
+            dict_var_name = dict_name.id if hasattr(dict_name, "id") else "unknown"
             finding = Finding(
                 rule_id="WHD-005",
                 file_path=str(file_path),
                 line_number=subscript_node.lineno,
                 message=(
-                    f"String-keyed dictionary lookup that may represent "
-                    f"word-to-action mapping in protected module"
+                    "String-keyed dictionary lookup that may represent "
+                    "word-to-action mapping in protected module"
                 ),
                 severity=Severity.MEDIUM,
                 confidence=0.60,
                 evidence=[
                     f"Dictionary lookup at line {subscript_node.lineno}",
-                    f"Dictionary variable: {dict_name.id}",
-                    f"Key type: string literal",
+                    f"Dictionary variable: {dict_var_name}",
+                    "Key type: string literal",
                     f"Module: {module_path}",
                     f"Protected module: {is_protected_module(module_path)}",
                 ],
@@ -734,7 +725,7 @@ class UniversalHardcodingDetector:
         findings: list[Finding] = []
 
         class NestingVisitor(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.nested_structures: list[tuple[int, int, int]] = []  # (line, depth, bodies)
 
             def visit_If(self, node: ast.If) -> None:
@@ -808,17 +799,23 @@ class UniversalHardcodingDetector:
         which may represent predetermined conversational output.
         """
         findings: list[Finding] = []
-        lines = source.splitlines()
+        source.splitlines()
 
         class ResponseVisitor(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.response_functions: list[tuple[ast.FunctionDef, list[str]]] = []
 
             def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
                 # Look for functions with names suggesting responses
                 response_indicators = [
-                    "response", "reply", "greeting", "answer",
-                    "message", "output", "say", "speak",
+                    "response",
+                    "reply",
+                    "greeting",
+                    "answer",
+                    "message",
+                    "output",
+                    "say",
+                    "speak",
                 ]
 
                 func_name = node.name.lower()
@@ -832,10 +829,9 @@ class UniversalHardcodingDetector:
 
             def _collect_return_strings(self, node: ast.FunctionDef) -> list[str]:
                 """Collect string literals from return statements."""
-                strings = []
 
                 class ReturnStringCollector(ast.NodeVisitor):
-                    def __init__(self):
+                    def __init__(self) -> None:
                         self.strings: list[str] = []
 
                     def visit_Return(self, node: ast.Return) -> None:
@@ -867,8 +863,7 @@ class UniversalHardcodingDetector:
                     file_path=str(file_path),
                     line_number=func_node.lineno,
                     message=(
-                        f"Function returns predetermined string response(s) "
-                        f"in protected module"
+                        "Function returns predetermined string response(s) in protected module"
                     ),
                     severity=Severity.MEDIUM,
                     confidence=0.65,
@@ -897,10 +892,10 @@ class UniversalHardcodingDetector:
         that may be used for classification or decision-making.
         """
         findings: list[Finding] = []
-        lines = source.splitlines()
+        source.splitlines()
 
         class VocabularyVisitor(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.vocabularies: list[tuple[ast.AST, list[str], str]] = []
 
             def visit_Assign(self, node: ast.Assign) -> None:
@@ -910,18 +905,25 @@ class UniversalHardcodingDetector:
                         name = target.id.lower()
                         # Check variable name for vocabulary indicators
                         vocab_indicators = [
-                            "words", "phrases", "vocabulary", "terms",
-                            "keywords", "topics", "subjects", "greetings",
-                            "responses", "replies", "messages", "inputs",
+                            "words",
+                            "phrases",
+                            "vocabulary",
+                            "terms",
+                            "keywords",
+                            "topics",
+                            "subjects",
+                            "greetings",
+                            "responses",
+                            "replies",
+                            "messages",
+                            "inputs",
                         ]
 
                         if any(indicator in name for indicator in vocab_indicators):
                             if isinstance(node.value, (ast.List, ast.Set, ast.Tuple)):
                                 strings = self._extract_strings(node.value)
                                 if strings and len(strings) >= 2:
-                                    self.vocabularies.append(
-                                        (node.value, strings, name)
-                                    )
+                                    self.vocabularies.append((node.value, strings, name))
 
                 self.generic_visit(node)
 
@@ -943,26 +945,35 @@ class UniversalHardcodingDetector:
                 # Check if these look like they could be used for student classification
                 # Flag vocabularies with education-related terms
                 education_indicators = [
-                    "hello", "hi", "help", "exam", "test", "study",
-                    "learn", "biology", "anatomy", "math", "science",
-                    "confused", "understand", "question", "answer",
+                    "hello",
+                    "hi",
+                    "help",
+                    "exam",
+                    "test",
+                    "study",
+                    "learn",
+                    "biology",
+                    "anatomy",
+                    "math",
+                    "science",
+                    "confused",
+                    "understand",
+                    "question",
+                    "answer",
                 ]
 
-                has_education_terms = any(
-                    term in strings for term in education_indicators
-                )
+                node_lineno = node.lineno if hasattr(node, "lineno") else 1
+                has_education_terms = any(term in strings for term in education_indicators)
 
                 finding = Finding(
                     rule_id="WHD-008",
                     file_path=str(file_path),
-                    line_number=node.lineno,
-                    message=(
-                        f"Hardcoded vocabulary ({len(strings)} terms) in protected module"
-                    ),
+                    line_number=node_lineno,
+                    message=(f"Hardcoded vocabulary ({len(strings)} terms) in protected module"),
                     severity=Severity.MEDIUM,
                     confidence=0.70 if has_education_terms else 0.55,
                     evidence=[
-                        f"Vocabulary variable: {var_name} at line {node.lineno}",
+                        f"Vocabulary variable: {var_name} at line {node_lineno}",
                         f"Contains {len(strings)} terms",
                         f"Sample: {strings[:5]}",
                         f"Education-related terms: {has_education_terms}",
@@ -1003,7 +1014,7 @@ class DataFileInspector:
         suffix = file_path.suffix.lower()
         try:
             content = file_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return []
 
         if suffix == ".json":
@@ -1058,10 +1069,7 @@ class DataFileInspector:
         """Recursively search JSON data for vocabulary patterns."""
         if isinstance(data, dict):
             # Check for mapping patterns (key -> value where both are strings)
-            string_keys = [
-                k for k, v in data.items()
-                if isinstance(k, str) and isinstance(v, str)
-            ]
+            string_keys = [k for k, v in data.items() if isinstance(k, str) and isinstance(v, str)]
 
             if len(string_keys) >= 3:
                 # This could be a word-to-action mapping
@@ -1077,7 +1085,7 @@ class DataFileInspector:
                     confidence=0.60,
                     evidence=[
                         f"File: {file_path.name}",
-                        f"Path in JSON: {'/' .join(path)}",
+                        f"Path in JSON: {'/'.join(path)}",
                         f"Sample mappings: {list(data.items())[:3]}",
                         "May function as hidden behavioral engine",
                     ],
@@ -1087,33 +1095,26 @@ class DataFileInspector:
 
             # Recurse into nested structures
             for key, value in data.items():
-                self._search_for_vocabulary(
-                    value, path + [str(key)], findings, file_path
-                )
+                self._search_for_vocabulary(value, [*path, str(key)], findings, file_path)
 
         elif isinstance(data, list):
             # Check for lists of strings (vocabulary)
             if all(isinstance(item, str) for item in data) and len(data) >= 5:
                 # Check if these look like vocabulary
                 sample = data[:5]
-                is_vocabulary = any(
-                    len(word) > 3 and word.isalpha()
-                    for word in sample
-                )
+                is_vocabulary = any(len(word) > 3 and word.isalpha() for word in sample)
 
                 if is_vocabulary:
                     finding = Finding(
                         rule_id="WHD-010",
                         file_path=str(file_path),
                         line_number=1,
-                        message=(
-                            f"JSON contains vocabulary list ({len(data)} terms)"
-                        ),
+                        message=(f"JSON contains vocabulary list ({len(data)} terms)"),
                         severity=Severity.LOW,
                         confidence=0.50,
                         evidence=[
                             f"File: {file_path.name}",
-                            f"Path in JSON: {'/' .join(path)}",
+                            f"Path in JSON: {'/'.join(path)}",
                             f"Sample terms: {sample}",
                         ],
                         blocks_merge=False,
@@ -1123,9 +1124,7 @@ class DataFileInspector:
             # Recurse into list items
             for item in data:
                 if isinstance(item, (dict, list)):
-                    self._search_for_vocabulary(
-                        item, path, findings, file_path
-                    )
+                    self._search_for_vocabulary(item, path, findings, file_path)
 
     def _inspect_yaml(self, content: str, file_path: Path) -> list[Finding]:
         """Inspect YAML content for vocabulary patterns."""
@@ -1133,10 +1132,8 @@ class DataFileInspector:
         findings: list[Finding] = []
 
         lines = content.splitlines()
-        in_mapping = False
         string_pairs = []
         string_list = []
-        in_list = False
 
         for line in lines:
             stripped = line.strip()
@@ -1144,14 +1141,10 @@ class DataFileInspector:
                 continue
 
             if stripped.startswith("- "):
-                in_list = True
-                in_mapping = False
                 item = stripped[2:].strip().strip('"').strip("'")
                 if item and not item.startswith("{") and not item.startswith("["):
                     string_list.append(item)
             elif ":" in stripped and not stripped.startswith("-"):
-                in_mapping = True
-                in_list = False
                 parts = stripped.split(":", 1)
                 if len(parts) == 2:
                     key = parts[0].strip()
@@ -1165,9 +1158,7 @@ class DataFileInspector:
                 rule_id="WHD-010",
                 file_path=str(file_path),
                 line_number=1,
-                message=(
-                    f"YAML file contains vocabulary list ({len(string_list)} terms)"
-                ),
+                message=(f"YAML file contains vocabulary list ({len(string_list)} terms)"),
                 severity=Severity.LOW,
                 confidence=0.50,
                 evidence=[
@@ -1184,9 +1175,7 @@ class DataFileInspector:
                 rule_id="WHD-009",
                 file_path=str(file_path),
                 line_number=1,
-                message=(
-                    f"YAML contains {len(string_pairs)} string-to-string mappings"
-                ),
+                message=(f"YAML contains {len(string_pairs)} string-to-string mappings"),
                 severity=Severity.MEDIUM,
                 confidence=0.60,
                 evidence=[
@@ -1215,9 +1204,7 @@ class DataFileInspector:
                 rule_id="WHD-010",
                 file_path=str(file_path),
                 line_number=1,
-                message=(
-                    f"TOML contains string array that may be vocabulary"
-                ),
+                message=("TOML contains string array that may be vocabulary"),
                 severity=Severity.LOW,
                 confidence=0.45,
                 evidence=[
@@ -1289,9 +1276,7 @@ class DataFileInspector:
                     rule_id="WHD-011",
                     file_path=str(file_path),
                     line_number=1,
-                    message=(
-                        f"Markdown contains {len(matches)} potential response template(s)"
-                    ),
+                    message=(f"Markdown contains {len(matches)} potential response template(s)"),
                     severity=Severity.LOW,
                     confidence=0.40,
                     evidence=[
@@ -1351,7 +1336,7 @@ def run_detection(
         low = sum(1 for f in all_findings if f.severity == Severity.LOW)
         blocking = sum(1 for f in all_findings if f.blocks_merge)
 
-        print(f"Universal Hardcoding Detection Report")
+        print("Universal Hardcoding Detection Report")
         print(f"{'=' * 50}")
         print(f"Total findings: {len(all_findings)}")
         print(f"  HIGH (blocking): {high}")
@@ -1360,7 +1345,7 @@ def run_detection(
         print(f"Blocking findings: {blocking}")
 
         if blocking > 0:
-            print(f"\nBLOCKING FINDINGS DETECTED")
+            print("\nBLOCKING FINDINGS DETECTED")
             print(f"{'=' * 50}")
             for f in all_findings:
                 if f.blocks_merge:
@@ -1371,7 +1356,7 @@ def run_detection(
                         print(f"  - {ev}")
     else:  # text format
         if all_findings:
-            print(f"Universal Hardcoding Detection Report")
+            print("Universal Hardcoding Detection Report")
             print(f"{'=' * 50}")
             for f in sorted(all_findings, key=lambda x: (x.severity.value, x.file_path)):
                 print(f"\n[{f.rule_id}] {f.file_path}:{f.line_number}")

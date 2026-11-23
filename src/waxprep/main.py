@@ -170,7 +170,7 @@ _app.add_middleware(RequestIdMiddleware)
 
 
 # Exception handlers
-@_app.exception_handler(StarletteHTTPException)
+@_app.exception_handler(StarletteHTTPException)  # type: ignore[untyped-decorator]
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:  # noqa: RUF029
     """Handle HTTP exceptions with sanitized output.
 
@@ -191,7 +191,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     )
 
 
-@_app.exception_handler(RequestValidationError)
+@_app.exception_handler(RequestValidationError)  # type: ignore[untyped-decorator]
 async def validation_exception_handler(  # noqa: RUF029
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
@@ -215,7 +215,7 @@ async def validation_exception_handler(  # noqa: RUF029
     )
 
 
-@_app.exception_handler(Exception)
+@_app.exception_handler(Exception)  # type: ignore[untyped-decorator]
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:  # noqa: RUF029
     """Handle unexpected exceptions - log full details, return sanitized response."""
     logger.exception(
@@ -233,8 +233,8 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
 
 
 # Health endpoints
-@_app.get("/health/liveness")
-async def liveness() -> JSONResponse:
+@_app.get("/health/liveness")  # type: ignore[untyped-decorator]
+async def liveness() -> JSONResponse:  # noqa: RUF029
     """Liveness endpoint - Is the process alive?"""
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -242,7 +242,7 @@ async def liveness() -> JSONResponse:
     )
 
 
-@_app.get("/health/readiness")
+@_app.get("/health/readiness")  # type: ignore[untyped-decorator]
 async def readiness() -> JSONResponse:
     """Readiness endpoint - Is the application ready?
 
@@ -301,8 +301,8 @@ async def readiness() -> JSONResponse:
 
 
 # Root endpoint
-@_app.get("/")
-async def root() -> JSONResponse:
+@_app.get("/")  # type: ignore[untyped-decorator]
+async def root() -> JSONResponse:  # noqa: RUF029
     """Root endpoint - proves the app is running."""
     return JSONResponse(
         status_code=status.HTTP_200_OK,

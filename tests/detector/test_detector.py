@@ -5,18 +5,17 @@
 
 from __future__ import annotations
 
-import ast
-import pytest
 from pathlib import Path
+
+import pytest
 
 from waxprep.detector import (
     Finding,
     Severity,
     UniversalHardcodingDetector,
-    is_protected_module,
     is_allowed_module,
+    is_protected_module,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -108,12 +107,12 @@ class TestWHD001FixedStringComparison:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag string comparisons in protected modules."""
-        code = '''
+        code = """
 def handle_message(message: str) -> str:
     if message == "hello":
         return "Hi there!"
     return "Unknown"
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -125,12 +124,12 @@ def handle_message(message: str) -> str:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should recognize input-like variable names."""
-        code = '''
+        code = """
 def process(content: str) -> bool:
     if content == "help":
         return True
     return False
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -141,12 +140,12 @@ def process(content: str) -> bool:
         self, detector: UniversalHardcodingDetector, allowed_module_file: Path
     ) -> None:
         """String comparisons in allowed modules should not block."""
-        code = '''
+        code = """
 def validate_status(status: str) -> bool:
     if status == "active":
         return True
     return False
-'''
+"""
         allowed_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(allowed_module_file)
@@ -160,12 +159,12 @@ def validate_status(status: str) -> bool:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag != comparisons too."""
-        code = '''
+        code = """
 def check_input(text: str) -> str:
     if text != "stop":
         return "continue"
     return "halt"
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -185,13 +184,13 @@ class TestWHD002MembershipTest:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag membership tests against lists."""
-        code = '''
+        code = """
 def classify(message: str) -> str:
     greetings = ["hello", "hi", "hey"]
     if message in greetings:
         return "greeting"
     return "other"
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -202,11 +201,11 @@ def classify(message: str) -> str:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag membership tests against sets."""
-        code = '''
+        code = """
 def check_topic(text: str) -> bool:
     topics = {"biology", "anatomy", "chemistry"}
     return text in topics
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -217,13 +216,13 @@ def check_topic(text: str) -> bool:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag not-in membership tests."""
-        code = '''
+        code = """
 def filter_message(input_text: str) -> bool:
     blocked_words = ["spam", "ads"]
     if input_text not in blocked_words:
         return True
     return False
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -234,11 +233,11 @@ def filter_message(input_text: str) -> bool:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Non-string collections should not trigger detection."""
-        code = '''
+        code = """
 def check_numbers(values: list[int]) -> bool:
     valid_values = [1, 2, 3, 4, 5]
     return values in valid_values
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -260,7 +259,7 @@ class TestWHD003IfElifChain:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag long if/elif chains."""
-        code = '''
+        code = """
 def route_message(message: str) -> str:
     if message == "hello":
         return "greet"
@@ -272,7 +271,7 @@ def route_message(message: str) -> str:
         return "study_mode"
     else:
         return "default"
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -283,7 +282,7 @@ def route_message(message: str) -> str:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should handle chains with mixed comparison types."""
-        code = '''
+        code = """
 def classify_input(text: str) -> str:
     if text == "greeting":
         return "hello"
@@ -293,7 +292,7 @@ def classify_input(text: str) -> str:
         return "answer"
     else:
         return "unknown"
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -314,13 +313,13 @@ class TestWHD004RegexMatching:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag regex with word boundaries."""
-        code = '''
+        code = """
 import re
 
 def check_phrase(text: str) -> bool:
     pattern = r"\bhello\b"
     return bool(re.search(pattern, text))
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -331,12 +330,12 @@ def check_phrase(text: str) -> bool:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag re.match usage."""
-        code = '''
+        code = """
 import re
 
 def match_input(message: str) -> bool:
     return bool(re.match(r"\bhelp\b", message))
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -347,13 +346,13 @@ def match_input(message: str) -> bool:
         self, detector: UniversalHardcodingDetector, allowed_module_file: Path
     ) -> None:
         """Legitimate validation regex should not flag in allowed modules."""
-        code = r'''
+        code = r"""
 import re
 
 def validate_email(email: str) -> bool:
     pattern = r"[^@]+@[^@]+\.[^@]+"
     return bool(re.match(pattern, email))
-'''
+"""
         allowed_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(allowed_module_file)
@@ -375,7 +374,7 @@ class TestWHD005DictionaryLookup:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag dictionary lookups with suggestive names."""
-        code = '''
+        code = """
 response_mapping = {
     "hello": "Hi there!",
     "help": "How can I help?",
@@ -383,7 +382,7 @@ response_mapping = {
 
 def get_response(message: str) -> str:
     return response_mapping.get(message, "Unknown")
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -396,7 +395,7 @@ def get_response(message: str) -> str:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag action mapping lookups."""
-        code = '''
+        code = """
 action_table = {
     "greeting": greet_user,
     "question": answer_question,
@@ -406,7 +405,7 @@ def handle(text: str) -> None:
     action = action_table.get(text)
     if action:
         action()
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -428,13 +427,13 @@ class TestWHD007LiteralResponse:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag functions returning literal greetings."""
-        code = '''
+        code = """
 def get_greeting(name: str) -> str:
     return "Hello, welcome!"
 
 def generate_response() -> str:
     return "How can I help you today?"
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -445,10 +444,10 @@ def generate_response() -> str:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag reply functions."""
-        code = '''
+        code = """
 def create_reply(user_input: str) -> str:
     return "I understand your question."
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -459,13 +458,13 @@ def create_reply(user_input: str) -> str:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag speak/say functions."""
-        code = '''
+        code = """
 def speak(message: str) -> str:
     return "Processing your request..."
 
 def say_hello() -> str:
     return "Hello!"
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -485,12 +484,12 @@ class TestWHD008HardcodedVocabulary:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag vocabulary variable assignments."""
-        code = '''
+        code = """
 greetings = ["hello", "hi", "hey", "good morning"]
 
 def check_greeting(text: str) -> bool:
     return text in greetings
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -501,7 +500,7 @@ def check_greeting(text: str) -> bool:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag subject-related vocabularies."""
-        code = '''
+        code = """
 subjects = ["biology", "anatomy", "chemistry", "physics"]
 
 def classify_subject(message: str) -> str:
@@ -509,7 +508,7 @@ def classify_subject(message: str) -> str:
         if subject in message:
             return subject
     return "unknown"
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -520,12 +519,12 @@ def classify_subject(message: str) -> str:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag keyword lists."""
-        code = '''
+        code = """
 keywords = ["exam", "test", "quiz", "study guide"]
 
 def has_keywords(text: str) -> bool:
     return any(kw in text for kw in keywords)
-'''
+"""
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
@@ -536,12 +535,12 @@ def has_keywords(text: str) -> bool:
         self, detector: UniversalHardcodingDetector, allowed_module_file: Path
     ) -> None:
         """Technical constants should not flag in allowed modules."""
-        code = '''
+        code = """
 # These are technical constants, not conversational vocabulary
 SUPPORTED_FORMATS = ["jpg", "png", "gif", "webp"]
 MAX_RETRIES = 3
 TIMEOUT_SECONDS = 30
-'''
+"""
         allowed_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(allowed_module_file)
@@ -559,9 +558,7 @@ TIMEOUT_SECONDS = 30
 class TestIntegration:
     """Integration tests for the detector."""
 
-    def test_scan_directory_returns_all_findings(
-        self, tmp_path: Path
-    ) -> None:
+    def test_scan_directory_returns_all_findings(self, tmp_path: Path) -> None:
         """Scanning a directory should return all findings."""
         # Create test structure
         mod_path = tmp_path / "waxprep" / "messaging"
@@ -569,12 +566,12 @@ class TestIntegration:
 
         file_path = mod_path / "test.py"
         file_path.write_text(
-            '''
+            """
 def handle(message: str) -> str:
     if message == "hello":
         return "Hi!"
     return "Unknown"
-''',
+""",
             encoding="utf-8",
         )
 
@@ -591,11 +588,11 @@ def handle(message: str) -> str:
 
         file_path = mod_path / "test.py"
         file_path.write_text(
-            '''
+            """
 def process(message: str) -> str:
     if message == "test":
         return "result"
-''',
+""",
             encoding="utf-8",
         )
 
@@ -615,11 +612,11 @@ def process(message: str) -> str:
 
         file_path = mod_path / "test.py"
         file_path.write_text(
-            '''
+            """
 def handle(message: str) -> str:
     if message == "hello":
         return "Hi!"
-''',
+""",
             encoding="utf-8",
         )
 
@@ -635,12 +632,12 @@ def handle(message: str) -> str:
 
         file_path = mod_path / "test.py"
         file_path.write_text(
-            '''
+            """
 def validate_status(status: str) -> bool:
     if status == "active":
         return True
     return False
-''',
+""",
             encoding="utf-8",
         )
 
@@ -697,14 +694,14 @@ class TestDataFileInspector:
         """Inspector should detect JSON vocabulary patterns."""
         data_path = tmp_path / "vocab.json"
         data_path.write_text(
-            json_content := '''
+            """
 {
     "hello": "greeting_response",
     "hi": "short_greeting",
     "help": "help_response",
     "exam": "exam_flow"
 }
-''',
+""",
             encoding="utf-8",
         )
 
@@ -720,14 +717,14 @@ class TestDataFileInspector:
         """Inspector should detect YAML vocabulary patterns."""
         data_path = tmp_path / "words.yaml"
         data_path.write_text(
-            '''
+            """
 words:
   - hello
   - hi
   - help
   - exam
   - study
-''',
+""",
             encoding="utf-8",
         )
 
@@ -780,9 +777,7 @@ class TestEdgeCases:
     ) -> None:
         """Directory scan should only process .py files."""
         # Create mixed files
-        (tmp_path / "script.py").write_text(
-            'if message == "hello": pass', encoding="utf-8"
-        )
+        (tmp_path / "script.py").write_text('if message == "hello": pass', encoding="utf-8")
         (tmp_path / "data.json").write_text('{"key": "value"}', encoding="utf-8")
         (tmp_path / "readme.md").write_text("# README", encoding="utf-8")
 

@@ -27,6 +27,7 @@ from waxprep.detector import (
 
 class CheckResult(TypedDict):
     """Result of the hardcoding detection check."""
+
     passed: bool
     blocked: bool
     total_findings: int
@@ -34,7 +35,7 @@ class CheckResult(TypedDict):
     high_severity: int
     medium_severity: int
     low_severity: int
-    findings: list[dict]
+    findings: list[dict[str, object]]
     summary: str
 
 
@@ -89,9 +90,7 @@ def check_hardcoding(
         summary_lines.append("Blocking findings:")
         for f in all_findings:
             if f.blocks_merge:
-                summary_lines.append(
-                    f"  [{f.rule_id}] {f.file_path}:{f.line_number} - {f.message}"
-                )
+                summary_lines.append(f"  [{f.rule_id}] {f.file_path}:{f.line_number} - {f.message}")
 
     summary = "\n".join(summary_lines)
 
@@ -110,9 +109,7 @@ def check_hardcoding(
         print(json.dumps(result_dict, indent=2))
 
         if json_output_path:
-            Path(json_output_path).write_text(
-                json.dumps(result_dict, indent=2), encoding="utf-8"
-            )
+            Path(json_output_path).write_text(json.dumps(result_dict, indent=2), encoding="utf-8")
     elif output_format == "summary":
         print(summary)
     else:
@@ -171,8 +168,7 @@ def main() -> int:
     if args.continue_on_warning:
         # Only block on HIGH severity blocking findings
         blocking_high = sum(
-            1 for f in result["findings"]
-            if f.get("severity") == "HIGH" and f.get("blocks_merge")
+            1 for f in result["findings"] if f.get("severity") == "HIGH" and f.get("blocks_merge")
         )
         return 1 if blocking_high > 0 else 0
 

@@ -7,15 +7,14 @@
 from __future__ import annotations
 
 import ast
-import pytest
 from pathlib import Path
 
+import pytest
+
 from waxprep.detector import (
-    Finding,
     Severity,
     UniversalHardcodingDetector,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -45,11 +44,12 @@ class TestAdversarialAlternateSyntax:
     """Tests for alternate syntax implementations of prohibited patterns."""
 
     def test_if_else_instead_of_elif(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Nested if/else should be detected as fixed decision tree."""
-        code = '''
+        code = """
 def route(message: str) -> str:
     if message == "hello":
         return "greet"
@@ -61,28 +61,26 @@ def route(message: str) -> str:
                 return "exam_flow"
             else:
                 return "default"
-'''
+"""
         file_path = protected_module_path / "nested_if.py"
         file_path.write_text(code, encoding="utf-8")
 
         findings = adversarial_detector.scan_file(file_path)
 
         # Should detect nested conditions or string comparisons
-        assert any(
-            f.rule_id in ("WHD-001", "WHD-006")
-            for f in findings
-        )
+        assert any(f.rule_id in ("WHD-001", "WHD-006") for f in findings)
 
     def test_ternary_instead_of_if(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Ternary expressions with string comparison should be detected."""
-        code = '''
+        code = """
 def check(message: str) -> str:
     result = "greeting" if message == "hello" else "other"
     return result
-'''
+"""
         file_path = protected_module_path / "ternary.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -92,13 +90,14 @@ def check(message: str) -> str:
         assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0
 
     def test_match_statement(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Match/case statements should be detected as fixed routing."""
         # Python 3.10+ match statement
         if hasattr(ast, "Match"):
-            code = '''
+            code = """
 def handle(message: str) -> str:
     match message:
         case "hello":
@@ -109,7 +108,7 @@ def handle(message: str) -> str:
             return "exam_flow"
         case _:
             return "default"
-'''
+"""
             file_path = protected_module_path / "match.py"
             file_path.write_text(code, encoding="utf-8")
 
@@ -125,7 +124,8 @@ class TestAdversarialMovedData:
     """Tests for patterns where data is moved to other locations."""
 
     def test_dictionary_in_separate_module(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
         tmp_path: Path,
     ) -> None:
@@ -133,20 +133,20 @@ class TestAdversarialMovedData:
         # Create vocabulary in separate file
         vocab_path = tmp_path / "vocabulary.py"
         vocab_path.write_text(
-            '''
+            """
 GREETINGS = ["hello", "hi", "hey"]
 TOPICS = ["biology", "anatomy", "chemistry"]
-''',
+""",
             encoding="utf-8",
         )
 
         # Use it in protected module
-        code = '''
+        code = """
 from vocabulary import GREETINGS
 
 def check_message(message: str) -> bool:
     return message in GREETINGS
-'''
+"""
         file_path = protected_module_path / "imported_vocab.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -157,25 +157,26 @@ def check_message(message: str) -> bool:
         assert len(findings) >= 0  # This tests AST-only limitation
 
     def test_constant_in_config(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
         tmp_path: Path,
     ) -> None:
         """Constants in config should be detectable via assignment pattern."""
         config_path = tmp_path / "config.py"
         config_path.write_text(
-            '''
+            """
 RESPONSE_WORDS = ["hello", "help", "thanks"]
-''',
+""",
             encoding="utf-8",
         )
 
-        code = '''
+        code = """
 from config import RESPONSE_WORDS
 
 def is_response_word(text: str) -> bool:
     return text in RESPONSE_WORDS
-'''
+"""
         file_path = protected_module_path / "config_import.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -191,11 +192,12 @@ class TestAdversarialHelperIndirection:
     """Tests for patterns hidden behind helper functions."""
 
     def test_helper_function_with_comparison(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Helper functions with string comparison should be detected."""
-        code = '''
+        code = """
 def _is_greeting(message: str) -> bool:
     return message == "hello" or message == "hi"
 
@@ -203,7 +205,7 @@ def handle_message(message: str) -> str:
     if _is_greeting(message):
         return "greet_back"
     return "continue"
-'''
+"""
         file_path = protected_module_path / "helper_indirection.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -213,11 +215,12 @@ def handle_message(message: str) -> str:
         assert any(f.rule_id == "WHD-001" for f in findings)
 
     def test_nested_helper_calls(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Chained helper calls should not hide the pattern."""
-        code = '''
+        code = """
 def _normalize(text: str) -> str:
     return text.lower().strip()
 
@@ -227,7 +230,7 @@ def _is_match(normalized: str, target: str) -> bool:
 def check(message: str) -> bool:
     normalized = _normalize(message)
     return _is_match(normalized, "hello")
-'''
+"""
         file_path = protected_module_path / "nested_helpers.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -243,33 +246,36 @@ class TestAdversarialVocabularyReplacement:
     """Tests for patterns using different vocabulary."""
 
     def test_synonym_vocabulary(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Different vocabulary should still be detected."""
-        code = '''
+        code = """
 SALUTATIONS = ["greetings", "hey there", "good day", "what's up"]
 
 def classify(text: str) -> str:
     if text in SALUTATIONS:
         return "friendly"
     return "neutral"
-'''
+"""
         file_path = protected_module_path / "synonyms.py"
         file_path.write_text(code, encoding="utf-8")
 
         findings = adversarial_detector.scan_file(file_path)
 
         # Should detect the vocabulary pattern regardless of specific words
-        assert any(f.rule_id == "WHD-008" for f in findings) or \
-               any(f.rule_id == "WHD-002" for f in findings)
+        assert any(f.rule_id == "WHD-008" for f in findings) or any(
+            f.rule_id == "WHD-002" for f in findings
+        )
 
     def test_abbreviated_vocabulary(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Abbreviated terms should still be detected."""
-        code = '''
+        code = """
 CODES = ["g", "h", "hlp", "ex", "std"]
 
 def decode(code: str) -> str:
@@ -279,7 +285,7 @@ def decode(code: str) -> str:
         "ex": "exam"
     }
     return mapping.get(code, "unknown")
-'''
+"""
         file_path = protected_module_path / "abbreviated.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -295,21 +301,22 @@ class TestAdversarialDataStorage:
     """Tests for patterns stored in data files."""
 
     def test_json_response_mapping(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
         tmp_path: Path,
     ) -> None:
         """JSON files with response mappings should be detectable."""
         json_path = tmp_path / "responses.json"
         json_path.write_text(
-            '''
+            """
 {
     "hello": "Hi there!",
     "help": "How can I help you?",
     "exam": "Let's talk about exams.",
     "study": "Good study habits are important."
 }
-''',
+""",
             encoding="utf-8",
         )
 
@@ -322,19 +329,20 @@ class TestAdversarialDataStorage:
         assert any(f.rule_id == "WHD-009" for f in findings)
 
     def test_yaml_topic_classification(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
         tmp_path: Path,
     ) -> None:
         """YAML files with classification data should be detectable."""
         yaml_path = tmp_path / "topics.yaml"
         yaml_path.write_text(
-            '''
+            """
 topic_keywords:
   biology: ["cell", "DNA", "evolution"]
   chemistry: ["atom", "bond", "reaction"]
   physics: ["force", "energy", "motion"]
-''',
+""",
             encoding="utf-8",
         )
 
@@ -353,16 +361,17 @@ class TestAdversarialObfuscation:
     """Tests for obfuscated implementations."""
 
     def test_split_string_concatenation(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Split strings should still form detectable patterns."""
-        code = '''
+        code = """
 def check(message: str) -> bool:
     # Using string concatenation to obscure
     target = "hel" + "lo"
     return message == target
-'''
+"""
         file_path = protected_module_path / "split_string.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -373,18 +382,19 @@ def check(message: str) -> bool:
         assert len(findings) >= 0  # May not detect dynamic construction
 
     def test_variable_indirection(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Variable indirection should still be partially detectable."""
-        code = '''
+        code = """
 def handle(input_text: str) -> str:
     word = "hello"
     check = word
     if input_text == check:
         return "response"
     return "unknown"
-'''
+"""
         file_path = protected_module_path / "variable_indirection.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -405,18 +415,19 @@ class TestMutationDetection:
     """Tests to verify the detector catches mutated prohibited patterns."""
 
     def test_mutation_string_to_list_comparison(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Changing from string comparison to list membership should be caught."""
         # Original: if message == "hello"
         # Mutation: if message in ["hello", "hi", "hey"]
-        code = '''
+        code = """
 def handle(message: str) -> str:
     if message in ["hello", "hi", "hey"]:
         return "greeting"
     return "other"
-'''
+"""
         file_path = protected_module_path / "mutation_list.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -425,13 +436,14 @@ def handle(message: str) -> str:
         assert any(f.rule_id == "WHD-002" for f in findings)
 
     def test_mutation_direct_to_helper(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Moving comparison to helper should still be caught."""
         # Original: if message == "hello" in main function
         # Mutation: moved to helper function
-        code = '''
+        code = """
 def _matches_hello(message: str) -> bool:
     return message == "hello"
 
@@ -439,7 +451,7 @@ def process(message: str) -> str:
     if _matches_hello(message):
         return "greeting"
     return "other"
-'''
+"""
         file_path = protected_module_path / "mutation_helper.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -449,13 +461,14 @@ def process(message: str) -> str:
         assert any(f.rule_id == "WHD-001" for f in findings)
 
     def test_mutation_single_to_chain(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Expanding single comparison to chain should be caught."""
         # Original: if message == "hello"
         # Mutation: if/elif chain with multiple comparisons
-        code = '''
+        code = """
 def route(message: str) -> str:
     if message == "hello":
         return "greet"
@@ -465,31 +478,29 @@ def route(message: str) -> str:
         return "formal_greet"
     else:
         return "other"
-'''
+"""
         file_path = protected_module_path / "mutation_chain.py"
         file_path.write_text(code, encoding="utf-8")
 
         findings = adversarial_detector.scan_file(file_path)
 
         # Should detect the chain or the individual comparisons
-        assert any(
-            f.rule_id in ("WHD-001", "WHD-003")
-            for f in findings
-        )
+        assert any(f.rule_id in ("WHD-001", "WHD-003") for f in findings)
 
     def test_mutation_equality_to_contains(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Changing from equality to contains check should be caught."""
         # Original: if message == "hello"
         # Mutation: if "hello" in message
-        code = '''
+        code = """
 def check(message: str) -> bool:
     if "hello" in message:
         return True
     return False
-'''
+"""
         file_path = protected_module_path / "mutation_contains.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -500,18 +511,19 @@ def check(message: str) -> bool:
         assert len(findings) >= 0  # Different detection needed for this pattern
 
     def test_mutation_literal_to_variable(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Moving literal to variable should still result in detection."""
         # Original: if message == "hello"
         # Mutation: GREETING = "hello"; if message == GREETING
-        code = '''
+        code = """
 GREETING = "hello"
 
 def check(message: str) -> bool:
     return message == GREETING
-'''
+"""
         file_path = protected_module_path / "mutation_variable.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -532,38 +544,36 @@ class TestFalsePositivePrevention:
     """Tests to ensure legitimate patterns are not flagged."""
 
     def test_legitimate_error_messages(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Error messages should not trigger false positives."""
-        code = '''
+        code = """
 def handle_error(error_code: int) -> str:
     if error_code == 404:
         return "Resource not found"
     elif error_code == 500:
         return "Internal server error"
     return "Unknown error"
-'''
+"""
         file_path = protected_module_path / "error_messages.py"
         file_path.write_text(code, encoding="utf-8")
 
         findings = adversarial_detector.scan_file(file_path)
 
         # Should not flag error message handling
-        whd_findings = [
-            f for f in findings
-            if f.rule_id in ("WHD-001", "WHD-003", "WHD-007")
-        ]
+        whd_findings = [f for f in findings if f.rule_id in ("WHD-001", "WHD-003", "WHD-007")]
         # These findings should be acceptable (technical, not conversational)
-        assert all(not f.blocks_merge or f.severity != Severity.HIGH
-                   for f in whd_findings)
+        assert all(not f.blocks_merge or f.severity != Severity.HIGH for f in whd_findings)
 
     def test_legitimate_command_routing(
-        self, adversarial_detector: UniversalHardcodingDetector,
+        self,
+        adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
         """Technical command routing should not trigger false positives."""
-        code = '''
+        code = """
 def handle_command(command: str) -> str:
     if command == "/start":
         return "welcome"
@@ -572,7 +582,7 @@ def handle_command(command: str) -> str:
     elif command == "/help":
         return "help_menu"
     return "unknown_command"
-'''
+"""
         file_path = protected_module_path / "commands.py"
         file_path.write_text(code, encoding="utf-8")
 
@@ -592,7 +602,8 @@ class TestDetectorCoverage:
     """Tests to verify comprehensive coverage of detection rules."""
 
     def test_all_rules_have_at_least_one_test(
-        self, protected_module_path: Path,
+        self,
+        protected_module_path: Path,
     ) -> None:
         """Each detection rule should be tested."""
         # This is verified by the test structure itself
@@ -610,15 +621,16 @@ class TestDetectorCoverage:
         pass  # Structure verification
 
     def test_detector_runs_without_ai(
-        self, protected_module_path: Path,
+        self,
+        protected_module_path: Path,
     ) -> None:
         """Detector should work without any AI or network access."""
-        code = '''
+        code = """
 def handle(message: str) -> str:
     if message == "hello":
         return "Hi!"
     return "Unknown"
-'''
+"""
         file_path = protected_module_path / "no_ai.py"
         file_path.write_text(code, encoding="utf-8")
 

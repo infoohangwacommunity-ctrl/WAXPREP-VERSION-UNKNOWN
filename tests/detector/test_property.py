@@ -10,7 +10,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from waxprep.detector import (
     Finding,
@@ -19,7 +20,6 @@ from waxprep.detector import (
     is_allowed_module,
     is_protected_module,
 )
-
 
 # =============================================================================
 # Custom strategies for code generation
@@ -42,11 +42,13 @@ def input_variable_name(draw) -> str:
 def string_literal(draw) -> str:
     """Generate random string literals."""
     length = draw(st.integers(min_value=1, max_value=20))
-    chars = draw(st.lists(
-        st.sampled_from(string.ascii_letters + string.digits + " "),
-        min_size=length,
-        max_size=length,
-    ))
+    chars = draw(
+        st.lists(
+            st.sampled_from(string.ascii_letters + string.digits + " "),
+            min_size=length,
+            max_size=length,
+        )
+    )
     return "".join(chars)
 
 
@@ -58,11 +60,13 @@ def vocabulary_list(draw, min_size=2, max_size=10) -> list[str]:
     words = []
     for _ in range(size):
         word_length = draw(st.integers(min_value=2, max_value=15))
-        word = draw(st.lists(
-            st.sampled_from(string.ascii_lowercase),
-            min_size=word_length,
-            max_size=word_length,
-        ))
+        word = draw(
+            st.lists(
+                st.sampled_from(string.ascii_lowercase),
+                min_size=word_length,
+                max_size=word_length,
+            )
+        )
         words.append("".join(word))
 
     return words
@@ -85,8 +89,7 @@ class TestModuleBoundaryProperties:
         ]
 
         for pattern in protected_patterns:
-            assert is_protected_module(pattern), \
-                f"Expected {pattern} to be protected"
+            assert is_protected_module(pattern), f"Expected {pattern} to be protected"
 
     def test_allowed_module_prefixes(self) -> None:
         """Paths starting with allowed prefixes should be detected."""
@@ -97,8 +100,7 @@ class TestModuleBoundaryProperties:
         ]
 
         for pattern in allowed_patterns:
-            assert is_allowed_module(pattern), \
-                f"Expected {pattern} to be allowed"
+            assert is_allowed_module(pattern), f"Expected {pattern} to be allowed"
 
     def test_mutually_exclusive_boundaries(self) -> None:
         """A module cannot be both protected and allowed."""
@@ -113,8 +115,9 @@ class TestModuleBoundaryProperties:
             allowed = is_allowed_module(path)
 
             # Protected and allowed should be mutually exclusive
-            assert protected != allowed or not (protected and allowed), \
+            assert protected != allowed or not (protected and allowed), (
                 f"Module {path} cannot be both protected and allowed"
+            )
 
 
 # =============================================================================
@@ -133,12 +136,12 @@ class TestDetectionConsistency:
             detector2 = UniversalHardcodingDetector(tmp_dir)
 
             # Create identical code
-            code = f'''
+            code = f"""
 vocabulary = {vocabulary}
 
 def check(text: str) -> bool:
     return text in vocabulary
-'''
+"""
 
             # Write to file
             file_path = Path(tmp_dir) / "test.py"
@@ -149,8 +152,7 @@ def check(text: str) -> bool:
             findings2 = detector2.scan_file(file_path)
 
             # Results should be identical
-            assert len(findings1) == len(findings2), \
-                "Detector should be deterministic"
+            assert len(findings1) == len(findings2), "Detector should be deterministic"
 
             for f1, f2 in zip(findings1, findings2):
                 assert f1.rule_id == f2.rule_id
@@ -165,15 +167,12 @@ def check(text: str) -> bool:
 
             # Create non-Python files
             for i in range(num_files):
-                (Path(tmp_dir) / f"file_{i}.txt").write_text(
-                    f"Content {i}", encoding="utf-8"
-                )
+                (Path(tmp_dir) / f"file_{i}.txt").write_text(f"Content {i}", encoding="utf-8")
 
             findings = detector.scan_directory(tmp_dir)
 
             # No Python files means no findings
-            assert len(findings) == 0, \
-                "Non-Python files should not produce Python findings"
+            assert len(findings) == 0, "Non-Python files should not produce Python findings"
 
     def test_syntax_error_handling(self) -> None:
         """Files with syntax errors should not crash detector."""
@@ -262,12 +261,12 @@ class TestVocabularyDetectionProperties:
             mod_path.mkdir(parents=True)
 
             file_path = mod_path / "vocab_test.py"
-            code = f'''
+            code = f"""
 VocabTerms = {vocabulary}
 
 def check(text: str) -> bool:
     return text in VocabTerms
-'''
+"""
             file_path.write_text(code, encoding="utf-8")
 
             detector = UniversalHardcodingDetector(tmp_dir)
@@ -275,8 +274,7 @@ def check(text: str) -> bool:
 
             # Should detect the vocabulary pattern
             whd_findings = [f for f in findings if f.rule_id in ("WHD-002", "WHD-008")]
-            assert len(whd_findings) >= 1, \
-                f"Vocabulary {vocabulary} should trigger detection"
+            assert len(whd_findings) >= 1, f"Vocabulary {vocabulary} should trigger detection"
 
     @given(st.lists(st.text(min_size=3, max_size=15), min_size=3, max_size=6))
     def test_string_collection_detection(self, strings: list[str]) -> None:
@@ -291,22 +289,23 @@ def check(text: str) -> bool:
             mod_path.mkdir(parents=True)
 
             file_path = mod_path / "collection_test.py"
-            code = f'''
+            code = f"""
 terms = {vocab_strings}
 
 def classify(input_text: str) -> str:
     if input_text in terms:
         return "matched"
     return "not_matched"
-'''
+"""
             file_path.write_text(code, encoding="utf-8")
 
             detector = UniversalHardcodingDetector(tmp_dir)
             findings = detector.scan_file(file_path)
 
             # Should detect membership test
-            assert any(f.rule_id == "WHD-002" for f in findings), \
+            assert any(f.rule_id == "WHD-002" for f in findings), (
                 f"Membership test with {vocab_strings} should be detected"
+            )
 
 
 # =============================================================================
@@ -325,14 +324,14 @@ class TestProtectedModuleEnforcement:
             mod_path.mkdir(parents=True)
 
             file_path = mod_path / "blocked_test.py"
-            code = f'''
+            code = f"""
 Terms = {vocabulary}
 
 def handle(message: str) -> str:
     if message in Terms:
         return "response"
     return "other"
-'''
+"""
             file_path.write_text(code, encoding="utf-8")
 
             detector = UniversalHardcodingDetector(tmp_dir)
@@ -340,25 +339,22 @@ def handle(message: str) -> str:
 
             # At least one finding should block in protected module
             blocking = [f for f in findings if f.blocks_merge]
-            assert len(blocking) >= 1, \
-                "Protected module findings should block"
+            assert len(blocking) >= 1, "Protected module findings should block"
 
     @given(st.lists(st.text(min_size=1, max_size=20), min_size=1, max_size=3))
-    def test_allowed_modules_do_not_block(
-        self, vocabulary: list[str]
-    ) -> None:
+    def test_allowed_modules_do_not_block(self, vocabulary: list[str]) -> None:
         """Findings in allowed modules should not block."""
         with TemporaryDirectory() as tmp_dir:
             mod_path = Path(tmp_dir) / "waxprep" / "core"
             mod_path.mkdir(parents=True)
 
             file_path = mod_path / "allowed_test.py"
-            code = f'''
+            code = f"""
 TechnicalTerms = {vocabulary}
 
 def validate(code: str) -> bool:
     return code in TechnicalTerms
-'''
+"""
             file_path.write_text(code, encoding="utf-8")
 
             detector = UniversalHardcodingDetector(tmp_dir)
@@ -366,8 +362,7 @@ def validate(code: str) -> bool:
 
             # Findings in allowed modules should not block
             blocking = [f for f in findings if f.blocks_merge]
-            assert len(blocking) == 0, \
-                "Allowed module findings should not block"
+            assert len(blocking) == 0, "Allowed module findings should not block"
 
 
 # =============================================================================
@@ -389,14 +384,14 @@ class TestIntegrationProperties:
             src_path.mkdir(parents=True)
 
             (src_path / "test.py").write_text(
-                '''
+                """
 def handle(message: str) -> str:
     if message == "hello":
         return "Hi!"
     elif message == "help":
         return "Help!"
     return "Unknown"
-''',
+""",
                 encoding="utf-8",
             )
 
@@ -413,21 +408,22 @@ def handle(message: str) -> str:
 
     def test_quality_gate_check_returns_correct_status(self) -> None:
         """Quality gate check should return correct pass/blocked status."""
-        from waxprep.detector.quality_gate import check_hardcoding
         import tempfile
         from pathlib import Path
+
+        from waxprep.detector.quality_gate import check_hardcoding
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             mod_path = Path(tmp_dir) / "waxprep" / "messaging"
             mod_path.mkdir(parents=True)
 
             (mod_path / "test.py").write_text(
-                '''
+                """
 def handle(message: str) -> str:
     if message == "hello":
         return "Hi!"
     return "Unknown"
-''',
+""",
                 encoding="utf-8",
             )
 
