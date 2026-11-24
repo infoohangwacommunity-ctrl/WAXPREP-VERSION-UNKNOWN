@@ -113,7 +113,7 @@ When adding a new swappable component (channel, model, tool, store, etc.):
 - [ ] **Contract tests for protocols** — verify implementations satisfy contracts
 - [ ] **No test imports from outer layers into inner layers** — tests follow same rules
 - [ ] **Tests are deterministic** — no flaky async tests, proper `pytest.mark.asyncio`
-- [ ] **`test_boundaries.py` updated** if new boundary rules apply
+- [ ] **Tests placed in correct directory** — `tests/unit/`, `tests/integration/`, `tests/architecture/`, etc.
 - [ ] **CI passes** — `mypy`, `ruff`, `pytest` all green
 
 ---

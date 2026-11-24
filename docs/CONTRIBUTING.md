@@ -46,7 +46,7 @@ uv run ruff format src/
 ```
 src/waxprep/
 ├── main.py              # ASGI app, health endpoints, lifespan, middleware
-├── config.py            # Settings (NO hardcoded values)
+├── config.py            # Settings (configurable defaults, not hardcoded)
 ├── core/                # Pure logic & protocols (NO infrastructure imports)
 │   ├── __init__.py      # Boundary rules, purpose statement
 │   ├── protocols.py     # Domain protocols
@@ -59,10 +59,15 @@ src/waxprep/
 └── adapters/            # Fake adapter implementations (source of truth)
 
 tests/
-├── test_config.py       # Proves NO hardcoded values
-├── test_registries.py   # Proves registry behavior
-├── test_main.py         # Proves health endpoints work
-└── test_foundation.py   # Proves foundation stability
+├── unit/               # Pure logic, single function/class
+├── integration/        # Component interactions
+├── contract/           # Protocol compliance
+├── lifecycle/          # Startup/shutdown, failures
+├── architecture/       # Boundary enforcement
+├── configuration/      # Config loading
+├── detector/           # Detector unit, adversarial, CLI tests
+├── regression/         # Behavior preservation
+├── conftest.py         # Shared fixtures
 ```
 
 ---
@@ -371,17 +376,24 @@ core/      ──→ Nothing from waxprep (pure logic only)
 
 ### No Hardcoding Rule
 
-All configuration lives in environment variables or test fixtures. Never hardcode:
+Operational values that should vary across environments must come from environment variables or test fixtures. Never hardcode:
 
 - ❌ Model names
 - ❌ API keys
-- ❌ Ports
-- ❌ Timeouts
-- ❌ Grace periods
 - ❌ Channel identifiers
 - ❌ Student levels
 - ❌ Greetings
 - ❌ Keyword routes
+
+Acceptable defaults (for development convenience):
+
+- ✅ Default environment name (`development`)
+- ✅ Default host (`0.0.0.0`)
+- ✅ Default port (`8000`)
+- ✅ Default log level (`info`)
+- ✅ Standard HTTP status codes
+- ✅ UUID validation rules
+- ✅ Response structures
 
 ---
 
@@ -452,10 +464,14 @@ def test_get_raises_key_error_for_missing():
 ```
 
 ### Test Types
-
-- **Unit tests**: Test individual functions/classes
-- **Integration tests**: Test component interactions
-- **Boundary tests**: Prove packages respect import rules
+- **Unit tests** (`tests/unit/`): Test individual functions/classes
+- **Integration tests** (`tests/integration/`): Test component interactions
+- **Contract tests** (`tests/contract/`): Verify protocol compliance
+- **Lifecycle tests** (`tests/lifecycle/`): Startup/shutdown, failure paths
+- **Architecture tests** (`tests/architecture/`): Boundary enforcement
+- **Configuration tests** (`tests/configuration/`): Config loading verification
+- **Detector tests** (`tests/detector/`): Stage 08 rule verification
+- **Regression tests** (`tests/regression/`): Behavior preservation
 
 ---
 

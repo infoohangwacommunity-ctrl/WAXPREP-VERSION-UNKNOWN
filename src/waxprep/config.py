@@ -1,6 +1,7 @@
 """
 Configuration Management - Stage 02
-NO hardcoded values. All from environment.
+All operational values configured via environment variables.
+Acceptable defaults provided for development convenience.
 """
 
 from pydantic import Field
@@ -8,7 +9,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings. NO hardcoded values."""
+    """Application settings. Configured via WAXPREP_ environment variables.
+
+    Acceptable defaults are provided for local development.
+    Production deployments must override these via environment.
+    """
 
     model_config = SettingsConfigDict(
         env_file=".env",

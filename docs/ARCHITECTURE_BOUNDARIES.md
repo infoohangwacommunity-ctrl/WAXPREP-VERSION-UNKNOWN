@@ -1,7 +1,8 @@
 # WaxPrep Foundation - Boundary Rules (Stage 03)
 
 **Version:** 0.1.0  
-**Python Requirement:** >=3.14
+**Python Requirement:** >=3.14  
+**Last updated:** Stage 03 boundary definition (active copy)
 
 ---
 

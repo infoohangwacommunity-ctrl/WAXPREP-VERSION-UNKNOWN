@@ -8,6 +8,10 @@ Includes:
 - Meaningful readiness checks
 - Structured logging with structlog
 - Composition root for Stage 03 services (when added)
+
+Application state is held in module-level singletons (_app_state, _app)
+for the single-process ASGI deployment model. The AppState class itself
+is not a module-global — it is instantiated once and referenced by name.
 """
 
 from collections.abc import AsyncGenerator

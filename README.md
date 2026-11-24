@@ -17,7 +17,7 @@ Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.
 - Registry pattern with fake adapters (proves architecture)
 - Explicit registry registration (no import-time side effects)
 - Graceful shutdown (ASGI server-managed via lifespan; no custom signal handler)
-- Application state isolated in AppState container (not module-global)
+- Application state managed via AppState container (single-instance module-level state for ASGI deployment)
 - Health endpoints (liveness ≠ readiness, readiness checks registry state)
 - Structured logging with correlation IDs (middleware-bound, context properly restored)
 - Request ID validation (incoming IDs validated before trust)
@@ -39,22 +39,22 @@ Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.
 ```
 src/waxprep/
 ├── main.py              # ASGI app, health endpoints, lifespan, middleware
-├── config.py            # Settings (configurable defaults, not hardcoded)
+├── config.py            # Settings (configurable defaults with development defaults)
 ├── id.py                # UUIDv7 identity generation (Stage 04 identity foundation)
 ├── core/                # Pure logic & protocols (NO infrastructure imports)
-│   ├── __init__.py      # Boundary rules, purpose statement
-│   ├── protocols.py     # Message/MessageHandler/ContextProvider protocols
+│   ├── __init__.py      # Boundary rules, purpose statement, Message/MessageHandler/ContextProvider
+│   ├── protocols.py     # Protocol re-exports and boundary guard
 │   └── pure.py          # Pure functions (normalize_text, extract_keywords, etc.)
-├── messaging/           # Message handling & conversation flow (placeholder - no implementation)
-│   └── __init__.py      # Boundary rules, reserved architectural area
-├── context/             # Understanding the learner (placeholder - no implementation)
-│   └── __init__.py      # Boundary rules, reserved architectural area
-├── services/            # Light orchestration (placeholder - no implementation)
-│   └── __init__.py      # Boundary rules, reserved architectural area
+├── messaging/           # Message handling & conversation flow (placeholder)
+│   └── __init__.py      # Boundary rules, placeholder for future code
+├── context/             # Understanding the learner (placeholder)
+│   └── __init__.py      # Boundary rules, open land - internal shape TBD
+├── services/            # Light orchestration (placeholder)
+│   └── __init__.py      # Boundary rules, composition layer
 ├── middleware/          # Request ID and base middleware patterns
 │   ├── __init__.py
 │   ├── request_id.py    # Correlation ID middleware
-│   └── base.py          # Middleware skeletons (unimplemented - not active protection)
+│   └── base.py          # Middleware skeletons for future use
 ├── registries/          # Channel, Model, Tool registries
 │   ├── __init__.py
 │   ├── base.py          # BaseRegistry[T] - generic registry
@@ -66,6 +66,44 @@ src/waxprep/
     ├── fake_channel.py  # FakeChannelAdapter
     ├── fake_model.py    # FakeModelAdapter
     └── fake_tool.py     # FakeTool
+```
+
+tests/
+├── unit/               # Pure logic, single function/class
+│   ├── __init__.py
+│   ├── test_core_pure.py              # Pure function logic
+│   ├── test_id.py                     # UUIDv7 correctness, monotonicity, mass uniqueness, format validation
+│   └── test_middleware_skeletons.py   # Middleware skeleton validation
+├── integration/       # Component interactions
+│   ├── __init__.py
+│   ├── test_exception_handlers.py     # Exception handler integration
+│   ├── test_foundation.py             # Foundation stability + middleware + correlation IDs
+│   ├── test_main.py                   # Health endpoints
+│   └── test_registries.py            # Registry behavior
+├── contract/          # Protocol compliance
+│   ├── __init__.py
+│   └── test_core_protocols.py         # Protocol compliance
+├── lifecycle/         # Startup/shutdown, failures
+│   ├── __init__.py
+│   └── test_lifecycle.py              # Startup/shutdown, failure paths
+├── architecture/      # Boundary enforcement
+│   ├── __init__.py
+│   └── test_boundaries.py             # Architectural boundary enforcement
+├── configuration/     # Config loading
+│   ├── __init__.py
+│   └── test_config.py                 # Proves configurable defaults, not hardcoded values
+├── detector/          # Stage 08 detector tests
+│   ├── __init__.py
+│   ├── test_detector.py               # Unit tests for each WHD rule
+│   ├── test_adversarial.py            # Adversarial and mutation tests
+│   ├── test_cli_and_quality_gate.py   # CLI and integration tests
+│   ├── test_coverage_gaps.py          # Coverage gap analysis
+│   └── test_property.py               # Property-based tests
+├── regression/        # Behavior preservation
+│   ├── __init__.py
+│   └── (regression tests)
+├── conftest.py                        # Shared fixtures
+└── test_final_coverage.py             # Final coverage verification
 ```
 src/waxprep/
 ├── main.py              # ASGI app, health endpoints, lifespan, middleware
@@ -129,16 +167,7 @@ tests/
 └── test_final_coverage.py             # Final coverage verification
 ```
 
-**Old flat test files → new locations:**
 
-| Old file | New location |
-|---|---|
-| `tests/test_config.py` | `tests/configuration/test_config.py` |
-| `tests/test_registries.py` | `tests/integration/test_registries.py` |
-| `tests/test_main.py` | `tests/integration/test_main.py` |
-| `tests/test_foundation.py` | `tests/integration/test_foundation.py` |
-| `tests/test_boundaries.py` | `tests/architecture/test_boundaries.py` |
-| `tests/test_id.py` | `tests/unit/test_id.py` |
 
 ### Boundary Rules
 
@@ -268,7 +297,7 @@ Independent, deterministic source-code detection system that identifies prohibit
 
 **Purpose:** The detector investigates HOW source code makes decisions about student messages, not just what words appear in the code. It prevents developers and AI coding agents from quietly introducing fixed input-dependent behavior into parts of WaxPrep where decisions are expected to be contextual, flexible, or delegated to an approved intelligence layer.
 
-**Status:** Implementation complete. Documentation updated. CI integration active. Some detection capabilities are documented as limitations.
+**Status:** Baseline implementation exists with documented detection limitations. Not all patterns are detected — see Known limitations below.
 
 **Key characteristics:**
 - Development-time tool only — not part of the production tutor response pipeline
@@ -320,6 +349,7 @@ python -m waxprep.detector.quality_gate [path] --format summary
 - Dynamic string construction not detected
 - Match/case statements not fully covered
 - Some adversarial tests marked xfail for documented gaps
+- Coverage gate excludes `waxprep/detector/quality_gate.py` (see pyproject.toml)
 
 **CI integration:** The Quality Gate runs the detector via:
 ```bash
@@ -343,33 +373,32 @@ All project documentation is organized in the `docs/` folder:
   - `STAGE_03_ARCHITECTURE.md` — Original Stage 03 architecture (merged into README)
   - `STAGE_07_STATIC_ANALYSIS.md` — Static analysis audit (superseded by CI workflow)
   - `STAGE06_STATIC_ANALYSIS_RESEARCH.md` — Stage 06 research (superseded by Stage 07)
+  - `STAGE03_BOUNDARIES.md` — Stage 03 boundary notes (superseded by ARCHITECTURE_BOUNDARIES.md)
   - `IMPLEMENTATION_PLAN.md` — Original implementation plan (completed)
   - `INDEPENDENT_AUDIT_STAGE_01_07.md` — Independent audit report
   - `FUNDATION_CORRECTION_REPORT.md` — Foundation correction report
   - `TEST_PLAN_STAGE_03.md` — Stage 03 test plan
-  - `src/waxprep/STAGE03_BOUNDARIES.md` — Stage 03 boundary notes
 
 ## Configuration Policy
 
 WaxPrep uses configurable defaults via environment variables (WAXPREP_ prefix).
 
-### What Must Be Configurable
-- Environment name
-- Host binding
-- Port
-- Log level
+### What Is Configured via Environment (WAXPREP_ prefix)
+- Environment name (`WAXPREP_ENVIRONMENT`, default: `development`)
+- Host binding (`WAXPREP_HOST`, default: `0.0.0.0`)
+- Port (`WAXPREP_PORT`, default: `8000`)
+- Log level (`WAXPREP_LOG_LEVEL`, default: `info`)
 
-### What Are Acceptable Fixed Defaults
-- Development defaults (e.g., default log level "info", default environment "development")
-- Standard HTTP status codes
-- UUID validation rules
-- Response structures
+### What Are Acceptable Defaults
+Development defaults are provided for convenience. Production deployments must override via environment:
 
-### What Is Legacy (Removed)
-- shutdown_grace_period (removed; shutdown is ASGI server-managed)
+- Default environment: `development`
+- Default host: `0.0.0.0`
+- Default port: `8000`
+- Default log level: `info`
 
 ### What Is Not Hardcoding
-- A configurable default is not a hardcoded value
+- Configurable defaults with environment override are not hardcoded values
 - Test constants are not operational hardcoding
 - Architectural invariants (e.g., HTTP methods, status codes) are not configuration
 
