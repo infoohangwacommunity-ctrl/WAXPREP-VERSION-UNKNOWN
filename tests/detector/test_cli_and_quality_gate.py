@@ -19,7 +19,7 @@ from waxprep.detector.quality_gate import main as qg_main
 
 def test_cli_default_args(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """CLI with args runs detection and returns int."""
-    monkeypatch.setattr(sys, "argv", ["detector-cli", str(tmp_path), "text"])
+    monkeypatch.setattr(sys, "argv", ["detector-cli", str(tmp_path), "--format", "text"])
     result = cli_main()
     assert isinstance(result, int)
 
@@ -29,7 +29,7 @@ def test_cli_json_format(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> 
     test_file = tmp_path / "dummy.py"
     test_file.write_text("x = 1\n")
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(sys, "argv", ["detector-cli", str(tmp_path), "json"])
+    monkeypatch.setattr(sys, "argv", ["detector-cli", str(tmp_path), "--format", "json"])
     try:
         cli_main()
     finally:
@@ -123,7 +123,7 @@ def test_cli_name_main_block(tmp_path: Path) -> None:
         [
             sys.executable,
             "-c",
-            f"import sys; sys.argv = ['cli', '{tmp_path}', 'text']; "
+            f"import sys; sys.argv = ['cli', '{tmp_path}', '--format', 'text']; "
             f"from waxprep.detector.cli import main; sys.exit(main())",
         ],
         capture_output=True,
@@ -152,7 +152,7 @@ def test_cli_name_main_direct_script(tmp_path: Path) -> None:
     test_file = tmp_path / "dummy.py"
     test_file.write_text("x = 1\n")
     result = subprocess.run(
-        [sys.executable, "src/waxprep/detector/cli.py", str(tmp_path), "text"],
+        [sys.executable, "src/waxprep/detector/cli.py", str(tmp_path), "--format", "text"],
         capture_output=True,
         text=True,
         cwd=str(Path(__file__).resolve().parent.parent.parent),
