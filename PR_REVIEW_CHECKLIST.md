@@ -130,4 +130,34 @@ Ask these during review:
 
 ---
 
+## 9. Stage 08: Universal Hardcoding Detection
+
+When modifying code in protected modules (`waxprep.messaging`, `waxprep.context`, `waxprep.services`):
+
+- [ ] **No fixed-string comparisons against input** — WHD-001 (HIGH, blocking)
+- [ ] **No vocabulary membership tests** — WHD-002 (HIGH, blocking)
+- [ ] **No fixed if/elif decision trees** — WHD-003 (MEDIUM, review)
+- [ ] **No regex phrase detection** — WHD-004 (MEDIUM, advisory)
+- [ ] **No word-to-action dictionary lookups** — WHD-005 (MEDIUM, review)
+- [ ] **No predetermined string responses** — WHD-007 (MEDIUM, review)
+- [ ] **No hardcoded vocabularies** — WHD-008 (MEDIUM, review)
+
+When modifying the detector itself (`src/waxprep/detector/`):
+
+- [ ] **Detector syntax is valid Python 3** — exception syntax, type hints
+- [ ] **CLI supports `--format` argument** — via argparse, not positional
+- [ ] **Blocking findings return exit code 1** — verify in tests
+- [ ] **Tests use meaningful assertions** — no `len(findings) >= 0` vacuous tests
+- [ ] **Known limitations documented** — use `@pytest.mark.xfail` for unsupported patterns
+- [ ] **Documentation updated** — DETECTOR_SPECIFICATION.md reflects actual implementation
+
+When modifying Semgrep configuration (`.semgrep/config.yml`):
+
+- [ ] **Rules validate with installed Semgrep version**
+- [ ] **All intended rules load and execute**
+- [ ] **False-positive exclusions verified**
+- [ ] **No references to deleted rule files**
+
+---
+
 *Based on Stage 03 Architecture Guide and ARCHITECTURE_BOUNDARIES.md*

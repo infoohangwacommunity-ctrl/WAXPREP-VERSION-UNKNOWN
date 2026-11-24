@@ -268,28 +268,30 @@ Independent, deterministic source-code detection system that identifies prohibit
 
 **Purpose:** The detector investigates HOW source code makes decisions about student messages, not just what words appear in the code. It prevents developers and AI coding agents from quietly introducing fixed input-dependent behavior into parts of WaxPrep where decisions are expected to be contextual, flexible, or delegated to an approved intelligence layer.
 
+**Status:** Implementation complete. Documentation updated. CI integration active. Some detection capabilities are documented as limitations.
+
 **Key characteristics:**
 - Development-time tool only — not part of the production tutor response pipeline
 - Operates deterministically without AI or network access
-- Uses Python AST analysis and Semgrep structural rules
+- Uses Python AST analysis (primary) and Semgrep structural rules (supplementary)
 - Integrates with the existing Quality Gate
 - Does not rely on a manually maintained forbidden-word list
 
 **Detection rules (Living Specification):** See `docs/DETECTOR_SPECIFICATION.md`
 
-| Rule ID | Description | Severity |
-|---------|-------------|----------|
-| WHD-001 | Fixed-string comparisons against student input | HIGH |
-| WHD-002 | Fixed vocabulary membership tests | HIGH |
-| WHD-003 | Fixed decision trees (if/elif chains) | MEDIUM |
-| WHD-004 | Regex-based phrase detection | MEDIUM |
-| WHD-005 | Word-to-action dictionary lookups | MEDIUM |
-| WHD-006 | Deeply nested conditional structures | LOW |
-| WHD-007 | Predetermined string responses | MEDIUM |
-| WHD-008 | Hardcoded vocabularies | MEDIUM |
-| WHD-009 | JSON string-to-string mappings | MEDIUM |
-| WHD-010 | Vocabulary lists in data files | LOW |
-| WHD-011 | Response templates in Markdown | LOW |
+| Rule ID | Description | Severity | Blocks Merge |
+|---------|-------------|----------|--------------|
+| WHD-001 | Fixed-string comparisons against student input | HIGH | Yes (protected) |
+| WHD-002 | Fixed vocabulary membership tests | HIGH | Yes (protected) |
+| WHD-003 | Fixed decision trees (if/elif chains) | MEDIUM | Review |
+| WHD-004 | Regex-based phrase detection | MEDIUM | Advisory |
+| WHD-005 | Word-to-action dictionary lookups | MEDIUM | Review |
+| WHD-006 | Deeply nested conditional structures | LOW | No |
+| WHD-007 | Predetermined string responses | MEDIUM | Review |
+| WHD-008 | Hardcoded vocabularies | MEDIUM | Review |
+| WHD-009 | JSON string-to-string mappings | MEDIUM | Advisory |
+| WHD-010 | Vocabulary lists in data files | LOW | No |
+| WHD-011 | Response templates in Markdown | LOW | No |
 
 **Protected modules** (hardcoded conversational behavior prohibited):
 - `waxprep.messaging` — Message handling & conversation flow
@@ -299,13 +301,30 @@ Independent, deterministic source-code detection system that identifies prohibit
 **Usage:**
 ```bash
 # Run the detector
-python -m waxprep.detector [path] [format]
+python -m waxprep.detector [path] --format [text|json|summary]
 
 # Run as quality gate check
 python -m waxprep.detector.quality_gate [path] --format summary
 ```
 
-**Test suite:** `tests/detector/` contains unit tests, adversarial tests, mutation tests, and property-based tests.
+**Test suite:** `tests/detector/` contains:
+- `test_detector.py` — Unit tests for each WHD rule
+- `test_adversarial.py` — Adversarial and mutation tests (with xfail for known limitations)
+- `test_cli_and_quality_gate.py` — CLI and integration tests
+- `test_coverage_gaps.py` — Coverage gap analysis
+- `test_property.py` — Property-based tests
+
+**Known limitations:**
+- Cross-file data-flow analysis not implemented (imports, helper chains)
+- Variable-based comparisons require constant propagation
+- Dynamic string construction not detected
+- Match/case statements not fully covered
+- Some adversarial tests marked xfail for documented gaps
+
+**CI integration:** The Quality Gate runs the detector via:
+```bash
+uv run python -m waxprep.detector.cli src/ --format summary
+```
 
 ## Supporting Documentation
 

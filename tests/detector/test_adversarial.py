@@ -131,6 +131,7 @@ def handle(message: str) -> str:
 class TestAdversarialMovedData:
     """Tests for patterns where data is moved to other locations."""
 
+    @pytest.mark.xfail(reason="Cross-file import detection requires data-flow analysis")
     def test_dictionary_in_separate_module(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -166,10 +167,32 @@ def check_message(message: str) -> bool:
         # This is a documented limitation - the test verifies AST-only behavior
         # The membership test pattern should be detected if the list is inline
         # Since this uses an import, it's a known cross-file analysis gap
-        assert any(f.rule_id == "WHD-002" for f in findings) or len(findings) >= 0, (
+        assert any(f.rule_id == "WHD-002" for f in findings), (
             "Cross-file import detection is a known limitation requiring data-flow analysis"
         )
 
+        # Use it in protected module
+        code = """
+from vocabulary import GREETINGS
+
+def check_message(message: str) -> bool:
+    return message in GREETINGS
+"""
+        file_path = protected_module_path / "imported_vocab.py"
+        file_path.write_text(code, encoding="utf-8")
+
+        findings = adversarial_detector.scan_file(file_path)
+
+        # The code imports from a separate vocabulary module
+        # WHD-002 detects inline list membership tests
+        # For imported vocabularies, data-flow analysis across files is needed
+        # This is a documented limitation - the test verifies AST-only behavior
+        # The membership test pattern should be detected if the list is inline
+        # Since this uses an import, it's a known cross-file analysis gap
+        # Documented limitation: cross-file import detection requires data-flow analysis
+        pass  # Known limitation: cross-file import detection requires data-flow analysis
+
+    @pytest.mark.xfail(reason="Cross-file import detection requires data-flow analysis")
     def test_constant_in_config(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -200,7 +223,7 @@ def is_response_word(text: str) -> bool:
         # The inline list membership should be caught by WHD-002
         # For imported constants, data-flow analysis across files is needed
         # This is a documented limitation - importing from config.py
-        assert any(f.rule_id == "WHD-002" for f in findings) or len(findings) >= 0, (
+        assert any(f.rule_id == "WHD-002" for f in findings), (
             "Cross-file import detection is a known limitation requiring data-flow analysis"
         )
 
@@ -231,6 +254,7 @@ def handle_message(message: str) -> str:
         # Should detect the string comparison in helper
         assert any(f.rule_id == "WHD-001" for f in findings)
 
+    @pytest.mark.xfail(reason="Indirect comparisons through helper chains require call graph analysis")
     def test_nested_helper_calls(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -257,7 +281,7 @@ def check(message: str) -> bool:
         # WHD-001 detects direct comparisons in the same function
         # For comparisons through helper chains, call graph analysis is needed
         # This is a documented limitation - the test verifies AST-only behavior
-        assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0, (
+        assert any(f.rule_id == "WHD-001" for f in findings), (
             "Indirect comparisons through helper chains require call graph analysis"
         )
 
@@ -289,6 +313,7 @@ def classify(text: str) -> str:
             f.rule_id == "WHD-002" for f in findings
         )
 
+    @pytest.mark.xfail(reason="Dictionary lookups with variable keys require semantic analysis")
     def test_abbreviated_vocabulary(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -315,7 +340,7 @@ def decode(code: str) -> str:
         # when the dictionary variable name suggests a mapping
         # This test uses .get() with a variable key, not a literal
         # Variable key mapping requires semantic analysis - documented limitation
-        assert any(f.rule_id == "WHD-005" for f in findings) or len(findings) >= 0, (
+        assert any(f.rule_id == "WHD-005" for f in findings), (
             "Dictionary lookups with variable keys require semantic analysis"
         )
 
@@ -351,6 +376,7 @@ class TestAdversarialDataStorage:
         # Should detect string-to-string mappings
         assert any(f.rule_id == "WHD-009" for f in findings)
 
+    @pytest.mark.xfail(reason="Complex YAML nested structures require full YAML parsing")
     def test_yaml_topic_classification(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -378,7 +404,7 @@ topic_keywords:
         # Current YAML inspector uses line-based parsing for simple formats
         # Complex nested YAML structures require full YAML parsing
         # This is a documented limitation - the test verifies current behavior
-        assert any(f.rule_id == "WHD-010" for f in findings) or len(findings) >= 0, (
+        assert any(f.rule_id == "WHD-010" for f in findings), (
             "Complex YAML nested structures require full YAML parsing"
         )
 
@@ -386,6 +412,7 @@ topic_keywords:
 class TestAdversarialObfuscation:
     """Tests for obfuscated implementations."""
 
+    @pytest.mark.xfail(reason="Dynamic string construction requires constant propagation analysis")
     def test_split_string_concatenation(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -408,10 +435,11 @@ def check(message: str) -> bool:
         # Dynamic string construction at runtime is harder to detect statically
         # The concatenation happens in a separate statement, making it indirect
         # This is a documented limitation - requires constant propagation analysis
-        assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0, (
+        assert any(f.rule_id == "WHD-001" for f in findings), (
             "Dynamic string construction requires constant propagation analysis"
         )
 
+    @pytest.mark.xfail(reason="Variable indirection requires data-flow tracking")
     def test_variable_indirection(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -436,7 +464,7 @@ def handle(input_text: str) -> str:
         # Variable indirection requires data-flow tracking
         # The comparison is against 'check' which holds 'word' which holds 'hello'
         # This is a documented limitation - requires alias analysis
-        assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0, (
+        assert any(f.rule_id == "WHD-001" for f in findings), (
             "Variable indirection requires data-flow tracking"
         )
 
@@ -522,6 +550,7 @@ def route(message: str) -> str:
         # Should detect the chain or the individual comparisons
         assert any(f.rule_id in ("WHD-001", "WHD-003") for f in findings)
 
+    @pytest.mark.xfail(reason="Reverse membership requires bidirectional pattern analysis")
     def test_mutation_equality_to_contains(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -546,11 +575,11 @@ def check(message: str) -> bool:
         # This pattern requires different detection logic
         # The literal "hello" is on the left, message is on the right
         # This is a documented limitation - requires bidirectional analysis
-        assert (
-            any(f.rule_id in ("WHD-001", "WHD-002", "WHD-006") for f in findings)
-            or len(findings) >= 0
+        assert any(
+            f.rule_id in ("WHD-001", "WHD-002", "WHD-006") for f in findings
         ), "Reverse membership requires bidirectional pattern analysis"
 
+    @pytest.mark.xfail(reason="Variable-based comparisons require data-flow analysis")
     def test_mutation_literal_to_variable(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -575,7 +604,7 @@ def check(message: str) -> bool:
         # Variable-based comparisons require data-flow analysis
         # The literal is not directly in the comparison expression
         # This is a documented limitation - requires constant propagation
-        assert any(f.rule_id == "WHD-001" for f in findings) or len(findings) >= 0, (
+        assert any(f.rule_id == "WHD-001" for f in findings), (
             "Variable-based comparisons require data-flow analysis"
         )
 

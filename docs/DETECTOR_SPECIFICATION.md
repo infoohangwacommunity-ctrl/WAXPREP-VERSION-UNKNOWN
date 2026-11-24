@@ -26,7 +26,7 @@ This document is the single source of truth for what the detector checks and why
 - Security controls (authentication tokens, permissions)
 - Approved non-conversational functionality
 
-**Detection method:** AST analysis detecting `Compare` nodes with `Eq`/`NotEq` operators where the left operand resembles student input (variable names like `message`, `text`, `content`, `input`, etc.) and the right operand is a string constant.
+**Detection method:** AST analysis detecting `Compare` nodes with `Eq`/`NotEq` operators where the left operand resembles student input (variable names like `message`, `text`, `content`, `input`, `student_message`, `user_message`, `query`, `prompt`, `body`, `data`, `payload`, etc.) and the right operand is a string constant. The detector uses a heuristic set of input-indicating variable names and checks for function calls that might return input (e.g., `get_message`, `receive`, `read`).
 
 **Severity:** HIGH
 
@@ -35,13 +35,18 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.85
 
 **Tests:**
-- `tests/detector/test_whd_001_fixed_string_comparisons.py` — positive and negative examples
+- `tests/detector/test_detector.py::TestWHD001FixedStringComparison`
+- `tests/detector/test_adversarial.py::TestAdversarialAlternateSyntax::test_ternary_instead_of_if`
+- `tests/detector/test_adversarial.py::TestAdversarialHelperIndirection::test_helper_function_with_comparison`
 
 **Status:** Enforced
 
 **Known limitations:**
 - Does not detect comparisons via helper functions without explicit AST tracing
 - Variable names are heuristic; may miss some input patterns
+- Does not detect reverse comparisons (`"string" == input`) — only `input == "string"` direction
+- Does not detect comparisons where input is transformed before comparison
+- Does not detect comparisons using variables instead of literals (requires data-flow analysis)
 
 ---
 
@@ -62,7 +67,7 @@ This document is the single source of truth for what the detector checks and why
 - Configuration validation
 - Protocol/format constants
 
-**Detection method:** AST analysis detecting `Compare` nodes with `In`/`NotIn` operators where the left operand resembles input and the right operand is a literal `List`, `Set`, or `Tuple` containing strings.
+**Detection method:** AST analysis detecting `Compare` nodes with `In`/`NotIn` operators where the left operand resembles input and the right operand is a literal `List` containing strings. Currently detects only list patterns (not sets or tuples).
 
 **Severity:** HIGH
 
@@ -71,13 +76,16 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.80
 
 **Tests:**
-- `tests/detector/test_whd_002_membership_tests.py`
+- `tests/detector/test_detector.py::TestWHD002MembershipTest`
+- `tests/detector/test_adversarial.py::TestMutationDetection::test_mutation_string_to_list_comparison`
 
 **Status:** Enforced
 
 **Known limitations:**
+- Does not detect set membership (`input in {"a", "b"}`) — only list patterns
 - Does not trace collections imported from other modules
 - Does not detect membership against variables (requires data-flow analysis)
+- Does not detect reverse membership (`"hello" in message`)
 
 ---
 
@@ -107,13 +115,16 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.70
 
 **Tests:**
-- `tests/detector/test_whd_003_if_elif_chains.py`
+- `tests/detector/test_detector.py::TestWHD003IfElifChain`
+- `tests/detector/test_adversarial.py::TestMutationDetection::test_mutation_single_to_chain`
 
 **Status:** Enforced (medium severity)
 
 **Known limitations:**
 - Threshold-based detection may miss shorter but significant chains
 - Does not distinguish string comparisons from other comparisons
+- Does not detect nested if/else as chains (only flat elif structures)
+- Does not detect match/case statements
 
 ---
 
@@ -125,7 +136,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Intent:** Prevent hidden phrase detection using regular expressions that could activate predetermined behaviors.
 
-**Prohibited behavior:** Using `re.match`, `re.search`, `re.findall`, etc. with patterns containing word boundaries, specific phrases, or longer patterns suggestive of vocabulary detection in protected modules.
+**Prohibited behavior:** Using `re.match`, `re.search`, `re.findall`, etc. with patterns containing word boundaries in protected modules.
 
 **Scope:** Protected modules.
 
@@ -134,7 +145,7 @@ This document is the single source of truth for what the detector checks and why
 - Security pattern matching
 - Data extraction for technical purposes
 
-**Detection method:** AST analysis detecting calls to `re` module functions with suspicious patterns (word boundaries `\b`, longer patterns, education-related keywords).
+**Detection method:** AST analysis detecting calls to `re` module functions (`match`, `search`, `findall`, `fullmatch`, `finditer`) with patterns containing word boundaries (`\b`). The detector looks for raw strings with word boundary patterns and patterns containing regex-like syntax.
 
 **Severity:** MEDIUM
 
@@ -143,13 +154,15 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.65
 
 **Tests:**
-- `tests/detector/test_whd_004_regex_matching.py`
+- `tests/detector/test_detector.py::TestWHD004RegexMatching`
 
 **Status:** Enforced (medium severity, advisory blocking)
 
 **Known limitations:**
+- Does not detect long regex patterns (>10 characters) without word boundaries
 - Cannot determine if regex is used for legitimate validation vs. phrase detection
 - Pattern intent requires human review
+- Does not detect regex patterns stored in variables
 
 ---
 
@@ -161,7 +174,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Intent:** Prevent indirect mappings that connect text inputs to system actions through dictionary subscript operations.
 
-**Prohibited behavior:** Using dictionary subscript (`dict[key]`) with string keys where the dictionary variable name suggests a mapping, response, action, template, or vocabulary in protected modules.
+**Prohibited behavior:** Using dictionary subscript (`dict[key]`) with string keys where the dictionary variable name suggests a mapping in protected modules.
 
 **Scope:** Protected modules.
 
@@ -170,7 +183,7 @@ This document is the single source of truth for what the detector checks and why
 - Configuration value lookups
 - Protocol/format mapping tables
 
-**Detection method:** AST analysis detecting `Subscript` nodes where the value is a `Name` with suggestive variable naming and the slice is a string constant.
+**Detection method:** AST analysis detecting `Subscript` nodes where the value is a `Name` and the slice is a string constant. The detector looks for assignments like `$RESULT = $MAPPING["$KEY"]` inside functions.
 
 **Severity:** MEDIUM
 
@@ -179,13 +192,15 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.60
 
 **Tests:**
-- `tests/detector/test_whd_005_dictionary_lookups.py`
+- `tests/detector/test_detector.py::TestWHD005DictionaryLookup`
 
 **Status:** Enforced (medium severity)
 
 **Known limitations:**
-- Variable name heuristic is conservative
+- Variable name heuristic is conservative — no metavariable-regex filtering on variable names
 - Does not trace imported dictionaries or data-file-loaded mappings
+- Does not detect `.get()` calls with variable keys
+- Does not detect dictionary lookups outside function context
 
 ---
 
@@ -215,13 +230,14 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.50
 
 **Tests:**
-- `tests/detector/test_whd_006_nested_conditions.py`
+- Covered by edge case tests in `tests/detector/test_detector.py`
 
 **Status:** Advisory
 
 **Known limitations:**
 - Nesting depth alone is not indicative of prohibited behavior
 - Many legitimate patterns require nesting
+- Does not distinguish between technical and conversational nesting
 
 ---
 
@@ -233,7 +249,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Intent:** Prevent hardcoded response generation that bypasses contextual intelligence.
 
-**Prohibited behavior:** Functions with names suggesting responses (response, reply, greeting, answer, message, output, say, speak) that return string literals in protected modules.
+**Prohibited behavior:** Functions that return string literals in protected modules. The detector flags any function returning a literal string, but excludes utility functions with signature `def $FUNC(text: str) -> str` that return computed values.
 
 **Scope:** Protected modules.
 
@@ -242,8 +258,9 @@ This document is the single source of truth for what the detector checks and why
 - Format strings for logging
 - Static UI text
 - Health check responses
+- Utility functions that transform input (e.g., `normalize_text`)
 
-**Detection method:** AST analysis identifying functions with response-indicating names that contain `Return` statements with string constants.
+**Detection method:** AST analysis identifying functions that contain `Return` statements with string constants. The detector uses `pattern-not` to exclude utility functions matching `def $FUNC(text: str) -> str` that return a variable.
 
 **Severity:** MEDIUM
 
@@ -252,13 +269,15 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.65
 
 **Tests:**
-- `tests/detector/test_whd_007_literal_responses.py`
+- `tests/detector/test_detector.py::TestWHD007LiteralResponse`
+- `tests/detector/test_adversarial.py::TestFalsePositivePrevention::test_legitimate_error_messages`
 
 **Status:** Enforced (medium severity)
 
 **Known limitations:**
-- Function naming heuristic may miss some cases
+- Does not use function name heuristic (removed metavariable-regex on function names)
 - Does not detect responses built from multiple parts
+- May flag legitimate utility functions if they don't match the exclusion pattern
 
 ---
 
@@ -270,7 +289,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Intent:** Prevent predefined term collections that could drive student classification or behavior routing.
 
-**Prohibited behavior:** Variable assignments of lists/sets/tuples containing 2+ string literals where the variable name suggests vocabulary, phrases, words, terms, keywords, topics, subjects, greetings, responses, or messages in protected modules.
+**Prohibited behavior:** Variable assignments of lists containing 2+ string literals in protected modules. The detector excludes `__all__` assignments which are module exports.
 
 **Scope:** Protected modules.
 
@@ -278,23 +297,27 @@ This document is the single source of truth for what the detector checks and why
 - Technical term lists (supported platforms, API endpoints)
 - Error message collections
 - Format strings for technical purposes
+- Module exports (`__all__`)
 
-**Detection method:** AST analysis detecting assignments where target name contains vocabulary indicators and value is a collection of strings.
+**Detection method:** AST analysis detecting assignments where the value is a list of strings. The detector uses `pattern-not` to exclude `__all__` assignments.
 
 **Severity:** MEDIUM
 
-**Enforcement:** CI quality gate — blocking only if education-related terms are present.
+**Enforcement:** CI quality gate — review required in protected modules.
 
-**Confidence threshold:** 0.55-0.70 (higher if education terms detected)
+**Confidence threshold:** 0.55
 
 **Tests:**
-- `tests/detector/test_whd_008_hardcoded_vocabularies.py`
+- `tests/detector/test_detector.py::TestWHD008HardcodedVocabulary`
+- `tests/detector/test_adversarial.py::TestAdversarialVocabularyReplacement::test_synonym_vocabulary`
 
-**Status:** Enforced (medium severity, blocking with education terms)
+**Status:** Enforced (medium severity)
 
 **Known limitations:**
-- Variable name heuristic may miss obfuscated names
+- Does not use variable name heuristic (removed metavariable-regex on variable names)
 - Does not detect vocabularies loaded from data files
+- May flag technical constant lists
+- Does not detect set or tuple vocabularies
 
 ---
 
@@ -324,7 +347,7 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.60
 
 **Tests:**
-- `tests/detector/test_whd_009_json_mappings.py`
+- `tests/detector/test_detector.py::TestDataFileInspector::test_inspects_json_vocabulary`
 
 **Status:** Advisory
 
@@ -361,13 +384,14 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.40-0.50
 
 **Tests:**
-- `tests/detector/test_whd_010_data_vocabularies.py`
+- `tests/detector/test_detector.py::TestDataFileInspector::test_inspects_yaml_vocabulary`
 
 **Status:** Advisory
 
 **Known limitations:**
 - Educational content is legitimate and should not be flagged
 - Context is required to determine purpose
+- Complex nested YAML structures require full YAML parsing
 
 ---
 
@@ -397,7 +421,7 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.40
 
 **Tests:**
-- `tests/detector/test_whd_011_markdown_templates.py`
+- Covered by data file inspector tests
 
 **Status:** Advisory
 
@@ -411,14 +435,14 @@ This document is the single source of truth for what the detector checks and why
 
 | Rule ID | Severity | Blocks Merge | Scope | Detection Method |
 |---------|----------|--------------|-------|------------------|
-| WHD-001 | HIGH | Yes (protected) | Protected modules | AST Compare nodes |
-| WHD-002 | HIGH | Yes (protected) | Protected modules | AST Compare + In/NotIn |
+| WHD-001 | HIGH | Yes (protected) | Protected modules | AST Compare nodes with input heuristic |
+| WHD-002 | HIGH | Yes (protected) | Protected modules | AST Compare + In/NotIn (list only) |
 | WHD-003 | MEDIUM | Review | Protected modules | AST If/elif chains |
-| WHD-004 | MEDIUM | Advisory | Protected modules | AST re module calls |
+| WHD-004 | MEDIUM | Advisory | Protected modules | AST re module calls with word boundaries |
 | WHD-005 | MEDIUM | Review | Protected modules | AST Subscript nodes |
 | WHD-006 | LOW | No | Protected modules | AST nesting depth |
-| WHD-007 | MEDIUM | Review | Protected modules | AST FunctionDef + Return |
-| WHD-008 | MEDIUM | Conditional | Protected modules | AST Assign + collections |
+| WHD-007 | MEDIUM | Review | Protected modules | AST FunctionDef + Return (excludes utilities) |
+| WHD-008 | MEDIUM | Review | Protected modules | AST Assign + list (excludes __all__) |
 | WHD-009 | MEDIUM | Advisory | Data files | JSON analysis |
 | WHD-010 | LOW | No | Data files | File-type analysis |
 | WHD-011 | LOW | No | Markdown files | Regex pattern matching |
@@ -440,3 +464,54 @@ This document is the single source of truth for what the detector checks and why
 - `waxprep.adapters` — Adapter implementations
 - `waxprep.middleware` — Middleware
 - `waxprep.main` — ASGI application entry point
+
+---
+
+## Detection Architecture
+
+### Two-Layer Detection System
+
+1. **Python AST Detector** (`src/waxprep/detector/__init__.py`)
+   - Primary enforcement mechanism
+   - 11 detection rules (WHD-001 through WHD-011)
+   - Operates on Python source files
+   - Data file inspector for JSON, YAML, TOML, CSV, Markdown
+
+2. **Semgrep Configuration** (`.semgrep/config.yml`)
+   - Supplementary structural pattern matching
+   - 7 rules (WHD-001 through WHD-005, WHD-007, WHD-008)
+   - WHD-006, WHD-009, WHD-010, WHD-011 are NOT in Semgrep (only in AST detector)
+   - Excludes detector directory (`src/waxprep/detector/`) from scanning
+
+### Test Organization
+
+- `tests/detector/test_detector.py` — Unit tests for each WHD rule
+- `tests/detector/test_adversarial.py` — Adversarial and mutation tests
+- `tests/detector/test_cli_and_quality_gate.py` — CLI and integration tests
+- `tests/detector/test_coverage_gaps.py` — Coverage gap analysis
+- `tests/detector/test_property.py` — Property-based tests
+
+### Known Cross-File Detection Gaps
+
+The following patterns require data-flow analysis beyond current AST capabilities:
+
+- Imported vocabulary from other modules
+- Vocabulary stored in configuration files
+- Comparisons through helper function chains
+- Variable-based comparisons (literal assigned to variable, then used)
+- Dynamic string construction (concatenation, formatting)
+- Variable indirection (aliases)
+
+These are documented as `xfail` tests in `test_adversarial.py`.
+
+---
+
+## Enforcement Status
+
+| Component | Status |
+|-----------|--------|
+| CLI (`src/waxprep/detector/cli.py`) | Functional — supports `--format` via argparse |
+| CI Integration | Functional — runs in Quality Gate workflow |
+| Blocking Exit Code | Functional — returns 1 when blocking findings exist |
+| Semgrep Config | Valid — 7 rules load and execute |
+| Python Detector | Valid syntax — exception handling fixed |

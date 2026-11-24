@@ -141,7 +141,7 @@ class UniversalHardcodingDetector:
 
         try:
             source = file_path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError):
             return []
 
         try:
@@ -995,7 +995,7 @@ class DataFileInspector:
         suffix = file_path.suffix.lower()
         try:
             content = file_path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError):
             return []
 
         if suffix == ".json":
