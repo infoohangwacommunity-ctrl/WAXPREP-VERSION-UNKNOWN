@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -11,7 +12,6 @@ import pytest
 from waxprep.detector.cli import main as cli_main
 from waxprep.detector.quality_gate import check_hardcoding
 from waxprep.detector.quality_gate import main as qg_main
-import runpy
 
 # =============================================================================
 # CLI tests
