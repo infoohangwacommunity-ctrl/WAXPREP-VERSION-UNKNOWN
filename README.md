@@ -1,10 +1,10 @@
 # WaxPrep Foundation
 
-**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 07).**
+**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 08).**
 
 Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Pip-audit runs with a single tracked exception (GHSA-53pm-wgxf-c6qf); all other dependency vulnerabilities fail the gate.
 
-**Stage 07 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
+**Stage 08 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
 ## Stage 01: Programming Language
 - Python 3.14+ (tested on 3.14; compatibility with later versions not proven)
@@ -39,7 +39,7 @@ Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.
 ```
 src/waxprep/
 ├── main.py              # ASGI app, health endpoints, lifespan, middleware
-├── config.py            # Settings (configurable defaults with development defaults)
+├── config.py            # Settings (configurable defaults with development defaults; override via WAXPREP_ env vars)
 ├── id.py                # UUIDv7 identity generation (Stage 04 identity foundation)
 ├── core/                # Pure logic & protocols (NO infrastructure imports)
 │   ├── __init__.py      # Boundary rules, purpose statement, Message/MessageHandler/ContextProvider
@@ -104,68 +104,7 @@ tests/
 │   └── (regression tests)
 ├── conftest.py                        # Shared fixtures
 └── test_final_coverage.py             # Final coverage verification
-```
-src/waxprep/
-├── main.py              # ASGI app, health endpoints, lifespan, middleware
-├── config.py            # Settings (NO hardcoded values)
-├── id.py                # UUIDv7 identity generation (Stage 04 identity foundation)
-├── core/                # Pure logic & protocols (NO infrastructure imports)
-│   ├── __init__.py      # Boundary rules, purpose statement, Message/MessageHandler/ContextProvider
-│   ├── protocols.py     # Protocol re-exports and boundary guard
-│   └── pure.py          # Pure functions (normalize_text, extract_keywords, etc.)
-├── messaging/           # Message handling & conversation flow (placeholder)
-│   └── __init__.py      # Boundary rules, placeholder for future code
-├── context/             # Understanding the learner (placeholder)
-│   └── __init__.py      # Boundary rules, open land - internal shape TBD
-├── services/            # Light orchestration (placeholder)
-│   └── __init__.py      # Boundary rules, composition layer
-├── middleware/          # Request ID and base middleware patterns
-│   ├── __init__.py
-│   ├── request_id.py    # Correlation ID middleware
-│   └── base.py          # Middleware skeletons for future use
-├── registries/          # Channel, Model, Tool registries
-│   ├── __init__.py
-│   ├── base.py          # BaseRegistry[T] - generic registry
-│   ├── channel.py       # ChannelRegistry + ChannelAdapter protocol
-│   ├── model.py         # ModelRegistry + ModelAdapter protocol
-│   └── tool.py          # ToolRegistry + Tool protocol
-└── adapters/            # Fake adapter implementations (source of truth)
-    ├── __init__.py
-    ├── fake_channel.py  # FakeChannelAdapter
-    ├── fake_model.py    # FakeModelAdapter
-    └── fake_tool.py     # FakeTool
 
-tests/
-├── unit/
-│   ├── __init__.py
-│   ├── test_core_pure.py              # Pure function logic
-│   ├── test_id.py                     # UUIDv7 correctness, monotonicity, mass uniqueness, format validation
-│   └── test_middleware_skeletons.py   # Middleware skeleton validation
-├── integration/
-│   ├── __init__.py
-│   ├── test_exception_handlers.py     # Exception handler integration
-│   ├── test_foundation.py             # Foundation stability + middleware + correlation IDs
-│   ├── test_main.py                   # Health endpoints
-│   └── test_registries.py            # Registry behavior
-├── contract/
-│   ├── __init__.py
-│   └── test_core_protocols.py         # Protocol compliance
-├── lifecycle/
-│   ├── __init__.py
-│   └── test_lifecycle.py              # Startup/shutdown, failure paths
-├── architecture/
-│   ├── __init__.py
-│   └── test_boundaries.py             # Architectural boundary enforcement
-├── configuration/
-│   ├── __init__.py
-│   └── test_config.py                 # Proves NO hardcoded values
-├── regression/
-│   ├── __init__.py
-│   └── (regression tests)
-├── conftest.py                        # Shared fixtures
-├── test_exception_handler_pattern.py  # Exception handler pattern tests
-└── test_final_coverage.py             # Final coverage verification
-```
 
 
 

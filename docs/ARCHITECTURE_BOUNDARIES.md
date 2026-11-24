@@ -34,7 +34,7 @@
 
 ## Boundary Rule 1: Core/Pure Logic
 
-**Location:** `src/waxprep/core/` (future)  
+**Location:** `src/waxprep/core/`  
 **Current scope:** Domain logic, rules, state machines, tutor behavior
 
 ### Rules
@@ -217,8 +217,8 @@ class BadWhatsAppAdapter:
 
 ## Boundary Rule 4: Messaging/Conversation Layer
 
-**Location:** `src/waxprep/messaging/` (future)  
-**Current scope:** None yet (Stage 03 will add this)
+**Location:** `src/waxprep/messaging/`  
+**Current scope:** Placeholder — message handling & conversation flow (no implementation yet)
 
 ### Rules
 
@@ -290,8 +290,8 @@ class BadMessageHandler:
 
 ## Boundary Rule 5: Context (Stage 03+)
 
-**Location:** `src/waxprep/context/` (future)  
-**Current scope:** None yet
+**Location:** `src/waxprep/context/`  
+**Current scope:** Placeholder — understanding the learner (no implementation yet)
 
 ### Rules
 
@@ -328,7 +328,7 @@ class StudentContext:
 
 ## Package Import Rules Summary
 
-### `src/waxprep/core/` (when added)
+### `src/waxprep/core/`
 
 | Package | Can Import From | Cannot Import From |
 |---------|-----------------|---------------------|
@@ -353,14 +353,14 @@ class StudentContext:
 | `waxprep.adapters.*` (real) | registry protocols, channel/model SDKs | `waxprep.core`, other adapters, FastAPI |
 | **Direction:** | Implements protocols | Does not import core |
 
-### `src/waxprep/messaging/` (when added)
+### `src/waxprep/messaging/`
 
 | Package | Can Import From | Cannot Import From |
 |---------|-----------------|---------------------|
 | `waxprep.messaging` | `waxprep.core`, `waxprep.registries`, standard lib | Concrete adapters, direct SDK imports, FastAPI |
 | **Direction:** | Orchestrates via protocols | Does not bypass registries |
 
-### `src/waxprep/context/` (when added)
+### `src/waxprep/context/`
 
 | Package | Can Import From | Cannot Import From |
 |---------|-----------------|---------------------|

@@ -143,9 +143,20 @@ from waxprep.core import pure
 __all__ = ["protocols", "pure"]
 ```
 
-### Tests Mirror Package Structure
+### Tests Follow Categorised Layout
 
-For every `src/waxprep/foo/bar.py`, there should be `tests/test_foo_bar.py` or `tests/foo/test_bar.py`.
+Tests are organised by category in `tests/`:
+
+- `tests/unit/` — pure logic, single function/class
+- `tests/integration/` — component interactions
+- `tests/contract/` — protocol compliance
+- `tests/lifecycle/` — startup/shutdown, failures
+- `tests/architecture/` — boundary enforcement
+- `tests/configuration/` — config loading
+- `tests/detector/` — Stage 08 detector tests
+- `tests/regression/` — behavior preservation
+
+Place new tests in the appropriate category directory.
 
 ---
 
