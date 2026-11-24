@@ -11,9 +11,7 @@ from waxprep.detector import run_detection
 
 def main() -> int:
     """Run the detector CLI."""
-    parser = argparse.ArgumentParser(
-        description="Universal Hardcoding Detector - Stage 08"
-    )
+    parser = argparse.ArgumentParser(description="Universal Hardcoding Detector - Stage 08")
     parser.add_argument(
         "root",
         nargs="?",

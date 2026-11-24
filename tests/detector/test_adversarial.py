@@ -254,7 +254,9 @@ def handle_message(message: str) -> str:
         # Should detect the string comparison in helper
         assert any(f.rule_id == "WHD-001" for f in findings)
 
-    @pytest.mark.xfail(reason="Indirect comparisons through helper chains require call graph analysis")
+    @pytest.mark.xfail(
+        reason="Indirect comparisons through helper chains require call graph analysis"
+    )
     def test_nested_helper_calls(
         self,
         adversarial_detector: UniversalHardcodingDetector,
@@ -575,9 +577,9 @@ def check(message: str) -> bool:
         # This pattern requires different detection logic
         # The literal "hello" is on the left, message is on the right
         # This is a documented limitation - requires bidirectional analysis
-        assert any(
-            f.rule_id in ("WHD-001", "WHD-002", "WHD-006") for f in findings
-        ), "Reverse membership requires bidirectional pattern analysis"
+        assert any(f.rule_id in ("WHD-001", "WHD-002", "WHD-006") for f in findings), (
+            "Reverse membership requires bidirectional pattern analysis"
+        )
 
     @pytest.mark.xfail(reason="Variable-based comparisons require data-flow analysis")
     def test_mutation_literal_to_variable(

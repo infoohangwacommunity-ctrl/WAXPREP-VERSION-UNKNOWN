@@ -11,6 +11,7 @@ import pytest
 from waxprep.detector.cli import main as cli_main
 from waxprep.detector.quality_gate import check_hardcoding
 from waxprep.detector.quality_gate import main as qg_main
+import runpy
 
 # =============================================================================
 # CLI tests
@@ -160,6 +161,30 @@ def test_cli_name_main_direct_script(tmp_path: Path) -> None:
     assert result.returncode == 0
 
 
+def test_cli_main_block_sys_exit(tmp_path: Path) -> None:
+    """Test that __main__ block executes sys.exit(main()) correctly.
+
+    This test verifies line 35 of cli.py: sys.exit(main())
+    By running the script directly and checking the exit code,
+    we ensure the __main__ block is exercised end-to-end.
+    """
+    test_file = tmp_path / "dummy.py"
+    test_file.write_text("x = 1\n")
+
+    # Run as a module (triggers __main__ block with sys.exit)
+    result = subprocess.run(
+        [sys.executable, "-m", "waxprep.detector.cli", str(tmp_path), "--format", "text"],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).resolve().parent.parent.parent),
+    )
+    # Exit code 0 means no blocking findings (expected for clean test file)
+    assert result.returncode == 0
+    # Verify output - detector may report "No hardcoded patterns" for clean files
+    # The key is that the __main__ block executed and sys.exit was called
+    assert result.returncode == 0  # Confirms sys.exit(main()) worked
+
+
 def test_qg_name_main_direct_script(tmp_path: Path) -> None:
     """Direct script execution covers quality_gate.py __main__ block."""
     result = subprocess.run(
@@ -175,3 +200,60 @@ def test_qg_name_main_direct_script(tmp_path: Path) -> None:
         cwd=str(Path(__file__).resolve().parent.parent.parent),
     )
     assert result.returncode == 0
+
+
+def test_cli_main_function_coverage(tmp_path: Path) -> None:
+    """Test main() function directly to ensure coverage of CLI logic.
+
+    This test covers the main() function and its interaction with
+    run_detection, ensuring the CLI argument parsing and execution
+    path is covered.
+    """
+    test_file = tmp_path / "dummy.py"
+    test_file.write_text("x = 1\n")
+
+    # Import and call main directly (simulates __main__ block behavior)
+    from waxprep.detector.cli import main
+
+    # Set up sys.argv as the CLI would see it
+    old_argv = sys.argv
+    try:
+        sys.argv = ["cli", str(tmp_path), "--format", "text"]
+        exit_code = main()
+        assert exit_code == 0  # No blocking findings for clean file
+    finally:
+        sys.argv = old_argv
+
+
+def test_cli_main_block_execution(tmp_path: Path) -> None:
+    """Test __main__ block execution to cover line 33 of cli.py.
+
+    This test uses runpy to execute cli.py as a module in-process,
+    which ensures the __main__ block (if __name__ == "__main__":
+    sys.exit(main())) is executed and counted by coverage.
+    """
+    test_file = tmp_path / "dummy.py"
+    test_file.write_text("x = 1\n")
+
+    # Use runpy to execute the module in-process (coverage counts this)
+    old_argv = sys.argv
+    try:
+        sys.argv = ["cli", str(tmp_path), "--format", "text"]
+        # runpy.run_path executes the file with __name__ == "__main__"
+        # This triggers the __main__ block and sys.exit()
+        try:
+            runpy.run_path(
+                str(
+                    Path(__file__).resolve().parent.parent.parent
+                    / "src"
+                    / "waxprep"
+                    / "detector"
+                    / "cli.py"
+                ),
+                run_name="__main__",
+            )
+        except SystemExit as e:
+            # sys.exit() raises SystemExit, which is expected
+            assert e.code == 0, f"Expected exit code 0, got {e.code}"
+    finally:
+        sys.argv = old_argv
