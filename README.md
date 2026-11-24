@@ -328,11 +328,26 @@ uv run python -m waxprep.detector.cli src/ --format summary
 
 ## Supporting Documentation
 
-- CONTRIBUTING.md — How developers should contribute
-- docs/ENGINEERING-STANDARDS.md — Engineering rules and conventions
-- PR_REVIEW_CHECKLIST.md — What reviewers should check before approving changes
-- STAGE_03_ARCHITECTURE.md — Stage 03 architectural decisions and boundaries
-- ARCHITECTURE_BOUNDARIES.md — Package dependency rules and what each layer may import
+All project documentation is organized in the `docs/` folder:
+
+### Active Documentation
+- `docs/CONTRIBUTING.md` — How developers should contribute
+- `docs/ENGINEERING-STANDARDS.md` — Engineering rules and conventions
+- `docs/PR_REVIEW_CHECKLIST.md` — What reviewers should check before approving changes
+- `docs/ARCHITECTURE_BOUNDARIES.md` — Package dependency rules and what each layer may import
+- `docs/DETECTOR_SPECIFICATION.md` — Universal Hardcoding Detection rules (Stage 08)
+
+### Archive (Historical/Superseded)
+- `docs/archive/` — Contains superseded documents:
+  - `STAGE_01_02_SPEC.md` — Original Stage 01-02 specification (superseded by README)
+  - `STAGE_03_ARCHITECTURE.md` — Original Stage 03 architecture (merged into README)
+  - `STAGE_07_STATIC_ANALYSIS.md` — Static analysis audit (superseded by CI workflow)
+  - `STAGE06_STATIC_ANALYSIS_RESEARCH.md` — Stage 06 research (superseded by Stage 07)
+  - `IMPLEMENTATION_PLAN.md` — Original implementation plan (completed)
+  - `INDEPENDENT_AUDIT_STAGE_01_07.md` — Independent audit report
+  - `FUNDATION_CORRECTION_REPORT.md` — Foundation correction report
+  - `TEST_PLAN_STAGE_03.md` — Stage 03 test plan
+  - `src/waxprep/STAGE03_BOUNDARIES.md` — Stage 03 boundary notes
 
 ## Configuration Policy
 
