@@ -21,7 +21,7 @@ Thank you for your interest in contributing to WaxPrep! This guide covers the co
 
 ### Prerequisites
 
-- Python 3.14+ (compatibility proven, not assumed)
+- Python 3.14 (the version CI runs; compatibility with later versions is not yet verified)
 - [uv](https://github.com/astral-sh/uv) for dependency management
 
 ### Initial Setup

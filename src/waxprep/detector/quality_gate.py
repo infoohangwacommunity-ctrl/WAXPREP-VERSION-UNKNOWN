@@ -11,6 +11,10 @@
 #       for finding in result.findings:
 #           if finding.blocks_merge:
 #               print(f"  [{finding.rule_id}] {finding.file_path}:{finding.line_number}")
+#
+# This entry point uses the same analysis and enforcement policy as the CLI:
+# only findings with `blocks_merge` set stop the gate, and an incomplete scan
+# is reported separately instead of being treated as "no findings".
 
 from __future__ import annotations
 
@@ -18,10 +22,7 @@ import json
 from pathlib import Path
 from typing import TypedDict
 
-from waxprep.detector import (
-    DataFileInspector,
-    UniversalHardcodingDetector,
-)
+from waxprep.detector import ScanTargets, analyze
 
 
 class CheckResult(TypedDict):
@@ -29,11 +30,15 @@ class CheckResult(TypedDict):
 
     passed: bool
     blocked: bool
+    complete: bool
+    targets: list[str]
     total_findings: int
     blocking_findings: int
+    review_findings: int
     high_severity: int
     medium_severity: int
     low_severity: int
+    scan_problems: list[dict[str, str]]
     findings: list[dict[str, object]]
     summary: str
 
@@ -42,87 +47,94 @@ def check_hardcoding(
     root_path: str | Path = "src",
     output_format: str = "summary",
     json_output_path: str | Path | None = None,
+    targets: ScanTargets = None,
 ) -> CheckResult:
     """
     Run the Universal Hardcoding Detector as a quality gate check.
 
     Args:
-        root_path: Path to scan (default: "src")
+        root_path: Project root used to resolve targets and module paths
         output_format: Output format for reporting
         json_output_path: Optional path to write JSON report
+        targets: Explicit files/directories to scan. Defaults to root_path.
 
     Returns:
         CheckResult with pass/fail status and findings
     """
-    detector = UniversalHardcodingDetector(root_path)
-    data_inspector = DataFileInspector(root_path)
+    result = analyze([root_path] if targets is None else targets, root_path)
 
-    # Run Python code detection
-    python_findings = detector.scan_project()
+    high_severity = sum(1 for f in result.findings if f.severity.value == "HIGH")
+    medium_severity = sum(1 for f in result.findings if f.severity.value == "MEDIUM")
+    low_severity = sum(1 for f in result.findings if f.severity.value == "LOW")
+    blocking_findings = result.blocking_findings
+    review_findings = sum(1 for f in result.findings if f.requires_review)
 
-    # Run data file inspection
-    data_findings = data_inspector.inspect_directory(root_path)
+    # An incomplete scan cannot certify the codebase, so it does not pass.
+    passed = result.complete and not blocking_findings
+    blocked = not passed
 
-    all_findings = python_findings + data_findings
-
-    # Categorize findings
-    high_severity = sum(1 for f in all_findings if f.severity.value == "HIGH")
-    medium_severity = sum(1 for f in all_findings if f.severity.value == "MEDIUM")
-    low_severity = sum(1 for f in all_findings if f.severity.value == "LOW")
-    blocking_findings = sum(1 for f in all_findings if f.blocks_merge)
-
-    passed = blocking_findings == 0
-    blocked = blocking_findings > 0
-
-    # Generate summary
     summary_lines = [
         f"Universal Hardcoding Detection: {'PASSED' if passed else 'BLOCKED'}",
-        f"Total findings: {len(all_findings)}",
+        f"Scanned targets: {', '.join(result.targets)}",
+        f"Total findings: {len(result.findings)}",
         f"  HIGH (blocking): {high_severity}",
         f"  MEDIUM (review): {medium_severity}",
         f"  LOW (info): {low_severity}",
-        f"Blocking: {blocking_findings}",
+        f"Blocking: {len(blocking_findings)}",
+        f"Review: {review_findings}",
+        f"Scan complete: {'yes' if result.complete else 'no'}",
     ]
 
-    if blocked:
+    if result.problems:
+        summary_lines.append("")
+        summary_lines.append("Scan problems (files not inspected):")
+        for problem in result.problems:
+            detail = f": {problem.detail}" if problem.detail else ""
+            summary_lines.append(f"  ! {problem.file_path} ({problem.reason}){detail}")
+
+    if blocking_findings:
         summary_lines.append("")
         summary_lines.append("Blocking findings:")
-        for f in all_findings:
-            if f.blocks_merge:
-                summary_lines.append(f"  [{f.rule_id}] {f.file_path}:{f.line_number} - {f.message}")
+        for f in blocking_findings:
+            summary_lines.append(f"  [{f.rule_id}] {f.file_path}:{f.line_number} - {f.message}")
 
     summary = "\n".join(summary_lines)
 
-    # Output results
     if output_format == "json":
         result_dict = {
             "passed": passed,
             "blocked": blocked,
-            "total_findings": len(all_findings),
-            "blocking_findings": blocking_findings,
+            "complete": result.complete,
+            "targets": result.targets,
+            "total_findings": len(result.findings),
+            "blocking_findings": len(blocking_findings),
+            "review_findings": review_findings,
             "high_severity": high_severity,
             "medium_severity": medium_severity,
             "low_severity": low_severity,
-            "findings": [f.to_dict() for f in all_findings],
+            "scan_problems": [problem.to_dict() for problem in result.problems],
+            "findings": [f.to_dict() for f in result.findings],
         }
         print(json.dumps(result_dict, indent=2))
 
         if json_output_path:
             Path(json_output_path).write_text(json.dumps(result_dict, indent=2), encoding="utf-8")
-    elif output_format == "summary":
-        print(summary)
     else:
         print(summary)
 
     return CheckResult(
         passed=passed,
         blocked=blocked,
-        total_findings=len(all_findings),
-        blocking_findings=blocking_findings,
+        complete=result.complete,
+        targets=result.targets,
+        total_findings=len(result.findings),
+        blocking_findings=len(blocking_findings),
+        review_findings=review_findings,
         high_severity=high_severity,
         medium_severity=medium_severity,
         low_severity=low_severity,
-        findings=[f.to_dict() for f in all_findings],
+        scan_problems=[problem.to_dict() for problem in result.problems],
+        findings=[f.to_dict() for f in result.findings],
         summary=summary,
     )
 
@@ -151,9 +163,9 @@ def main() -> int:
         help="Path to write JSON report",
     )
     parser.add_argument(
-        "--continue-on-warning",
+        "--allow-incomplete-scan",
         action="store_true",
-        help="Return 0 even if medium/LOW findings exist (only block on HIGH)",
+        help="Return 0 when files could not be inspected (blocking findings still block)",
     )
 
     args = parser.parse_args()
@@ -164,11 +176,7 @@ def main() -> int:
         json_output_path=args.json_output,
     )
 
-    if args.continue_on_warning:
-        # Only block on HIGH severity blocking findings
-        blocking_high = sum(
-            1 for f in result["findings"] if f.get("severity") == "HIGH" and f.get("blocks_merge")
-        )
-        return 1 if blocking_high > 0 else 0
+    if args.allow_incomplete_scan:
+        return 1 if result["blocking_findings"] else 0
 
     return 1 if result["blocked"] else 0

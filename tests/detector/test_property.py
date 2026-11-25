@@ -185,8 +185,8 @@ def check(text: str) -> bool:
             # Should not raise exception
             findings = detector.scan_file(file_path)
 
-            assert isinstance(findings, list)
-            assert len(findings) == 0
+            assert findings == []
+            assert [problem.reason for problem in detector.problems] == ["syntax-error"]
 
 
 # =============================================================================

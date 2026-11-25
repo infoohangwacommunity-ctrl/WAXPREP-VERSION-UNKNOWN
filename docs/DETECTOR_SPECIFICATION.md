@@ -26,7 +26,7 @@ This document is the single source of truth for what the detector checks and why
 - Security controls (authentication tokens, permissions)
 - Approved non-conversational functionality
 
-**Detection method:** AST analysis detecting `Compare` nodes with `Eq`/`NotEq` operators where the left operand resembles student input (variable names like `message`, `text`, `content`, `input`, `student_message`, `user_message`, `query`, `prompt`, `body`, `data`, `payload`, etc.) and the right operand is a string constant. The detector uses a heuristic set of input-indicating variable names and checks for function calls that might return input (e.g., `get_message`, `receive`, `read`).
+**Detection method:** AST analysis detecting `Compare` nodes with `Eq`/`NotEq` operators where the left operand resembles student input and the right operand is a string constant. Input detection is token-based, never substring-based: identifiers are split on snake_case/camelCase boundaries and whole tokens (`message`, `text`, `content`, `input`, `query`, `prompt`, `body`, `data`, `payload`, `msg`, `utterance`) are matched. Consequently `context` is not treated as `text` and `metadata` is not treated as `data`. Calls are treated as input only when the function name is an inbound reader (`get_message`, `read_message`, `receive_message`, or a whole `receive`/`read` token). Attribute access such as `self.message` and calls such as `process_message()` are not treated as input.
 
 **Severity:** HIGH
 
@@ -43,7 +43,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Known limitations:**
 - Does not detect comparisons via helper functions without explicit AST tracing
-- Variable names are heuristic; may miss some input patterns
+- Input identification is still a name heuristic; values reached through containers, parameters with unrelated names, or function returns other than the known readers are not recognised
 - Does not detect reverse comparisons (`"string" == input`) — only `input == "string"` direction
 - Does not detect comparisons where input is transformed before comparison
 - Does not detect comparisons using variables instead of literals (requires data-flow analysis)
@@ -67,7 +67,7 @@ This document is the single source of truth for what the detector checks and why
 - Configuration validation
 - Protocol/format constants
 
-**Detection method:** AST analysis detecting `Compare` nodes with `In`/`NotIn` operators where the left operand resembles input and the right operand is a literal `List` containing strings. Currently detects only list patterns (not sets or tuples).
+**Detection method:** AST analysis detecting `Compare` nodes with `In`/`NotIn` operators where the left operand resembles input (same token-based heuristic as WHD-001) and the right operand is a literal `List`/`Set`/`Tuple` containing strings, or a name assigned such a collection in the same file.
 
 **Severity:** HIGH
 
@@ -82,9 +82,8 @@ This document is the single source of truth for what the detector checks and why
 **Status:** Enforced
 
 **Known limitations:**
-- Does not detect set membership (`input in {"a", "b"}`) — only list patterns
 - Does not trace collections imported from other modules
-- Does not detect membership against variables (requires data-flow analysis)
+- Does not track reassignment or mutation of a named collection (requires data-flow analysis)
 - Does not detect reverse membership (`"hello" in message`)
 
 ---
@@ -110,7 +109,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Severity:** MEDIUM
 
-**Enforcement:** CI quality gate — review required; blocks only with strong evidence.
+**Enforcement:** CI quality gate — review required; never blocks a merge (`blocks_merge=false`, `requires_review=true`).
 
 **Confidence threshold:** 0.70
 
@@ -122,9 +121,9 @@ This document is the single source of truth for what the detector checks and why
 
 **Known limitations:**
 - Threshold-based detection may miss shorter but significant chains
-- Does not distinguish string comparisons from other comparisons
+- A chain longer than three branches can be reported more than once (the outer chain and a trailing sub-chain)
 - Does not detect nested if/else as chains (only flat elif structures)
-- Does not detect match/case statements
+- Does not detect match/case statements; `tests/detector/test_adversarial.py::test_match_statement` is a strict xfail so this gap cannot silently disappear
 
 ---
 
@@ -145,7 +144,7 @@ This document is the single source of truth for what the detector checks and why
 - Security pattern matching
 - Data extraction for technical purposes
 
-**Detection method:** AST analysis detecting calls to `re` module functions (`match`, `search`, `findall`, `fullmatch`, `finditer`) with patterns containing word boundaries (`\b`). The detector looks for raw strings with word boundary patterns and patterns containing regex-like syntax.
+**Detection method:** AST analysis detecting calls to `re` module functions (`match`, `search`, `findall`, `fullmatch`, `finditer`) with patterns containing a word-boundary escape. In Python source a raw literal `r"\bword\b"` contains a backslash followed by the letter `b`; the detector checks for that sequence (not the backspace character). Patterns assigned to a variable in the same file are resolved and inspected at the call site. A pattern is suspicious when it contains a word boundary or is longer than 10 characters.
 
 **Severity:** MEDIUM
 
@@ -159,10 +158,10 @@ This document is the single source of truth for what the detector checks and why
 **Status:** Enforced (medium severity, advisory blocking)
 
 **Known limitations:**
-- Does not detect long regex patterns (>10 characters) without word boundaries
+- Long technical validation patterns (>10 characters) are also reported, because intent cannot be inferred statically
 - Cannot determine if regex is used for legitimate validation vs. phrase detection
 - Pattern intent requires human review
-- Does not detect regex patterns stored in variables
+- Patterns built dynamically (concatenation, f-strings) or imported from other modules are not resolved
 
 ---
 
@@ -183,11 +182,11 @@ This document is the single source of truth for what the detector checks and why
 - Configuration value lookups
 - Protocol/format mapping tables
 
-**Detection method:** AST analysis detecting `Subscript` nodes where the value is a `Name` and the slice is a string constant. The detector looks for assignments like `$RESULT = $MAPPING["$KEY"]` inside functions.
+**Detection method:** AST analysis detecting `Subscript` nodes in a load context where the value is a `Name` and the slice is a string constant. Writes such as `mapping["key"] = value` are not lookups and are not reported.
 
 **Severity:** MEDIUM
 
-**Enforcement:** CI quality gate — review required in protected modules.
+**Enforcement:** CI quality gate — review required in protected modules; never blocks a merge (`blocks_merge=false`, `requires_review=true`).
 
 **Confidence threshold:** 0.60
 
@@ -221,7 +220,7 @@ This document is the single source of truth for what the detector checks and why
 - Error handling chains
 - Technical branching
 
-**Detection method:** AST analysis calculating nesting depth of `If` nodes and flagging structures exceeding thresholds.
+**Detection method:** AST analysis calculating nesting depth of `If` nodes. The outermost `if` counts as level 1, so three nested `if` statements are reported as three levels of nesting.
 
 **Severity:** LOW
 
@@ -249,7 +248,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Intent:** Prevent hardcoded response generation that bypasses contextual intelligence.
 
-**Prohibited behavior:** Functions that return string literals in protected modules. The detector flags any function returning a literal string, but excludes utility functions with signature `def $FUNC(text: str) -> str` that return computed values.
+**Prohibited behavior:** Functions whose names suggest response generation (`response`, `reply`, `greeting`, `answer`, `message`, `output`, `say`, `speak`) and that return string literals in protected modules.
 
 **Scope:** Protected modules.
 
@@ -260,11 +259,11 @@ This document is the single source of truth for what the detector checks and why
 - Health check responses
 - Utility functions that transform input (e.g., `normalize_text`)
 
-**Detection method:** AST analysis identifying functions that contain `Return` statements with string constants. The detector uses `pattern-not` to exclude utility functions matching `def $FUNC(text: str) -> str` that return a variable.
+**Detection method:** AST analysis identifying response-named functions that contain `Return` statements with string constants, lists of strings, or tuples of strings.
 
 **Severity:** MEDIUM
 
-**Enforcement:** CI quality gate — review required in protected modules.
+**Enforcement:** CI quality gate — review required in protected modules; never blocks a merge (`blocks_merge=false`, `requires_review=true`).
 
 **Confidence threshold:** 0.65
 
@@ -289,7 +288,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Intent:** Prevent predefined term collections that could drive student classification or behavior routing.
 
-**Prohibited behavior:** Variable assignments of lists containing 2+ string literals in protected modules. The detector excludes `__all__` assignments which are module exports.
+**Prohibited behavior:** Variable assignments of lists/sets/tuples containing 2+ string literals in protected modules, where the variable name contains a vocabulary indicator (`words`, `phrases`, `vocabulary`, `terms`, `keywords`, `topics`, `subjects`, `greetings`, `responses`, `replies`, `messages`, `inputs`).
 
 **Scope:** Protected modules.
 
@@ -299,11 +298,11 @@ This document is the single source of truth for what the detector checks and why
 - Format strings for technical purposes
 - Module exports (`__all__`)
 
-**Detection method:** AST analysis detecting assignments where the value is a list of strings. The detector uses `pattern-not` to exclude `__all__` assignments.
+**Detection method:** AST analysis of assignments where the target name contains a vocabulary indicator and the value is a list/set/tuple of strings (nested collections are flattened). Module exports such as `__all__` do not match the indicator set.
 
 **Severity:** MEDIUM
 
-**Enforcement:** CI quality gate — review required in protected modules.
+**Enforcement:** CI quality gate — review required in protected modules; never blocks a merge (`blocks_merge=false`, `requires_review=true`).
 
 **Confidence threshold:** 0.55
 
@@ -331,7 +330,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Prohibited behavior:** JSON files with 3+ string key-value pairs where both key and value are strings, potentially representing phrase-to-action mappings.
 
-**Scope:** All data files in the project.
+**Scope:** Data files inside the configured scan scope (default: `src/`, `docs/`, `README.md`, `tests/README.md`, `pyproject.toml`).
 
 **Allowed exceptions:**
 - Configuration files with legitimate string mappings
@@ -367,7 +366,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Prohibited behavior:** JSON, YAML, TOML, or CSV files containing 5+ string terms that appear to be vocabulary (alphabetic words > 3 characters).
 
-**Scope:** All data files in the project.
+**Scope:** Data files inside the configured scan scope (default: `src/`, `docs/`, `README.md`, `tests/README.md`, `pyproject.toml`).
 
 **Allowed exceptions:**
 - Documentation glossaries
@@ -375,7 +374,7 @@ This document is the single source of truth for what the detector checks and why
 - Localization data
 - Educational content (legitimate learning material)
 
-**Detection method:** File-type-specific analysis detecting collections of string terms.
+**Detection method:** File-type-specific analysis detecting collections of string terms. JSON uses recursive parsing; TOML uses a real TOML parser and reports one array of five or more natural-language terms; YAML uses deliberately conservative line-based parsing (one contiguous list run at one indentation level). Lists of code identifiers (for example `ignore_names = ["register_defaults", "get_app"]`) are configuration, not vocabulary.
 
 **Severity:** LOW
 
@@ -405,7 +404,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Prohibited behavior:** Markdown files containing patterns like "if student says X, respond with Y" or explicit response templates.
 
-**Scope:** Markdown files in the project.
+**Scope:** Markdown files inside the configured scan scope (default includes `docs/`, `README.md` and `tests/README.md`).
 
 **Allowed exceptions:**
 - Design documentation describing intended behavior
@@ -433,19 +432,57 @@ This document is the single source of truth for what the detector checks and why
 
 ## Summary
 
-| Rule ID | Severity | Blocks Merge | Scope | Detection Method |
-|---------|----------|--------------|-------|------------------|
-| WHD-001 | HIGH | Yes (protected) | Protected modules | AST Compare nodes with input heuristic |
-| WHD-002 | HIGH | Yes (protected) | Protected modules | AST Compare + In/NotIn (list only) |
-| WHD-003 | MEDIUM | Review | Protected modules | AST If/elif chains |
-| WHD-004 | MEDIUM | Advisory | Protected modules | AST re module calls with word boundaries |
-| WHD-005 | MEDIUM | Review | Protected modules | AST Subscript nodes |
-| WHD-006 | LOW | No | Protected modules | AST nesting depth |
-| WHD-007 | MEDIUM | Review | Protected modules | AST FunctionDef + Return (excludes utilities) |
-| WHD-008 | MEDIUM | Review | Protected modules | AST Assign + list (excludes __all__) |
-| WHD-009 | MEDIUM | Advisory | Data files | JSON analysis |
-| WHD-010 | LOW | No | Data files | File-type analysis |
-| WHD-011 | LOW | No | Markdown files | Regex pattern matching |
+| Rule ID | Severity | Blocks Merge | Requires Review | Scope | Detection Method |
+|---------|----------|--------------|-----------------|-------|------------------|
+| WHD-001 | HIGH | Yes (protected) | — | Protected modules | AST Compare nodes with token-based input heuristic |
+| WHD-002 | HIGH | Yes (protected) | — | Protected modules | AST Compare + In/NotIn (list/set/tuple) |
+| WHD-003 | MEDIUM | No | Yes | Protected modules | AST If/elif chains |
+| WHD-004 | MEDIUM | No | Yes | Protected modules | AST re calls with `\b` word boundaries |
+| WHD-005 | MEDIUM | No | Yes | Protected modules | AST Subscript reads |
+| WHD-006 | LOW | No | No | Protected modules | AST nesting depth |
+| WHD-007 | MEDIUM | No | Yes | Protected modules | AST response functions + Return |
+| WHD-008 | MEDIUM | No | Yes | Protected modules | AST vocabulary assignment |
+| WHD-009 | MEDIUM | No | Yes | Data files | JSON/YAML mapping analysis |
+| WHD-010 | LOW | No | No | Data files | File-type vocabulary analysis |
+| WHD-011 | LOW | No | No | Markdown files | Regex pattern matching |
+
+Only WHD-001 and WHD-002 can block a merge, and only inside protected
+modules. Every other rule produces review or informational findings.
+
+---
+
+## Scan scope, completeness and enforcement
+
+### Explicit scope
+
+Scanning is never project-wide by accident. The CLI and quality-gate entry
+point share `DEFAULT_SCAN_TARGETS`:
+
+- Python source scanning: `src/`
+- Active documentation: `docs/`
+- Project documents: `README.md`, `tests/README.md`
+- Project configuration: `pyproject.toml`
+
+Callers can pass explicit files or directories as positional targets. Test
+fixtures and dependency trees (`tests/`, `.venv/`, `node_modules/`, caches,
+build output) are never part of the default scope, so examples and generated
+content cannot create misleading findings.
+
+### Completeness is reported
+
+A file that cannot be read, parsed, or decoded is recorded as a **scan
+problem** (for example `syntax-error`, `invalid-json`, `invalid-toml`,
+`unreadable`). Scan problems are printed, counted in the JSON report, and
+fail the gate (exit code 1) because an incomplete scan cannot certify the
+codebase. `"no findings"` therefore never means "not inspected".
+
+### One enforcement policy
+
+The CLI and the quality-gate module both call `waxprep.detector.analyze()`.
+Blocking status comes from `Finding.blocks_merge`, and report counts use the
+same property, so `get_report()["blocking_findings"]`, the printed summary
+and the exit code cannot disagree. Severity, review status and merge-blocking
+status are separate fields.
 
 ---
 
@@ -510,8 +547,10 @@ These are documented as `xfail` tests in `test_adversarial.py`.
 
 | Component | Status |
 |-----------|--------|
-| CLI (`src/waxprep/detector/cli.py`) | Functional — supports `--format` via argparse |
-| CI Integration | Functional — runs in Quality Gate workflow |
-| Blocking Exit Code | Functional — returns 1 when blocking findings exist |
+| CLI (`src/waxprep/detector/cli.py`) | Functional — explicit targets, default project scope, `--format` |
+| Quality gate (`src/waxprep/detector/quality_gate.py`) | Functional — calls the same `analyze()` policy as the CLI |
+| CI Integration | Functional — runs in Quality Gate workflow over the default scope |
+| Blocking Exit Code | Functional — 1 for blocking findings or an incomplete scan |
+| Scan completeness | Functional — read/parse failures are reported, never silently ignored |
 | Semgrep Config | Valid — 7 rules load and execute |
-| Python Detector | Valid syntax — exception handling fixed |
+| Python Detector | Valid syntax — exception handling and TOML parsing verified |

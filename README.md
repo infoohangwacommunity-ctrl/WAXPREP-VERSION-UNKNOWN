@@ -42,8 +42,8 @@ src/waxprep/
 ├── config.py            # Settings (configurable defaults with development defaults; override via WAXPREP_ env vars)
 ├── id.py                # UUIDv7 identity generation (Stage 04 identity foundation)
 ├── core/                # Pure logic & protocols (NO infrastructure imports)
-│   ├── __init__.py      # Boundary rules, purpose statement, Message/MessageHandler/ContextProvider
-│   ├── protocols.py     # Protocol re-exports and boundary guard
+│   ├── __init__.py      # Boundary rules and purpose statement (no code)
+│   ├── protocols.py     # Message / MessageHandler / ContextProvider protocols
 │   └── pure.py          # Pure functions (normalize_text, extract_keywords, etc.)
 ├── messaging/           # Message handling & conversation flow (placeholder)
 │   └── __init__.py      # Boundary rules, placeholder for future code
@@ -76,7 +76,9 @@ tests/
 │   └── test_middleware_skeletons.py   # Middleware skeleton validation
 ├── integration/       # Component interactions
 │   ├── __init__.py
+│   ├── test_exception_handler_pattern.py  # Exception handler pattern documentation
 │   ├── test_exception_handlers.py     # Exception handler integration
+│   ├── test_final_coverage.py         # Final coverage verification
 │   ├── test_foundation.py             # Foundation stability + middleware + correlation IDs
 │   ├── test_main.py                   # Health endpoints
 │   └── test_registries.py            # Registry behavior
@@ -92,8 +94,7 @@ tests/
 ├── configuration/     # Config loading
 │   ├── __init__.py
 │   └── test_config.py                 # Proves configurable defaults, not hardcoded values
-├── detector/          # Stage 08 detector tests
-│   ├── __init__.py
+├── detector/          # Stage 08 detector tests (not in the CI category matrix)
 │   ├── test_detector.py               # Unit tests for each WHD rule
 │   ├── test_adversarial.py            # Adversarial and mutation tests
 │   ├── test_cli_and_quality_gate.py   # CLI and integration tests
@@ -102,8 +103,7 @@ tests/
 ├── regression/        # Behavior preservation
 │   ├── __init__.py
 │   └── (regression tests)
-├── conftest.py                        # Shared fixtures
-└── test_final_coverage.py             # Final coverage verification
+└── conftest.py                        # Shared fixtures
 
 
 
@@ -172,7 +172,7 @@ Adapters depend on registry protocols via structural typing (duck typing). They 
 - Uses standard UUID string format, no semantic prefixes
 - Time-sortable (UUIDv7, RFC 9562), suitable for distributed systems
 - Designed so future components can safely consume it
-- `tests/test_id.py` — UUIDv7 correctness, monotonicity, mass uniqueness, format validation
+- `tests/unit/test_id.py` — UUIDv7 correctness, monotonicity, mass uniqueness, format validation
 
 ## Stage 05: Testing
 
@@ -202,7 +202,7 @@ Static-analysis tooling added and configured:
 - **Mypy** — strict type checking (blocking)
 - **Pyright** — strict type checking (advisory)
 - **Import Linter** — architecture import contracts (blocking, 4 contracts in `.importlinter`)
-- **Semgrep** — security pattern scanning (blocking, `--config auto --error`)
+- **Semgrep** — security pattern scanning (blocking, `--config .semgrep --error` for `src/`, excluding `src/waxprep/detector/`)
 - **Vulture** — dead code detection (advisory)
 
 Configuration lives in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`, `[tool.pyright]`, `[tool.vulture]`) and `.importlinter`.
@@ -251,13 +251,13 @@ Independent, deterministic source-code detection system that identifies prohibit
 |---------|-------------|----------|--------------|
 | WHD-001 | Fixed-string comparisons against student input | HIGH | Yes (protected) |
 | WHD-002 | Fixed vocabulary membership tests | HIGH | Yes (protected) |
-| WHD-003 | Fixed decision trees (if/elif chains) | MEDIUM | Review |
-| WHD-004 | Regex-based phrase detection | MEDIUM | Advisory |
-| WHD-005 | Word-to-action dictionary lookups | MEDIUM | Review |
+| WHD-003 | Fixed decision trees (if/elif chains) | MEDIUM | No — review |
+| WHD-004 | Regex-based phrase detection | MEDIUM | No — review |
+| WHD-005 | Word-to-action dictionary lookups | MEDIUM | No — review |
 | WHD-006 | Deeply nested conditional structures | LOW | No |
-| WHD-007 | Predetermined string responses | MEDIUM | Review |
-| WHD-008 | Hardcoded vocabularies | MEDIUM | Review |
-| WHD-009 | JSON string-to-string mappings | MEDIUM | Advisory |
+| WHD-007 | Predetermined string responses | MEDIUM | No — review |
+| WHD-008 | Hardcoded vocabularies | MEDIUM | No — review |
+| WHD-009 | String-to-string mappings in data files | MEDIUM | No — review |
 | WHD-010 | Vocabulary lists in data files | LOW | No |
 | WHD-011 | Response templates in Markdown | LOW | No |
 
@@ -266,10 +266,13 @@ Independent, deterministic source-code detection system that identifies prohibit
 - `waxprep.context` — Understanding the learner
 - `waxprep.services` — Light orchestration
 
+**Enforcement policy:** a finding can exist, require human review, and/or block a merge — these are separate states. Only findings with `blocks_merge=true` fail the gate. WHD-001 and WHD-002 block inside protected modules; the remaining rules are review or informational findings and never block. The report counts blocking findings from that same property, so the report and the exit code cannot disagree.
+
 **Usage:**
 ```bash
-# Run the detector
-python -m waxprep.detector [path] --format [text|json|summary]
+# Run the detector (explicit scope; default scope is src, docs, README.md,
+# tests/README.md and pyproject.toml)
+python -m waxprep.detector.cli [path ...] --format [text|json|summary]
 
 # Run as quality gate check
 python -m waxprep.detector.quality_gate [path] --format summary
@@ -286,14 +289,16 @@ python -m waxprep.detector.quality_gate [path] --format summary
 - Cross-file data-flow analysis not implemented (imports, helper chains)
 - Variable-based comparisons require constant propagation
 - Dynamic string construction not detected
-- Match/case statements not fully covered
+- Match/case statements are not detected (`tests/detector/test_adversarial.py` pins this as a strict xfail)
 - Some adversarial tests marked xfail for documented gaps
+- Files that cannot be read or parsed are reported as scan problems and fail the gate; use `--allow-incomplete-scan` on the quality-gate entry point only when that is intentional
 - Coverage gate excludes `waxprep/detector/quality_gate.py` (see pyproject.toml)
 
-**CI integration:** The Quality Gate runs the detector via:
+**CI integration:** The Quality Gate runs the detector over its explicit default scope:
 ```bash
-uv run python -m waxprep.detector.cli src/ --format summary
+uv run python -m waxprep.detector.cli --format summary
 ```
+This inspects Python in `src/`, the active docs, `README.md`, `tests/README.md` and `pyproject.toml`. It does not scan the whole repository (which would include dependency trees and test fixtures).
 
 ## Supporting Documentation
 

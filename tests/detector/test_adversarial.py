@@ -6,13 +6,11 @@
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 import pytest
 
 from waxprep.detector import (
-    Severity,
     UniversalHardcodingDetector,
 )
 
@@ -91,15 +89,25 @@ def check(message: str) -> str:
             "Ternary with string comparison should be detected"
         )
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "match/case routing is not detected by the AST rules; documented "
+            "limitation in docs/DETECTOR_SPECIFICATION.md (WHD-003)"
+        ),
+    )
     def test_match_statement(
         self,
         adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
-        """Match/case statements should be detected as fixed routing."""
-        # Python 3.10+ match statement
-        if hasattr(ast, "Match"):
-            code = """
+        """Match/case statements should be detected as fixed routing.
+
+        This is an explicit, strict xfail: the parser accepts match/case, but
+        none of WHD-001/003/006 detect it. If detection is added, this test
+        fails and must be promoted to a passing test.
+        """
+        code = """
 def handle(message: str) -> str:
     match message:
         case "hello":
@@ -111,21 +119,14 @@ def handle(message: str) -> str:
         case _:
             return "default"
 """
-            file_path = protected_module_path / "match.py"
-            file_path.write_text(code, encoding="utf-8")
+        file_path = protected_module_path / "match.py"
+        file_path.write_text(code, encoding="utf-8")
 
-            findings = adversarial_detector.scan_file(file_path)
+        findings = adversarial_detector.scan_file(file_path)
 
-            # Match/case is a structural pattern similar to if/elif chains
-            # Current AST-based detector focuses on if/elif chains
-            # This is a known limitation requiring additional pattern matching
-            # Documented limitation: match statement not fully detected
-            assert (
-                any(f.rule_id in ("WHD-001", "WHD-003", "WHD-006") for f in findings)
-                or len([f for f in findings if f.rule_id == "WHD-006"]) >= 0
-            ), (
-                "Match/case should at minimum be scanned; if nothing detected, document as limitation"
-            )
+        assert any(f.rule_id in ("WHD-001", "WHD-003", "WHD-006") for f in findings), (
+            "Match/case routing produced no finding"
+        )
 
 
 class TestAdversarialMovedData:
@@ -638,10 +639,9 @@ def handle_error(error_code: int) -> str:
 
         findings = adversarial_detector.scan_file(file_path)
 
-        # Should not flag error message handling
-        whd_findings = [f for f in findings if f.rule_id in ("WHD-001", "WHD-003", "WHD-007")]
-        # These findings should be acceptable (technical, not conversational)
-        assert all(not f.blocks_merge or f.severity != Severity.HIGH for f in whd_findings)
+        # Error-code routing must not produce blocking findings
+        assert not [f for f in findings if f.blocks_merge]
+        assert not [f for f in findings if f.rule_id == "WHD-001"]
 
     def test_legitimate_command_routing(
         self,

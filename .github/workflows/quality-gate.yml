@@ -116,7 +116,10 @@ jobs:
           # Only this tracked vulnerability is ignored; every other vulnerability still fails the gate.
           uv run pip-audit --ignore-vuln GHSA-53pm-wgxf-c6qf
           echo "==> Universal Hardcoding Detector (Stage 08)"
-          uv run python -m waxprep.detector.cli src/ --format summary
+          # Explicit default scope (see DEFAULT_SCAN_TARGETS): Python sources,
+          # active docs, README, tests/README and pyproject.toml. Not a blind
+          # whole-repository scan, so dependency trees are never inspected.
+          uv run python -m waxprep.detector.cli --format summary
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 2. Tests — all categories in parallel (matrix)

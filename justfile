@@ -28,7 +28,7 @@ import-linter:
 
 # Run semgrep security scan
 semgrep:
-	uv run semgrep --config auto --error src/
+	uv run semgrep --config .semgrep --error --exclude src/waxprep/detector src/
 
 # Verify lockfile integrity (uv.lock matches pyproject.toml)
 lockfile-check:

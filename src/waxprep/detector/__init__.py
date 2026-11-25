@@ -10,16 +10,15 @@
 from __future__ import annotations
 
 import ast
-
-# Constant is available in Python 3.8+ but was moved in 3.14
-# For compatibility, we use the appropriate import
-import ast as _ast
 import json
+import re
+import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-Constant = _ast.Constant
+Constant = ast.Constant
 
 # =============================================================================
 # Severity levels
@@ -53,6 +52,16 @@ class Finding:
     is_deterministic: bool = True
     blocks_merge: bool = False
 
+    @property
+    def requires_review(self) -> bool:
+        """True when this is review evidence rather than a merge blocker.
+
+        Detection, review and merge-blocking are three separate concepts. A
+        finding can exist and require a human decision without blocking a
+        merge. Only findings with ``blocks_merge`` set stop the gate.
+        """
+        return self.severity is Severity.MEDIUM and not self.blocks_merge
+
     def to_dict(self) -> dict[str, object]:
         """Serialize finding to dictionary."""
         return {
@@ -65,7 +74,25 @@ class Finding:
             "evidence": self.evidence,
             "is_deterministic": self.is_deterministic,
             "blocks_merge": self.blocks_merge,
+            "requires_review": self.requires_review,
         }
+
+
+@dataclass(frozen=True)
+class ScanProblem:
+    """A file that could not be inspected.
+
+    Kept separate from findings so that "no findings" is never confused with
+    "not successfully inspected".
+    """
+
+    file_path: str
+    reason: str
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialize scan problem to dictionary."""
+        return {"file_path": self.file_path, "reason": self.reason, "detail": self.detail}
 
 
 # =============================================================================
@@ -109,6 +136,110 @@ def is_allowed_module(module_path: str) -> bool:
     return False
 
 
+# Directories that are never scanned: VCS metadata, virtual environments,
+# dependency trees, caches and build output.
+SKIPPED_DIRECTORY_NAMES: frozenset[str] = frozenset({
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    "site-packages",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".hypothesis",
+    "dist",
+    "build",
+})
+
+
+def is_skipped_path(path: Path) -> bool:
+    """Return True when a path is inside a directory that must not be scanned."""
+    return any(part in SKIPPED_DIRECTORY_NAMES for part in path.parts)
+
+
+# =============================================================================
+# Input-identification heuristic
+# =============================================================================
+
+# Whole identifier tokens that indicate a value may be student-supplied input.
+# Matching is token-based (snake_case / camelCase aware), never substring-based:
+# "context" must not match "text", and "metadata" must not match "data".
+INPUT_NAME_TOKENS: frozenset[str] = frozenset({
+    "message",
+    "messages",
+    "msg",
+    "text",
+    "content",
+    "input",
+    "query",
+    "prompt",
+    "body",
+    "data",
+    "payload",
+    "utterance",
+})
+
+# Function names whose result is treated as inbound student input.
+INPUT_FUNCTION_NAMES: frozenset[str] = frozenset({
+    "get_message",
+    "get_text",
+    "get_content",
+    "get_input",
+    "fetch_message",
+    "read_message",
+    "receive_message",
+})
+
+# `receive`/`read` as whole tokens: receive_message() matches, reader() does not.
+INPUT_FUNCTION_TOKENS: frozenset[str] = frozenset({"receive", "received", "read"})
+
+
+def identifier_tokens(name: str) -> set[str]:
+    """Split an identifier into lowercase word tokens.
+
+    Handles snake_case and camelCase. Returns whole tokens only, so callers
+    compare tokens instead of substrings.
+    """
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
+    return {token for token in re.split(r"[^A-Za-z0-9]+", spaced.lower()) if token}
+
+
+def looks_like_student_input(node: ast.expr) -> bool:
+    """Heuristic: does this expression look like student-supplied input?
+
+    Variable names alone are not proof of student input. This helper is
+    deliberately conservative: it matches whole name tokens and a small set of
+    inbound-input function names. Attributes, internal context objects,
+    metadata and configuration values are not treated as input.
+    """
+    if isinstance(node, ast.Name):
+        return bool(identifier_tokens(node.id) & INPUT_NAME_TOKENS)
+
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        function_name = node.func.id.lower()
+        if function_name in INPUT_FUNCTION_NAMES:
+            return True
+        return bool(identifier_tokens(function_name) & INPUT_FUNCTION_TOKENS)
+
+    return False
+
+
+def has_word_boundary(pattern: str) -> bool:
+    """Return True when a regex pattern contains a word-boundary escape.
+
+    A raw literal such as ``r"\\bword\\b"`` contains a backslash followed by
+    the letter ``b``. It does not contain the backspace character, which only
+    appears when a non-raw string uses that escape. The previous implementation
+    checked for the backspace character and therefore missed every normal
+    regex word boundary.
+    """
+    return r"\b" in pattern
+
+
 # =============================================================================
 # Core detector class
 # =============================================================================
@@ -132,21 +263,31 @@ class UniversalHardcodingDetector:
     def __init__(self, root_path: str | Path = "."):
         self.root_path = Path(root_path)
         self.findings: list[Finding] = []
+        self.problems: list[ScanProblem] = []
         self._visited_files: set[str] = set()
 
     def scan_file(self, file_path: Path) -> list[Finding]:
-        """Scan a single Python file for prohibited patterns."""
+        """Scan a single Python file for prohibited patterns.
+
+        Files that cannot be read or parsed are recorded in ``problems``; they
+        are never silently reported as clean.
+        """
         if not file_path.suffix == ".py":
             return []
 
         try:
             source = file_path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except OSError as exc:
+            self.problems.append(ScanProblem(str(file_path), "unreadable", str(exc)))
+            return []
+        except UnicodeDecodeError as exc:
+            self.problems.append(ScanProblem(str(file_path), "invalid-encoding", str(exc)))
             return []
 
         try:
             tree = ast.parse(source, filename=str(file_path))
-        except SyntaxError:
+        except SyntaxError as exc:
+            self.problems.append(ScanProblem(str(file_path), "syntax-error", exc.msg or ""))
             return []
 
         findings: list[Finding] = []
@@ -172,8 +313,8 @@ class UniversalHardcodingDetector:
 
         root = Path(directory)
         for py_file in root.rglob("*.py"):
-            # Skip test files and cached bytecode
-            if "__pycache__" in str(py_file):
+            # Skip caches, virtual environments and build output
+            if is_skipped_path(py_file):
                 continue
             # Skip files with test_ prefix in their stem (filename without extension)
             # but not files that just happen to contain "test" in the path
@@ -195,7 +336,10 @@ class UniversalHardcodingDetector:
         medium_risk = [f for f in self.findings if f.severity == Severity.MEDIUM]
         low_risk = [f for f in self.findings if f.severity == Severity.LOW]
 
-        blocking = [f for f in high_risk if f.blocks_merge]
+        # Blocking status comes from the enforcement property, never from
+        # severity alone: severity and merge-blocking are separate concepts.
+        blocking = [f for f in self.findings if f.blocks_merge]
+        review = [f for f in self.findings if f.requires_review]
 
         return {
             "total_findings": len(self.findings),
@@ -203,8 +347,11 @@ class UniversalHardcodingDetector:
             "medium_risk": len(medium_risk),
             "low_risk": len(low_risk),
             "blocking_findings": len(blocking),
+            "review_findings": len(review),
             "findings": [f.to_dict() for f in self.findings],
             "rules_triggered": sorted({f.rule_id for f in self.findings}),
+            "scan_complete": not self.problems,
+            "scan_problems": [p.to_dict() for p in self.problems],
         }
 
     def has_blocking_findings(self) -> bool:
@@ -238,7 +385,6 @@ class UniversalHardcodingDetector:
         fixed literal values in protected modules.
         """
         findings: list[Finding] = []
-        lines = source.splitlines()
 
         class ComparisonVisitor(ast.NodeVisitor):
             def __init__(self) -> None:
@@ -256,50 +402,16 @@ class UniversalHardcodingDetector:
                             ):
                                 # Check if left side looks like input
                                 left = node.left
-                                if self._looks_like_input(left):
+                                if looks_like_student_input(left):
                                     self.Comparisons.append((left, comparator))
 
                 self.generic_visit(node)
-
-            def _looks_like_input(self, node: ast.expr) -> bool:
-                """Heuristic: does this expression look like student input?"""
-                # Direct variable names that suggest input
-                if isinstance(node, ast.Name):
-                    name = node.id.lower()
-                    input_indicators = {
-                        "message",
-                        "text",
-                        "content",
-                        "input",
-                        "student_message",
-                        "user_message",
-                        "query",
-                        "prompt",
-                        "body",
-                        "data",
-                        "payload",
-                    }
-                    return name in input_indicators or any(
-                        indicator in name for indicator in input_indicators
-                    )
-
-                # Function calls that might return input
-                if isinstance(node, ast.Call):
-                    if isinstance(node.func, ast.Name):
-                        func_name = node.func.id.lower()
-                        return any(
-                            indicator in func_name
-                            for indicator in ["get_message", "receive", "read"]
-                        )
-
-                return False
 
         visitor = ComparisonVisitor()
         visitor.visit(tree)
 
         for left, constant in visitor.Comparisons:
             line_no = left.lineno if hasattr(left, "lineno") else constant.lineno
-            lines[line_no - 1].strip() if line_no else ""
 
             finding = Finding(
                 rule_id="WHD-001",
@@ -370,7 +482,7 @@ class UniversalHardcodingDetector:
                 for op in node.ops:
                     if isinstance(op, (ast.In, ast.NotIn)):
                         # Check if left side looks like input
-                        if self._looks_like_input(node.left):
+                        if looks_like_student_input(node.left):
                             comp = node.comparators[0]
                             # Check if right side is a literal collection
                             if isinstance(comp, (ast.List, ast.Set, ast.Tuple)):
@@ -381,28 +493,6 @@ class UniversalHardcodingDetector:
                                 self.memberships.append((node.left, comp))
 
                 self.generic_visit(node)
-
-            def _looks_like_input(self, node: ast.expr) -> bool:
-                """Check if node represents student input."""
-                if isinstance(node, ast.Name):
-                    name = node.id.lower()
-                    input_indicators = {
-                        "message",
-                        "text",
-                        "content",
-                        "input",
-                        "student_message",
-                        "user_message",
-                        "query",
-                        "prompt",
-                        "body",
-                        "data",
-                        "payload",
-                    }
-                    return name in input_indicators or any(
-                        indicator in name for indicator in input_indicators
-                    )
-                return False
 
             def _collection_contains_strings(self, node: ast.List | ast.Set | ast.Tuple) -> bool:
                 """Check if collection contains string literals."""
@@ -538,7 +628,9 @@ class UniversalHardcodingDetector:
                     f"Module: {module_path}",
                     f"Protected module: {is_protected_module(module_path)}",
                 ],
-                blocks_merge=is_protected_module(module_path),
+                # WHD-003 is documented as review-required: a long if/elif chain
+                # is evidence for a human, not proof of prohibited behavior.
+                blocks_merge=False,
             )
             findings.append(finding)
 
@@ -568,13 +660,10 @@ class UniversalHardcodingDetector:
                         if isinstance(node.value, Constant) and isinstance(node.value.value, str):
                             # Check if this looks like a regex pattern
                             val = node.value.value
-                            # Check for word boundary patterns (\b in raw string becomes \x08)
-                            # or patterns containing regex-like syntax
-                            has_word_boundary = (
-                                "\x08" in val
-                            )  # backspace char from \b in raw string
+                            # Word boundaries are a backslash followed by "b" in the
+                            # pattern, not the backspace character.
                             has_regex_syntax = len(val) > 5 and ("(" in val or "[" in val)
-                            if has_word_boundary or has_regex_syntax:
+                            if has_word_boundary(val) or has_regex_syntax:
                                 regex_patterns[target.id] = val
                 self.generic_visit(node)
 
@@ -616,7 +705,7 @@ class UniversalHardcodingDetector:
             # Flag patterns with word boundaries or longer patterns only
             # Do NOT use keyword matching - this creates vocabulary dependency
             is_suspicious = (
-                "\x08" in pattern  # word boundaries (backspace char from \b in raw string)
+                has_word_boundary(pattern)  # explicit \b word-boundary escapes
                 or len(pattern) > 10  # longer patterns
             )
 
@@ -660,8 +749,8 @@ class UniversalHardcodingDetector:
                 self.lookups: list[tuple[ast.Subscript, ast.Name]] = []
 
             def visit_Subscript(self, node: ast.Subscript) -> None:
-                # Check if this is a dictionary subscript with string key
-                if isinstance(node.value, ast.Name):
+                # Only reads are lookups: `mapping["x"] = value` is a write.
+                if isinstance(node.ctx, ast.Load) and isinstance(node.value, ast.Name):
                     # Could be a variable name suggesting a mapping
                     name = node.value.id.lower()
                     if any(
@@ -706,7 +795,8 @@ class UniversalHardcodingDetector:
                     f"Module: {module_path}",
                     f"Protected module: {is_protected_module(module_path)}",
                 ],
-                blocks_merge=is_protected_module(module_path),
+                # WHD-005 is documented as review-required, not blocking.
+                blocks_merge=False,
             )
             findings.append(finding)
 
@@ -737,8 +827,12 @@ class UniversalHardcodingDetector:
 
                 self.generic_visit(node)
 
-            def _calculate_nesting_depth(self, node: ast.If, current: int = 0) -> int:
-                """Calculate maximum nesting depth of if statements."""
+            def _calculate_nesting_depth(self, node: ast.If, current: int = 1) -> int:
+                """Calculate maximum nesting depth of if statements.
+
+                The outermost if counts as level 1, so three nested if
+                statements are reported as three levels of nesting.
+                """
                 max_depth = current
                 if hasattr(node, "body"):
                     for stmt in node.body:
@@ -875,7 +969,8 @@ class UniversalHardcodingDetector:
                         f"Module: {module_path}",
                         f"Protected module: {is_protected_module(module_path)}",
                     ],
-                    blocks_merge=is_protected_module(module_path),
+                    # WHD-007 is documented as review-required, not blocking.
+                    blocks_merge=False,
                 )
                 findings.append(finding)
 
@@ -961,7 +1056,8 @@ class UniversalHardcodingDetector:
                         f"Module: {module_path}",
                         f"Protected module: {is_protected_module(module_path)}",
                     ],
-                    blocks_merge=is_protected_module(module_path),
+                    # WHD-008 is documented as review-required, not blocking.
+                    blocks_merge=False,
                 )
                 findings.append(finding)
 
@@ -971,6 +1067,10 @@ class UniversalHardcodingDetector:
 # =============================================================================
 # Data/configuration file inspector
 # =============================================================================
+
+# WHD-010 describes a vocabulary list as five or more terms in one collection.
+# Several unrelated one-item arrays are configuration, not a vocabulary.
+MIN_VOCABULARY_TERMS = 5
 
 
 class DataFileInspector:
@@ -987,15 +1087,24 @@ class DataFileInspector:
     def __init__(self, root_path: str | Path = "."):
         self.root_path = Path(root_path)
         self.findings: list[Finding] = []
+        self.problems: list[ScanProblem] = []
 
     def inspect_file(self, file_path: Path) -> list[Finding]:
-        """Inspect a data/configuration file."""
+        """Inspect a data/configuration file.
+
+        Unreadable files are recorded in ``problems`` rather than silently
+        reported as clean.
+        """
         findings: list[Finding] = []
 
         suffix = file_path.suffix.lower()
         try:
             content = file_path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except OSError as exc:
+            self.problems.append(ScanProblem(str(file_path), "unreadable", str(exc)))
+            return []
+        except UnicodeDecodeError as exc:
+            self.problems.append(ScanProblem(str(file_path), "invalid-encoding", str(exc)))
             return []
 
         if suffix == ".json":
@@ -1018,11 +1127,10 @@ class DataFileInspector:
         root = Path(directory)
 
         for data_file in root.rglob("*"):
-            if data_file.is_file():
+            if data_file.is_file() and not is_skipped_path(data_file):
                 suffix = data_file.suffix.lower()
                 if suffix in {".json", ".yaml", ".yml", ".toml", ".csv", ".md"}:
-                    if "__pycache__" not in str(data_file):
-                        self.inspect_file(data_file)
+                    self.inspect_file(data_file)
 
         return self.findings
 
@@ -1032,7 +1140,8 @@ class DataFileInspector:
 
         try:
             data = json.loads(content)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            self.problems.append(ScanProblem(str(file_path), "invalid-json", str(exc)))
             return []
 
         # Recursively search for vocabulary patterns
@@ -1080,12 +1189,10 @@ class DataFileInspector:
 
         elif isinstance(data, list):
             # Check for lists of strings (vocabulary)
-            if all(isinstance(item, str) for item in data) and len(data) >= 5:
+            if all(isinstance(item, str) for item in data) and len(data) >= MIN_VOCABULARY_TERMS:
                 # Check if these look like vocabulary
                 sample = data[:5]
-                is_vocabulary = any(len(word) > 3 and word.isalpha() for word in sample)
-
-                if is_vocabulary:
+                if self._looks_like_vocabulary(sample):
                     finding = Finding(
                         rule_id="WHD-010",
                         file_path=str(file_path),
@@ -1108,60 +1215,81 @@ class DataFileInspector:
                     self._search_for_vocabulary(item, path, findings, file_path)
 
     def _inspect_yaml(self, content: str, file_path: Path) -> list[Finding]:
-        """Inspect YAML content for vocabulary patterns."""
-        # Simple YAML inspection without full parsing
+        """Inspect YAML content for vocabulary patterns.
+
+        Line-based parsing is intentionally conservative: only a contiguous run
+        of list items at one indentation level counts as a list, and only
+        key/value pairs at one indentation level count as a mapping. Nested
+        structures are not merged into a single "vocabulary".
+        """
         findings: list[Finding] = []
 
-        lines = content.splitlines()
-        string_pairs = []
-        string_list = []
+        list_runs: list[list[str]] = []
+        current_run: list[str] = []
+        current_indent: int | None = None
+        mapping_pairs: dict[int, list[tuple[str, str]]] = {}
 
-        for line in lines:
-            stripped = line.strip()
+        for raw_line in content.splitlines():
+            stripped = raw_line.strip()
             if not stripped or stripped.startswith("#"):
                 continue
+            indent = len(raw_line) - len(raw_line.lstrip())
 
             if stripped.startswith("- "):
                 item = stripped[2:].strip().strip('"').strip("'")
-                if item and not item.startswith("{") and not item.startswith("["):
-                    string_list.append(item)
-            elif ":" in stripped and not stripped.startswith("-"):
-                parts = stripped.split(":", 1)
-                if len(parts) == 2:
-                    key = parts[0].strip()
-                    value = parts[1].strip().strip('"').strip("'")
-                    if key and value and not value.startswith("{") and not value.startswith("["):
-                        string_pairs.append((key, value))
+                if not item or item.startswith(("{", "[")):
+                    continue
+                if current_indent is None or indent != current_indent:
+                    if current_run:
+                        list_runs.append(current_run)
+                    current_run = []
+                    current_indent = indent
+                current_run.append(item)
+                continue
 
-        # Check for vocabulary list
-        if len(string_list) >= 5:
+            if current_run:
+                list_runs.append(current_run)
+                current_run = []
+                current_indent = None
+
+            key, separator, value = stripped.partition(":")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if separator and key and value and not value.startswith(("{", "[")):
+                mapping_pairs.setdefault(indent, []).append((key, value))
+
+        if current_run:
+            list_runs.append(current_run)
+
+        vocabulary_run = max(list_runs, key=len, default=[])
+        if len(vocabulary_run) >= MIN_VOCABULARY_TERMS:
             finding = Finding(
                 rule_id="WHD-010",
                 file_path=str(file_path),
                 line_number=1,
-                message=(f"YAML file contains vocabulary list ({len(string_list)} terms)"),
+                message=(f"YAML file contains vocabulary list ({len(vocabulary_run)} terms)"),
                 severity=Severity.LOW,
                 confidence=0.50,
                 evidence=[
                     f"File: {file_path.name}",
-                    f"Sample terms: {string_list[:5]}",
+                    f"Sample terms: {vocabulary_run[:5]}",
                 ],
                 blocks_merge=False,
             )
             findings.append(finding)
 
-        # Check for string-to-string mappings
-        if len(string_pairs) >= 3:
+        largest_mapping = max((len(pairs) for pairs in mapping_pairs.values()), default=0)
+        if largest_mapping >= 3:
             finding = Finding(
                 rule_id="WHD-009",
                 file_path=str(file_path),
                 line_number=1,
-                message=(f"YAML contains {len(string_pairs)} string-to-string mappings"),
+                message=(f"YAML contains {largest_mapping} string-to-string mappings"),
                 severity=Severity.MEDIUM,
                 confidence=0.60,
                 evidence=[
                     f"File: {file_path.name}",
-                    f"Sample mappings: {string_pairs[:3]}",
+                    "Mappings share one indentation level",
                 ],
                 blocks_merge=False,
             )
@@ -1170,33 +1298,75 @@ class DataFileInspector:
         return findings
 
     def _inspect_toml(self, content: str, file_path: Path) -> list[Finding]:
-        """Inspect TOML content for vocabulary patterns."""
-        # Simple TOML inspection looking for arrays of strings
+        """Inspect TOML content for vocabulary lists (WHD-010).
+
+        Uses a real TOML parser. WHD-010 describes one vocabulary list of five
+        or more terms; several unrelated short arrays are ordinary
+        configuration and are not reported.
+        """
         findings: list[Finding] = []
 
-        import re
+        try:
+            data = tomllib.loads(content)
+        except tomllib.TOMLDecodeError as exc:
+            self.problems.append(ScanProblem(str(file_path), "invalid-toml", str(exc)))
+            return findings
 
-        # Look for arrays of strings
-        array_pattern = re.compile(r'\["\s*([^"]+)\s*"(?:\s*,\s*"[^"]+"\s*)*\]')
-        matches = array_pattern.findall(content)
-
-        if len(matches) >= 3:
-            finding = Finding(
-                rule_id="WHD-010",
-                file_path=str(file_path),
-                line_number=1,
-                message=("TOML contains string array that may be vocabulary"),
-                severity=Severity.LOW,
-                confidence=0.45,
-                evidence=[
-                    f"File: {file_path.name}",
-                    f"Found {len(matches)} string arrays",
-                ],
-                blocks_merge=False,
+        for location, terms in self._find_string_arrays(data, [], MIN_VOCABULARY_TERMS):
+            findings.append(
+                Finding(
+                    rule_id="WHD-010",
+                    file_path=str(file_path),
+                    line_number=1,
+                    message=(f"TOML contains vocabulary list ({len(terms)} terms)"),
+                    severity=Severity.LOW,
+                    confidence=0.45,
+                    evidence=[
+                        f"File: {file_path.name}",
+                        f"Path in TOML: {location}",
+                        f"Sample terms: {terms[:5]}",
+                    ],
+                    blocks_merge=False,
+                )
             )
-            findings.append(finding)
 
         return findings
+
+    def _find_string_arrays(
+        self,
+        data: object,
+        path: list[str],
+        minimum_terms: int,
+    ) -> list[tuple[str, list[str]]]:
+        """Recursively collect string-only arrays with at least ``minimum_terms``."""
+        found: list[tuple[str, list[str]]] = []
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                found.extend(self._find_string_arrays(value, [*path, str(key)], minimum_terms))
+        elif isinstance(data, list):
+            terms = [item for item in data if isinstance(item, str)]
+            if len(terms) == len(data) and len(terms) >= minimum_terms:
+                if self._looks_like_vocabulary(terms):
+                    found.append(("/".join(path), terms))
+            for item in data:
+                if isinstance(item, (dict, list)):
+                    found.extend(self._find_string_arrays(item, path, minimum_terms))
+
+        return found
+
+    def _looks_like_vocabulary(self, terms: list[str]) -> bool:
+        """Conservative check: does a string list look like vocabulary terms?
+
+        Natural-language vocabulary is lowercase alphabetic words. Lists of
+        code identifiers (``register_defaults``, ``FakeChannelAdapter``) are
+        configuration, not vocabulary, even when they are alphabetic.
+        """
+        sample = terms[:5]
+        simple_words = sum(
+            1 for term in sample if len(term) > 3 and term.isalpha() and term.islower()
+        )
+        return simple_words >= 3
 
     def _inspect_csv(self, content: str, file_path: Path) -> list[Finding]:
         """Inspect CSV content for vocabulary patterns."""
@@ -1208,7 +1378,8 @@ class DataFileInspector:
         try:
             reader = csv.reader(StringIO(content))
             rows = list(reader)
-        except csv.Error:
+        except csv.Error as exc:
+            self.problems.append(ScanProblem(str(file_path), "invalid-csv", str(exc)))
             return []
 
         # Check for vocabulary-like columns
@@ -1278,68 +1449,174 @@ class DataFileInspector:
 # =============================================================================
 
 
+# Explicit default scope for project-wide enforcement. Python sources,
+# documentation and project data files are scanned. Tests and archived
+# documents are excluded from the default scope so that test fixtures and
+# historical examples do not create misleading findings; callers that want a
+# different scope pass explicit targets.
+DEFAULT_SCAN_TARGETS: tuple[str, ...] = (
+    "src",
+    "docs",
+    "README.md",
+    "tests/README.md",
+    "pyproject.toml",
+)
+
+ScanTargets = str | Path | Sequence[str | Path] | None
+
+
+@dataclass
+class AnalysisResult:
+    """Findings and scan problems for one explicit set of scan targets."""
+
+    targets: list[str]
+    findings: list[Finding]
+    problems: list[ScanProblem]
+
+    @property
+    def blocking_findings(self) -> list[Finding]:
+        """Findings that must stop a merge."""
+        return [f for f in self.findings if f.blocks_merge]
+
+    @property
+    def complete(self) -> bool:
+        """True only when every targeted file was successfully inspected."""
+        return not self.problems
+
+
+def _normalize_targets(targets: ScanTargets, root_path: str | Path) -> list[Path]:
+    """Resolve scan targets against the project root."""
+    requested: list[str | Path]
+    if targets is None:
+        requested = [root_path]
+    elif isinstance(targets, (str, Path)):
+        requested = [targets]
+    else:
+        requested = list(targets)
+
+    root = Path(root_path)
+    resolved: list[Path] = []
+    for target in requested:
+        path = Path(target)
+        if path.is_absolute():
+            resolved.append(path)
+            continue
+        if path == root or root in path.parents:
+            resolved.append(path)
+        else:
+            resolved.append(root / path)
+    return resolved
+
+
+def analyze(targets: ScanTargets = None, root_path: str | Path = ".") -> AnalysisResult:
+    """Analyse explicit scan targets with a single enforcement policy.
+
+    A directory target is scanned recursively for Python sources and data
+    files. A file target is scanned according to its suffix. Nothing outside
+    the named targets is inspected: scope is explicit, never accidental.
+    """
+    detector = UniversalHardcodingDetector(root_path)
+    inspector = DataFileInspector(root_path)
+    paths = _normalize_targets(targets, root_path)
+
+    findings: list[Finding] = []
+
+    for path in paths:
+        if path.is_dir():
+            findings.extend(detector.scan_directory(path))
+            findings.extend(inspector.inspect_directory(path))
+        elif path.suffix == ".py":
+            findings.extend(detector.scan_file(path))
+        elif path.exists():
+            findings.extend(inspector.inspect_file(path))
+        else:
+            detector.problems.append(ScanProblem(str(path), "missing-target"))
+
+    return AnalysisResult(
+        targets=[str(path) for path in paths],
+        findings=findings,
+        problems=[*detector.problems, *inspector.problems],
+    )
+
+
+def _print_scan_problems(problems: list[ScanProblem]) -> None:
+    """Report files that were not successfully inspected."""
+    if not problems:
+        return
+
+    print(f"\nSCAN INCOMPLETE: {len(problems)} file(s) could not be inspected")
+    print(f"{'=' * 50}")
+    for problem in problems:
+        detail = f": {problem.detail}" if problem.detail else ""
+        print(f"  ! {problem.file_path} ({problem.reason}){detail}")
+
+
 def run_detection(
     root_path: str | Path = ".",
     output_format: str = "text",
+    targets: ScanTargets = None,
 ) -> int:
     """
     Run the Universal Hardcoding Detector and output results.
 
     Args:
-        root_path: Path to scan
+        root_path: Project root used to resolve relative targets and modules
         output_format: Output format (text, json, summary)
+        targets: Explicit files/directories to scan. ``None`` scans root_path.
 
     Returns:
-        Exit code: 0 if no blocking findings, 1 if blocking findings exist
+        Exit code: 0 when the scan is complete and nothing blocks the merge,
+        1 when a blocking finding exists or a targeted file could not be
+        inspected.
     """
-    detector = UniversalHardcodingDetector(root_path)
-    data_inspector = DataFileInspector(root_path)
-
-    # Run Python code detection
-    python_findings = detector.scan_project()
-
-    # Run data file inspection
-    data_findings = data_inspector.inspect_directory(root_path)
-
-    all_findings = python_findings + data_findings
+    result = analyze(targets, root_path)
+    blocking = result.blocking_findings
+    review = [f for f in result.findings if f.requires_review]
+    python_count = sum(1 for f in result.findings if f.file_path.endswith(".py"))
 
     if output_format == "json":
         report = {
-            "total_findings": len(all_findings),
-            "python_findings": len(python_findings),
-            "data_findings": len(data_findings),
-            "findings": [f.to_dict() for f in all_findings],
+            "targets": result.targets,
+            "total_findings": len(result.findings),
+            "python_findings": python_count,
+            "data_findings": len(result.findings) - python_count,
+            "blocking_findings": len(blocking),
+            "review_findings": len(review),
+            "scan_complete": result.complete,
+            "scan_problems": [problem.to_dict() for problem in result.problems],
+            "findings": [f.to_dict() for f in result.findings],
         }
         print(json.dumps(report, indent=2))
     elif output_format == "summary":
-        high = sum(1 for f in all_findings if f.severity == Severity.HIGH)
-        medium = sum(1 for f in all_findings if f.severity == Severity.MEDIUM)
-        low = sum(1 for f in all_findings if f.severity == Severity.LOW)
-        blocking = sum(1 for f in all_findings if f.blocks_merge)
+        high = sum(1 for f in result.findings if f.severity == Severity.HIGH)
+        medium = sum(1 for f in result.findings if f.severity == Severity.MEDIUM)
+        low = sum(1 for f in result.findings if f.severity == Severity.LOW)
 
         print("Universal Hardcoding Detection Report")
         print(f"{'=' * 50}")
-        print(f"Total findings: {len(all_findings)}")
+        print(f"Scanned targets: {', '.join(result.targets)}")
+        print(f"Total findings: {len(result.findings)}")
         print(f"  HIGH (blocking): {high}")
         print(f"  MEDIUM (review): {medium}")
         print(f"  LOW (info): {low}")
-        print(f"Blocking findings: {blocking}")
+        print(f"Blocking findings: {len(blocking)}")
+        print(f"Review findings: {len(review)}")
+        _print_scan_problems(result.problems)
 
-        if blocking > 0:
+        if blocking:
             print("\nBLOCKING FINDINGS DETECTED")
             print(f"{'=' * 50}")
-            for f in all_findings:
-                if f.blocks_merge:
-                    print(f"\n[{f.rule_id}] {f.file_path}:{f.line_number}")
-                    print(f"  {f.message}")
-                    print(f"  Confidence: {f.confidence:.0%}")
-                    for ev in f.evidence:
-                        print(f"  - {ev}")
+            for f in blocking:
+                print(f"\n[{f.rule_id}] {f.file_path}:{f.line_number}")
+                print(f"  {f.message}")
+                print(f"  Confidence: {f.confidence:.0%}")
+                for ev in f.evidence:
+                    print(f"  - {ev}")
     else:  # text format
-        if all_findings:
+        if result.findings:
             print("Universal Hardcoding Detection Report")
             print(f"{'=' * 50}")
-            for f in sorted(all_findings, key=lambda x: (x.severity.value, x.file_path)):
+            for f in sorted(result.findings, key=lambda x: (x.severity.value, x.file_path)):
                 print(f"\n[{f.rule_id}] {f.file_path}:{f.line_number}")
                 print(f"  Severity: {f.severity.value}")
                 print(f"  {f.message}")
@@ -1348,8 +1625,9 @@ def run_detection(
                     print(f"  - {ev}")
         else:
             print("No hardcoded conversational patterns detected.")
+        _print_scan_problems(result.problems)
 
-    return 1 if any(f.blocks_merge for f in all_findings) else 0
+    return 0 if result.complete and not blocking else 1
 
 
 # Entry point is in cli.py

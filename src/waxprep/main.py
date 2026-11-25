@@ -1,5 +1,5 @@
 """
-Main Application - Stages 01-07
+Main Application - Stages 01-08
 ASGI application with ordered startup, graceful shutdown, health endpoints.
 
 Includes:

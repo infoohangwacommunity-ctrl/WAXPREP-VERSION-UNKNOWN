@@ -276,7 +276,12 @@ def route_message(message: str) -> str:
 
         findings = detector.scan_file(protected_module_file)
 
-        assert any(f.rule_id == "WHD-003" for f in findings)
+        chain_findings = [f for f in findings if f.rule_id == "WHD-003"]
+        assert chain_findings
+        # WHD-003 is documented as review-required, so it must not block.
+        assert all(f.severity is Severity.MEDIUM for f in chain_findings)
+        assert all(f.blocks_merge is False for f in chain_findings)
+        assert all(f.requires_review for f in chain_findings)
 
     def test_detects_chain_with_mixed_comparisons(
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
@@ -313,7 +318,9 @@ class TestWHD004RegexMatching:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag regex with word boundaries."""
-        code = """
+        # Raw source: the file contains a backslash followed by "b", which is
+        # what a real regex word boundary looks like in Python source.
+        code = r"""
 import re
 
 def check_phrase(text: str) -> bool:
@@ -334,7 +341,7 @@ def check_phrase(text: str) -> bool:
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
     ) -> None:
         """Detector should flag re.match usage with word boundaries."""
-        code = """
+        code = r"""
 import re
 
 def match_input(message: str) -> bool:
@@ -369,6 +376,55 @@ def validate_email(email: str) -> bool:
         whd_findings = [f for f in findings if f.rule_id == "WHD-004"]
         assert len(whd_findings) == 0
 
+    def test_detects_word_boundary_in_escaped_string_literal(
+        self, detector: UniversalHardcodingDetector, protected_module_file: Path
+    ) -> None:
+        """A normal string with escaped backslashes is still a word boundary."""
+        code = (
+            "import re\n"
+            "\n"
+            "def check_phrase(text: str) -> bool:\n"
+            '    pattern = "\\\\bno\\\\b"\n'
+            "    return bool(re.search(pattern, text))\n"
+        )
+        protected_module_file.write_text(code, encoding="utf-8")
+
+        findings = detector.scan_file(protected_module_file)
+
+        assert any(f.rule_id == "WHD-004" for f in findings)
+
+    def test_detects_short_word_boundary_literal(
+        self, detector: UniversalHardcodingDetector, protected_module_file: Path
+    ) -> None:
+        """Short word-boundary patterns are detected without the length heuristic."""
+        code = r"""
+import re
+
+def check_phrase(text: str) -> bool:
+    return bool(re.search(r"\bhi\b", text))
+"""
+        protected_module_file.write_text(code, encoding="utf-8")
+
+        findings = detector.scan_file(protected_module_file)
+
+        assert any(f.rule_id == "WHD-004" for f in findings)
+
+    def test_does_not_flag_short_validation_regex_in_protected_module(
+        self, detector: UniversalHardcodingDetector, protected_module_file: Path
+    ) -> None:
+        """Short technical validation patterns are not phrase detection."""
+        code = r"""
+import re
+
+def validate_code(value: str) -> bool:
+    return bool(re.fullmatch(r"^\d+$", value))
+"""
+        protected_module_file.write_text(code, encoding="utf-8")
+
+        findings = detector.scan_file(protected_module_file)
+
+        assert [f for f in findings if f.rule_id == "WHD-004"] == []
+
 
 # =============================================================================
 # WHD-005: Dictionary lookup tests
@@ -389,15 +445,17 @@ response_mapping = {
 }
 
 def get_response(message: str) -> str:
-    return response_mapping.get(message, "Unknown")
+    return response_mapping["hello"]
 """
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
 
-        # May detect based on variable name
-        whd_findings = [f for f in findings if f.rule_id in ("WHD-005", "WHD-008")]
-        assert len(whd_findings) >= 0  # This is a harder pattern to detect
+        whd_findings = [f for f in findings if f.rule_id == "WHD-005"]
+        assert len(whd_findings) == 1
+        assert whd_findings[0].severity is Severity.MEDIUM
+        assert whd_findings[0].blocks_merge is False
+        assert whd_findings[0].requires_review is True
 
     def test_detects_action_mapping(
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
@@ -410,17 +468,16 @@ action_table = {
 }
 
 def handle(text: str) -> None:
-    action = action_table.get(text)
-    if action:
-        action()
+    action = action_table["greeting"]
+    action()
 """
         protected_module_file.write_text(code, encoding="utf-8")
 
         findings = detector.scan_file(protected_module_file)
 
         whd_findings = [f for f in findings if f.rule_id == "WHD-005"]
-        # This pattern should be detected
-        assert len(whd_findings) >= 0
+        assert len(whd_findings) == 1
+        assert "action_table" in whd_findings[0].evidence[1]
 
 
 # =============================================================================
@@ -502,7 +559,10 @@ def check_greeting(text: str) -> bool:
 
         findings = detector.scan_file(protected_module_file)
 
-        assert any(f.rule_id == "WHD-008" for f in findings)
+        vocabulary_findings = [f for f in findings if f.rule_id == "WHD-008"]
+        assert len(vocabulary_findings) == 1
+        assert vocabulary_findings[0].blocks_merge is False
+        assert vocabulary_findings[0].requires_review is True
 
     def test_detects_subjects_vocabulary(
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
@@ -521,7 +581,10 @@ def classify_subject(message: str) -> str:
 
         findings = detector.scan_file(protected_module_file)
 
-        assert any(f.rule_id == "WHD-008" for f in findings)
+        vocabulary_findings = [f for f in findings if f.rule_id == "WHD-008"]
+        assert len(vocabulary_findings) == 1
+        assert vocabulary_findings[0].blocks_merge is False
+        assert vocabulary_findings[0].requires_review is True
 
     def test_detects_keywords_list(
         self, detector: UniversalHardcodingDetector, protected_module_file: Path
@@ -537,7 +600,10 @@ def has_keywords(text: str) -> bool:
 
         findings = detector.scan_file(protected_module_file)
 
-        assert any(f.rule_id == "WHD-008" for f in findings)
+        vocabulary_findings = [f for f in findings if f.rule_id == "WHD-008"]
+        assert len(vocabulary_findings) == 1
+        assert vocabulary_findings[0].blocks_merge is False
+        assert vocabulary_findings[0].requires_review is True
 
     def test_does_not_flag_technical_constants(
         self, detector: UniversalHardcodingDetector, allowed_module_file: Path

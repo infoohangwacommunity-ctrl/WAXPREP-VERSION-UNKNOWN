@@ -100,7 +100,7 @@ When adding a new swappable component (channel, model, tool, store, etc.):
 - [ ] **Registry updated** (if component is registry-managed) — or new registry created
 - [ ] **Fake/test implementation provided** — proves architecture works without real dependency
 - [ ] **Composition root updated** — wires the component in `services/`
-- [ ] **No hardcoded configuration** — all values from env vars or injected
+- [ ] **No hardcoded operational configuration** — environment-specific values come from env vars or injection. Documented development defaults are acceptable when they are overridable.
 - [ ] **Dependency direction preserved** — new component follows Outer→Inner rule
 - [ ] **Swapability verified** — can replace with alternative without touching consumers
 
@@ -137,18 +137,20 @@ When modifying code in protected modules (`waxprep.messaging`, `waxprep.context`
 - [ ] **No fixed-string comparisons against input** — WHD-001 (HIGH, blocking)
 - [ ] **No vocabulary membership tests** — WHD-002 (HIGH, blocking)
 - [ ] **No fixed if/elif decision trees** — WHD-003 (MEDIUM, review)
-- [ ] **No regex phrase detection** — WHD-004 (MEDIUM, advisory)
+- [ ] **No regex phrase detection** — WHD-004 (MEDIUM, review only — never blocks)
 - [ ] **No word-to-action dictionary lookups** — WHD-005 (MEDIUM, review)
 - [ ] **No predetermined string responses** — WHD-007 (MEDIUM, review)
 - [ ] **No hardcoded vocabularies** — WHD-008 (MEDIUM, review)
 
 When modifying the detector itself (`src/waxprep/detector/`):
 
-- [ ] **Detector syntax is valid Python 3** — exception syntax, type hints
-- [ ] **CLI supports `--format` argument** — via argparse, not positional
-- [ ] **Blocking findings return exit code 1** — verify in tests
-- [ ] **Tests use meaningful assertions** — no `len(findings) >= 0` vacuous tests
-- [ ] **Known limitations documented** — use `@pytest.mark.xfail` for unsupported patterns
+- [ ] **Only `blocks_merge` findings block** — MEDIUM rules stay review-only (`requires_review`)
+- [ ] **Report and exit code agree** — both derive from `Finding.blocks_merge`
+- [ ] **Blocking findings return exit code 1** — and so does an incomplete scan
+- [ ] **Scan scope is explicit** — no accidental whole-repository scan of dependency trees
+- [ ] **Incomplete scans are visible** — read/parse failures are reported as scan problems
+- [ ] **Tests use meaningful assertions** — no attempt to assert a behaviour the code cannot produce
+- [ ] **Known limitations documented** — use strict `@pytest.mark.xfail` for unsupported patterns
 - [ ] **Documentation updated** — DETECTOR_SPECIFICATION.md reflects actual implementation
 
 When modifying Semgrep configuration (`.semgrep/config.yml`):

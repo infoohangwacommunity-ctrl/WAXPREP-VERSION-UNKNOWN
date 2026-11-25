@@ -109,11 +109,66 @@ def test_qg_main_cli_parser(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert exit_code == 0
 
 
-def test_qg_main_continue_on_warning(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """--continue-on-warning returns 0 for non-blocking findings."""
-    monkeypatch.setattr(sys, "argv", ["qg", str(tmp_path), "--continue-on-warning"])
-    exit_code = qg_main()
+def test_qg_main_allow_incomplete_scan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """--allow-incomplete-scan returns 0 when only completeness fails."""
+    (tmp_path / "broken.py").write_text("def foo(\n")
+    monkeypatch.setattr(sys, "argv", ["qg", str(tmp_path), "--allow-incomplete-scan"])
+    assert qg_main() == 0
+
+
+def test_qg_main_blocks_incomplete_scan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An unreadable or unparsable file blocks the gate by default."""
+    (tmp_path / "broken.py").write_text("def foo(\n")
+    monkeypatch.setattr(sys, "argv", ["qg", str(tmp_path), "--format", "summary"])
+    assert qg_main() == 1
+
+
+def test_check_hardcoding_reports_review_without_blocking(tmp_path: Path) -> None:
+    """MEDIUM review findings are reported but do not block the gate."""
+    module = tmp_path / "waxprep" / "messaging"
+    module.mkdir(parents=True)
+    (module / "lookup.py").write_text(
+        "response_mapping = {'hello': 'hi'}\n\n"
+        "def get_response() -> str:\n"
+        "    return response_mapping['hello']\n"
+    )
+
+    result = check_hardcoding(tmp_path)
+
+    assert result["blocked"] is False
+    assert result["blocking_findings"] == 0
+    assert result["review_findings"] == 1
+    assert result["complete"] is True
+
+
+def test_check_hardcoding_reports_incomplete_scan(tmp_path: Path) -> None:
+    """A file that cannot be parsed is reported, not treated as clean."""
+    (tmp_path / "broken.py").write_text("def foo(\n")
+
+    result = check_hardcoding(tmp_path)
+
+    assert result["complete"] is False
+    assert result["blocked"] is True
+    assert result["scan_problems"][0]["reason"] == "syntax-error"
+    assert "Scan complete: no" in result["summary"]
+
+
+def test_cli_default_scope_uses_project_targets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """With no positional targets the CLI scans the default project scope."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ok.py").write_text("x = 1\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["detector-cli", "--format", "summary"])
+
+    exit_code = cli_main()
+    output = capsys.readouterr().out
+
     assert exit_code == 0
+    assert "Scanned targets: src" in output
 
 
 def test_cli_name_main_block(tmp_path: Path) -> None:

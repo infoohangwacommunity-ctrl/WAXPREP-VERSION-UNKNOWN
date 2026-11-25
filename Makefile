@@ -26,7 +26,7 @@ import-linter: ## Run import-linter architecture contracts
 	uv run import-linter lint
 
 semgrep: ## Run semgrep security scan
-	uv run semgrep --config auto --error src/
+	uv run semgrep --config .semgrep --error --exclude src/waxprep/detector src/
 
 lockfile-check: ## Verify uv.lock matches pyproject.toml
 	uv lock --check

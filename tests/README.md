@@ -1,4 +1,4 @@
-# Tests Reference — Stage 05
+# Tests Reference
 
 Hermetic, isolated, deterministic tests.
 
@@ -13,10 +13,11 @@ Hermetic, isolated, deterministic tests.
 | **Architecture** | `@pytest.mark.architecture` | `tests/architecture/` | Boundary and dependency checks — ensures modules don't import across forbidden boundaries. |
 | **Configuration** | `@pytest.mark.configuration` | `tests/configuration/` | Settings and environment variable handling: config load, env precedence, defaults, and validation. |
 | **Regression** | `@pytest.mark.regression` | `tests/regression/` | Pinned bug-fix tests — each test names the bug it guards against. Should never be deleted. |
+| **Detector** | none (not in the CI matrix) | `tests/detector/` | Stage 08 Universal Hardcoding Detector rule, adversarial, CLI, quality-gate and property tests. Executed by the full-suite coverage job. |
 
 > **Note:** The `regression/` directory currently contains no pinned tests, and the CI test matrix does not include a separate regression job. Tests added to `tests/regression/` are still executed by the full-suite coverage job (`--cov-fail-under=100`).
 
-Two top-level files (`test_exception_handler_pattern.py`, `test_final_coverage.py`) cover pattern documentation and final coverage assertions respectively.
+Two files under `tests/integration/` (`test_exception_handler_pattern.py`, `test_final_coverage.py`) cover pattern documentation and final coverage assertions respectively.
 
 ## Running Tests
 
@@ -40,8 +41,9 @@ uv run pytest tests/integration/    -v   # integration only
 uv run pytest tests/contract/       -v   # contract only
 uv run pytest tests/lifecycle/      -v   # lifecycle only
 uv run pytest tests/architecture/   -v   # architecture only
-uv run pytest tests/configuration/  -v   # configuration only
+uv run pytest tests/configuration/ -v   # configuration only
 uv run pytest tests/regression/     -v   # regression only
+uv run pytest tests/detector/       -v   # hardcoding detector only (no category marker)
 ```
 
 **By marker (any directory):**
@@ -117,7 +119,7 @@ File: `.github/workflows/quality-gate.yml` — **Quality Gate**.
 | Job | Command | Notes |
 |-----|---------|-------|
 | `quality-setup` | `uv sync --extra dev` + uv cache | Runs once; warms shared package cache |
-| `quality-gate` | ruff, ruff format, mypy, import-linter, semgrep, pip-audit | Blocking static analysis |
+| `quality-gate` | ruff, ruff format, mypy, import-linter, semgrep, pip-audit, hardcoding detector | Blocking static analysis |
 | `tests` | `pytest tests/<category> -m <category>` | Matrix: unit, integration, contract, lifecycle, architecture, configuration |
 | `coverage-gate` | full suite `--cov-fail-under=100` | Blocking, 100% threshold |
 | `smoke-test` | app boot + liveness/readiness health checks | Blocking |
@@ -130,7 +132,8 @@ The `gate-aggregate` job reports blocking-job status and fails if any blocking j
 
 - **pytest-cov** is in the dev dependencies.
 - Run with coverage: `uv run pytest tests/ --cov=waxprep --cov-report=term-missing`
-- `test_final_coverage.py` (top-level) asserts final coverage thresholds — it's part of the suite, not a separate step.
+- `tests/integration/test_final_coverage.py` asserts final coverage thresholds — it's part of the suite, not a separate step.
+- The coverage configuration excludes `waxprep/detector/quality_gate.py` (see `pyproject.toml`); that module is an integration wrapper around the detector core.
 
 ## Philosophy
 

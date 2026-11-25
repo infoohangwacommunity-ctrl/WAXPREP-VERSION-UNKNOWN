@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0  
 **Python Requirement:** >=3.14  
-**Last updated:** Stage 03 boundary definition (active copy)
+**Last updated:** 2026-11-25 — accuracy review (Stage 03 boundaries, verified against the current source tree)
 
 ---
 
@@ -35,7 +35,7 @@
 ## Boundary Rule 1: Core/Pure Logic
 
 **Location:** `src/waxprep/core/`  
-**Current scope:** Domain logic, rules, state machines, tutor behavior
+**Current scope:** Generic pure utilities (`normalize_text`, `extract_keywords`, `build_response`, `compose_handlers`) and capability protocols. No tutor behaviour, student model or conversational rules exist yet.
 
 ### Rules
 
@@ -55,8 +55,10 @@
 
 ### Example: Valid Core Code
 
+> Illustrative only — this file does not exist in the current repository.
+
 ```python
-# src/waxprep/core/tutor.py - VALID
+# src/waxprep/core/rules.py - VALID
 
 from dataclasses import dataclass
 from typing import Optional
@@ -79,7 +81,7 @@ class TutorRuleEngine:
 ### Example: Invalid Core Code
 
 ```python
-# src/waxprep/core/tutor.py - INVALID ❌
+# src/waxprep/core/rules.py - INVALID ❌
 
 # VIOLATION: imports adapter
 from waxprep.adapters.whatsapp import WhatsAppAdapter
@@ -436,13 +438,17 @@ When reviewing PRs, ask:
 
 ---
 
-## Stage 03 Evolution
+## Current State of the Boundary Packages
 
-As Stage 03 adds:
+The packages exist; most of them are intentionally empty land.
 
-1. **Core logic** (`src/waxprep/core/`) — domain rules, tutor behavior
-2. **Messaging layer** (`src/waxprep/messaging/`) — message orchestration
-3. **Context** (`src/waxprep/context/`) — student state (optional, flexible)
+1. **Core** (`src/waxprep/core/`) — generic pure utilities (`normalize_text`, `extract_keywords`, `build_response`, `compose_handlers`) and capability protocols. It contains no tutor behavior, no student model and no conversational rules.
+2. **Messaging layer** (`src/waxprep/messaging/`) — package boundary and statement of intent. No message orchestration is implemented.
+3. **Context** (`src/waxprep/context/`) — package boundary only. No student state is implemented.
+4. **Services** (`src/waxprep/services/`) — package boundary only. No composition root is implemented.
+
+`extract_keywords()` is a generic lexical utility. It is not, and must not
+become, the tutor's student-understanding mechanism.
 
 These boundaries ensure:
 
@@ -459,13 +465,13 @@ These boundaries ensure:
 |---------------|------------------------|--------------------|---------------------|------------------|
 | `registries/` | Only in `register_defaults()` | No | No | No |
 | `adapters/` | No | No | No | Yes (for that adapter) |
-| `core/` (future) | **NO** | — | **NO** | **NO** |
-| `messaging/` (future) | No (use registries) | Yes | No | No (use registries/adapters) |
-| `context/` (future) | No | Optional | No | No |
+| `core/` | **NO** | — | **NO** | **NO** |
+| `messaging/` | No (use registries) | Yes | No | No (use registries/adapters) |
+| `context/` | No | Optional | No | No |
 | `main.py` | Yes | No | Yes | No (use adapters) |
 | `middleware/` | No | No | Yes (Starlette) | No |
 
 ---
 
-*Document version: 1.0*  
-*Last updated: Stage 03 boundary definition*
+*Document version: 1.1*  
+*Last updated: 2026-11-25 — accuracy review*
