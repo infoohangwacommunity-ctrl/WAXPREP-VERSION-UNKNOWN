@@ -29,7 +29,14 @@ from waxprep.supplychain.lockfile import (
 )
 from waxprep.supplychain.names import canonical_name
 from waxprep.supplychain.osv import OsvOutcome, Poster, check_malicious
-from waxprep.supplychain.policy import DependencyPolicy, LicenseDecision, load_policy
+from waxprep.supplychain.policy import (
+    DEPENDENCY_REVIEW_CONFIG,
+    DependencyPolicy,
+    LicenseDecision,
+    PolicyError,
+    dependency_review_licenses,
+    load_policy,
+)
 
 
 class Severity(StrEnum):
@@ -73,6 +80,7 @@ class DependencyRecord:
     license_id: str | None
     license_decision: LicenseDecision
     advisories: tuple[str, ...]
+    dependencies: tuple[str, ...] = ()
     provenance: str = "not-verified"
 
     @property
@@ -97,6 +105,7 @@ class DependencyRecord:
             "license": self.license_id or "unknown",
             "license_decision": self.license_decision.value,
             "advisories": list(self.advisories),
+            "dependencies": list(self.dependencies),
             "provenance": self.provenance,
         }
 
@@ -341,16 +350,57 @@ def _license_findings(
                 )
             )
         elif decision in {LicenseDecision.REVIEW, LicenseDecision.UNKNOWN}:
-            findings.append(
-                Finding(
-                    "SC-009",
-                    Severity.REVIEW,
-                    f"'{package.name}' license requires review: {license_id or 'unknown'}",
-                    package.name,
+            if policy.licenses.accepted(license_id):
+                findings.append(
+                    Finding(
+                        "SC-018",
+                        Severity.INFO,
+                        f"'{package.name}' uses {license_id}, which a human reviewed and accepted",
+                        package.name,
+                    )
                 )
-            )
+            else:
+                findings.append(
+                    Finding(
+                        "SC-009",
+                        Severity.BLOCKING,
+                        f"'{package.name}' license requires review: {license_id or 'unknown'}",
+                        package.name,
+                    )
+                )
 
     return findings, resolved
+
+
+def _consistency_findings(policy: DependencyPolicy, root: Path) -> list[Finding]:
+    """Require the Dependency Review allow-list to match the internal policy.
+
+    A license may only be allowed by the pull-request workflow when the
+    internal policy approves it, so a review-required license cannot be
+    approved silently by a different configuration file.
+    """
+    try:
+        allowed = dependency_review_licenses(root / DEPENDENCY_REVIEW_CONFIG)
+    except PolicyError as exc:
+        return [Finding("SC-019", Severity.BLOCKING, str(exc))]
+
+    extra = sorted(set(allowed) - policy.licenses.approved)
+    missing = sorted(policy.licenses.approved - set(allowed))
+    if not extra and not missing:
+        return []
+    differences: list[str] = []
+    if extra:
+        differences.append(f"allowed but not approved: {', '.join(extra)}")
+    if missing:
+        differences.append(f"approved but not allowed: {', '.join(missing)}")
+    return [
+        Finding(
+            "SC-019",
+            Severity.BLOCKING,
+            "Dependency Review allow_licenses disagrees with license-policy.toml "
+            f"({'; '.join(differences)})",
+        )
+    ]
 
 
 def _malicious_findings(runtime: tuple[LockedPackage, ...], outcome: OsvOutcome) -> list[Finding]:
@@ -424,6 +474,7 @@ def assess(
 
     runtime = lockfile.runtime_closure()
     findings = _policy_findings(policy, runtime, lockfile)
+    findings.extend(_consistency_findings(policy, root))
 
     audit_outcome = (audit or run_pip_audit)()
     vulnerability_findings, advisories = _vulnerability_findings(policy, audit_outcome, evaluated)
@@ -453,6 +504,7 @@ def assess(
             license_id=licenses[canonical_name(package.name)][0],
             license_decision=licenses[canonical_name(package.name)][1],
             advisories=tuple(advisories.get(canonical_name(package.name), ())),
+            dependencies=tuple(sorted({canonical_name(name) for name in package.dependencies})),
         )
         for package in runtime
     )

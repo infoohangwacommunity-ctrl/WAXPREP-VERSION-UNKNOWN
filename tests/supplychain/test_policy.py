@@ -14,6 +14,7 @@ from waxprep.supplychain.policy import (
     PolicyError,
     SourcePolicy,
     VulnerabilityException,
+    dependency_review_licenses,
     load_policy,
 )
 
@@ -246,6 +247,74 @@ def test_license_classification() -> None:
     assert policy.classify("MPL-2.0") is LicenseDecision.REVIEW
     assert policy.classify("MIT OR MPL-2.0") is LicenseDecision.REVIEW
     assert policy.classify("WTFPL") is LicenseDecision.UNKNOWN
+
+
+def test_reviewed_licenses_require_explicit_acceptance() -> None:
+    policy = LicensePolicy(
+        approved=frozenset({"MIT"}),
+        review=frozenset({"MPL-2.0"}),
+        prohibited=frozenset({"GPL-3.0-only"}),
+        reviewed={"MPL-2.0": "accepted for certifi"},
+    )
+    assert policy.classify("MPL-2.0") is LicenseDecision.REVIEW
+    assert policy.accepted("MPL-2.0")
+    assert policy.accepted("MIT OR MPL-2.0")
+    assert policy.accepted("MIT")
+    assert not policy.accepted(None)
+    assert not policy.accepted("")
+    assert not policy.accepted("WTFPL")
+
+
+def test_reviewed_license_table_is_loaded(tmp_path: Path) -> None:
+    write_policies(
+        tmp_path,
+        licenses=(
+            'approved = ["MIT"]\nreview = ["MPL-2.0"]\nprohibited = []\n'
+            '[reviewed]\n"MPL-2.0" = "accepted for certifi"\n'
+        ),
+    )
+    policy = load_policy(tmp_path)
+    assert policy.licenses.reviewed == {"MPL-2.0": "accepted for certifi"}
+    assert policy.licenses.accepted("MPL-2.0")
+
+
+@pytest.mark.parametrize(
+    ("licenses", "message"),
+    [
+        (
+            'approved = ["MIT"]\nreview = ["MPL-2.0"]\nprohibited = []\n'
+            '[reviewed]\n"MPL-2.0" = 1\n',
+            "non-empty string",
+        ),
+        (
+            'approved = ["MIT"]\nreview = ["MPL-2.0"]\nprohibited = []\n'
+            '[reviewed]\nMIT = "already approved"\n',
+            "approved or prohibited",
+        ),
+        (
+            'approved = ["MIT"]\nreview = ["MPL-2.0"]\nprohibited = ["GPL-3.0-only"]\n'
+            '[reviewed]\n"GPL-3.0-only" = "prohibited"\n',
+            "approved or prohibited",
+        ),
+    ],
+)
+def test_reviewed_license_validation(tmp_path: Path, licenses: str, message: str) -> None:
+    write_policies(tmp_path, licenses=licenses)
+    with pytest.raises(PolicyError, match=message):
+        load_policy(tmp_path)
+
+
+def test_dependency_review_allow_list_matches_repository_policy() -> None:
+    allowed = dependency_review_licenses(Path(".github/dependency-review-config.yml"))
+    policy = load_policy(Path("."))
+    assert set(allowed) == set(policy.licenses.approved)
+    assert "MPL-2.0" not in allowed
+    assert policy.licenses.accepted("MPL-2.0")
+
+
+def test_dependency_review_config_must_be_readable(tmp_path: Path) -> None:
+    with pytest.raises(PolicyError, match="cannot read"):
+        dependency_review_licenses(tmp_path / "missing.yml")
 
 
 def test_source_policy_checks() -> None:

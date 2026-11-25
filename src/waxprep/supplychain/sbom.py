@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from waxprep.supplychain.checks import Assessment
+from waxprep.supplychain.checks import Assessment, DependencyRecord
+from waxprep.supplychain.names import canonical_name
 from waxprep.supplychain.policy import LicenseDecision
 
 BOM_FORMAT = "CycloneDX"
@@ -25,11 +26,29 @@ def _hash_entry(value: str) -> dict[str, str] | None:
     return {"alg": "SHA-256", "content": digest}
 
 
+def _depends_on(record: DependencyRecord, by_key: dict[str, DependencyRecord]) -> list[str]:
+    """Resolve one component's edges to the packages it actually depends on."""
+    refs = {
+        by_key[key].purl
+        for name in record.dependencies
+        if (key := canonical_name(name)) in by_key and key != record.key
+    }
+    return sorted(refs)
+
+
 def build_sbom(
     assessment: Assessment, app_name: str = "waxprep", app_version: str = "0.1.0"
 ) -> dict[str, object]:
-    """Build a CycloneDX 1.5 document for the runtime dependency set."""
+    """Build a CycloneDX 1.5 document for the runtime dependency set.
+
+    Dependency relationships are taken from ``uv.lock``: the root application
+    references only its direct dependencies, and each component references the
+    packages it declares. Transitive dependencies are never flattened into
+    direct application dependencies.
+    """
     root_ref = f"pkg:pypi/{app_name}@{app_version}"
+    by_key = {record.key: record for record in assessment.records}
+    direct_refs = sorted(record.purl for record in assessment.records if record.direct)
     components: list[dict[str, object]] = []
     for record in assessment.records:
         component: dict[str, object] = {
@@ -62,8 +81,11 @@ def build_sbom(
         },
         "components": components,
         "dependencies": [
-            {"ref": root_ref, "dependsOn": [record.purl for record in assessment.records]},
-            *[{"ref": record.purl, "dependsOn": []} for record in assessment.records],
+            {"ref": root_ref, "dependsOn": direct_refs},
+            *[
+                {"ref": record.purl, "dependsOn": _depends_on(record, by_key)}
+                for record in assessment.records
+            ],
         ],
     }
 

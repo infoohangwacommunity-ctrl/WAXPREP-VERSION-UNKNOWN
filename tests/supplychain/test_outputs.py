@@ -25,6 +25,7 @@ def record(
     license_id: str | None = "MIT",
     decision: LicenseDecision = LicenseDecision.APPROVED,
     advisories: tuple[str, ...] = (),
+    dependencies: tuple[str, ...] = (),
 ) -> DependencyRecord:
     return DependencyRecord(
         name=name,
@@ -37,6 +38,7 @@ def record(
         license_id=license_id,
         license_decision=decision,
         advisories=advisories,
+        dependencies=dependencies,
     )
 
 
@@ -84,6 +86,29 @@ def test_sbom_contains_runtime_components_and_hashes() -> None:
     dependencies = report["dependencies"]
     assert isinstance(dependencies, list)
     assert len(dependencies) == 3
+    # Only the direct dependency belongs to the root application.
+    assert dependencies[0] == {"ref": "pkg:pypi/waxprep@0.1.0", "dependsOn": ["pkg:pypi/alpha@1.0"]}
+    assert dependencies[1] == {"ref": "pkg:pypi/alpha@1.0", "dependsOn": []}
+    assert dependencies[2] == {"ref": "pkg:pypi/beta@1.0", "dependsOn": []}
+
+
+def test_sbom_preserves_direct_and_transitive_relationships() -> None:
+    report = build_sbom(
+        assessment(
+            records=(
+                record("alpha", dependencies=("beta", "missing", "alpha")),
+                record("beta", direct=False, dependencies=("gamma",)),
+                record("gamma", direct=False),
+            )
+        )
+    )
+    dependencies = report["dependencies"]
+    assert isinstance(dependencies, list)
+    graph = {item["ref"]: item["dependsOn"] for item in dependencies if isinstance(item, dict)}
+    assert graph["pkg:pypi/waxprep@0.1.0"] == ["pkg:pypi/alpha@1.0"]
+    assert graph["pkg:pypi/alpha@1.0"] == ["pkg:pypi/beta@1.0"]
+    assert graph["pkg:pypi/beta@1.0"] == ["pkg:pypi/gamma@1.0"]
+    assert graph["pkg:pypi/gamma@1.0"] == []
 
 
 def test_sbom_ignores_unusable_hashes() -> None:
@@ -144,6 +169,9 @@ def test_assessment_json_round_trip() -> None:
     assert payload["review"] == 0
     assert isinstance(payload["records"], list)
     assert isinstance(payload["findings"], list)
+    first = payload["records"][0]
+    assert isinstance(first, dict)
+    assert first["dependencies"] == []
 
 
 @pytest.fixture

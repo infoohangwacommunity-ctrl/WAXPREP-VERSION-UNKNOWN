@@ -76,10 +76,18 @@ source and hash facts.
 ### 09.4 License compliance
 
 License policy uses SPDX identifiers with three lists: `approved`, `review`
-and `prohibited`. Compound expressions pass only when every atom is approved,
-and anything unlisted is unknown and requires review. Licenses are read from
-installed distribution metadata (`License-Expression`, then legacy `License`,
-then trove classifiers).
+and `prohibited`. Compound expressions pass only when every atom is approved
+or explicitly accepted. Licenses are read from installed distribution
+metadata (`License-Expression`, then legacy `License`, then trove
+classifiers).
+
+A review-required or unknown license blocks the gate until a human records the
+acceptance, with an owner, reason and re-review date, in the `[reviewed]`
+table of `license-policy.toml`. A warning nobody has to resolve is not enough.
+The `allow_licenses` list in `.github/dependency-review-config.yml` must match
+the internal `approved` list exactly; the gate fails when they disagree, so a
+review-required license cannot be approved silently by the pull-request
+workflow.
 
 ### 09.5 Suspicious package and provenance checks
 
@@ -94,12 +102,18 @@ then trove classifiers).
 
 ### 09.6 Updates, dependency review and SBOM
 
-Dependabot proposes grouped patch/minor updates and individual major updates.
-Every Dependabot pull request runs the full Quality Gate, Dependency Review,
-and the supply-chain gate; nothing is auto-approved. The scheduled workflow
-regenerates the trust report and a CycloneDX 1.5 SBOM, uploaded as workflow
-artifacts keyed by commit SHA. SBOMs are not committed and no SBOM database is
-introduced.
+Dependabot uses the `uv` ecosystem, because WaxPrep resolves dependencies with
+uv and commits `uv.lock`; the `pip` ecosystem does not understand that
+lockfile. It proposes grouped patch/minor updates and individual major
+updates. Every Dependabot pull request runs the full Quality Gate, Dependency
+Review, and the supply-chain gate; nothing is auto-approved.
+
+The scheduled workflow regenerates the trust report and a CycloneDX 1.5 SBOM,
+uploaded as workflow artifacts keyed by commit SHA. The SBOM preserves the
+real dependency graph from `uv.lock`: the root application references only its
+direct dependencies, and each component references the packages it declares,
+so a transitive dependency is never reported as a direct one. SBOMs are not
+committed and no SBOM database is introduced.
 
 ## Gate policy
 
@@ -114,7 +128,9 @@ introduced.
 | Missing `uv.lock` or inconsistent lockfile | Block |
 | Missing artifact hash for a registry package | Block |
 | Prohibited license | Block |
-| Unknown or review-required license | Review |
+| Review-required or unknown license without a `[reviewed]` acceptance | Block |
+| Review-required license with a recorded `[reviewed]` acceptance | Informational |
+| Dependency Review `allow_licenses` disagrees with the internal policy | Block |
 | Direct runtime dependency without documented purpose | Block |
 | Unreviewed major version | Review |
 | Missing provenance | Informational only |

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -35,6 +35,7 @@ from waxprep.supplychain.tomlio import (
 )
 
 POLICY_DIRECTORY = Path("security") / "dependency-policy"
+DEPENDENCY_REVIEW_CONFIG = Path(".github") / "dependency-review-config.yml"
 
 
 class PolicyError(ValueError):
@@ -93,6 +94,12 @@ class LicensePolicy:
     approved: frozenset[str]
     review: frozenset[str]
     prohibited: frozenset[str]
+    reviewed: Mapping[str, str] = field(default_factory=dict)
+
+    def accepted(self, expression: str | None) -> bool:
+        """True when every atom is approved or explicitly reviewed by a human."""
+        atoms = _license_atoms(expression)
+        return bool(atoms) and all(atom in self.approved or atom in self.reviewed for atom in atoms)
 
     def classify(self, expression: str | None) -> LicenseDecision:
         """Classify a license expression against this policy."""
@@ -236,6 +243,17 @@ def _load_exceptions(path: Path) -> tuple[VulnerabilityException, ...]:
     return tuple(exceptions)
 
 
+def _load_reviewed_licenses(raw: object, where: str) -> Mapping[str, str]:
+    """Read explicit human acceptances of review-required licenses."""
+    table = _table(raw if raw is not None else {}, where)
+    reviewed: dict[str, str] = {}
+    for license_id, note in table.items():
+        if not isinstance(note, str) or not note.strip():
+            raise PolicyError(f"{where}.{license_id}: expected a non-empty string")
+        reviewed[license_id] = note.strip()
+    return reviewed
+
+
 def _load_license_policy(path: Path) -> LicensePolicy:
     data = _load_toml(path)
     approved = frozenset(_string_list(data.get("approved"), f"{path}.approved"))
@@ -246,7 +264,43 @@ def _load_license_policy(path: Path) -> LicensePolicy:
     overlap = (approved & review) | (approved & prohibited) | (review & prohibited)
     if overlap:
         raise PolicyError(f"{path}: license policy lists are not disjoint: {sorted(overlap)}")
-    return LicensePolicy(approved=approved, review=review, prohibited=prohibited)
+    reviewed = _load_reviewed_licenses(data.get("reviewed"), f"{path}.reviewed")
+    conflict = sorted(set(reviewed) & (approved | prohibited))
+    if conflict:
+        raise PolicyError(
+            f"{path}.reviewed: listed as approved or prohibited as well: {', '.join(conflict)}"
+        )
+    return LicensePolicy(approved=approved, review=review, prohibited=prohibited, reviewed=reviewed)
+
+
+def dependency_review_licenses(path: Path) -> tuple[str, ...]:
+    """Read ``allow_licenses`` from the GitHub Dependency Review config.
+
+    The Dependency Review workflow must never allow a license the internal
+    policy does not approve, or a review-required license could become
+    approved silently in pull requests.
+
+    Raises:
+        PolicyError: when the config cannot be read.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise PolicyError(f"cannot read {path}: {exc}") from exc
+    licenses: list[str] = []
+    inside = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if not line[:1].isspace():
+            inside = stripped.split(":", 1)[0].strip() == "allow_licenses"
+            continue
+        if inside and stripped.startswith("-"):
+            value = stripped[1:].strip().strip("'\"")
+            if value:
+                licenses.append(value)
+    return tuple(licenses)
 
 
 def _load_source_policy(path: Path) -> SourcePolicy:

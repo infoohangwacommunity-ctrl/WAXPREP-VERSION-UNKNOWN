@@ -4,7 +4,10 @@ version: 2
 # Dependency Review workflow. Major updates stay ungrouped so they get
 # individual compatibility review.
 updates:
-  - package-ecosystem: "pip"
+  # WaxPrep resolves dependencies with uv and commits uv.lock, so Dependabot
+  # must use the uv ecosystem to update the lockfile (and matching pyproject
+  # constraints) correctly. The pip ecosystem does not understand uv.lock.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"

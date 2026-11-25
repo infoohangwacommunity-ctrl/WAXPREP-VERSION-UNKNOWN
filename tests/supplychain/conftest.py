@@ -50,6 +50,7 @@ def write_project(
     approved: tuple[str, ...] = ("MIT",),
     review: tuple[str, ...] = (),
     prohibited: tuple[str, ...] = ("GPL-3.0-only",),
+    license_policy: str | None = None,
     reviewed_majors: str = "[reviewed_majors]\nalpha = [1]\n",
     purpose: str = '[purpose]\nalpha = "test dependency"\n',
     owner: str = '[owner]\nalpha = "team"\n',
@@ -77,7 +78,9 @@ def write_project(
     policy.mkdir(parents=True, exist_ok=True)
     (policy / "vulnerability-exceptions.toml").write_text(exceptions, encoding="utf-8")
     (policy / "license-policy.toml").write_text(
-        "approved = [" + ", ".join(repr(item) for item in approved) + "]\n"
+        license_policy
+        if license_policy is not None
+        else "approved = [" + ", ".join(repr(item) for item in approved) + "]\n"
         "review = [" + ", ".join(repr(item) for item in review) + "]\n"
         "prohibited = [" + ", ".join(repr(item) for item in prohibited) + "]\n",
         encoding="utf-8",
@@ -89,6 +92,15 @@ def write_project(
         encoding="utf-8",
     )
     (policy / "dependency-inventory.toml").write_text(purpose + owner, encoding="utf-8")
+
+    # The Dependency Review allow-list must mirror the internal policy, so the
+    # supply-chain gate's consistency check passes for synthetic projects too.
+    github = root / ".github"
+    github.mkdir(parents=True, exist_ok=True)
+    (github / "dependency-review-config.yml").write_text(
+        "allow_licenses:\n" + "".join(f"  - {item}\n" for item in approved),
+        encoding="utf-8",
+    )
     return root
 
 

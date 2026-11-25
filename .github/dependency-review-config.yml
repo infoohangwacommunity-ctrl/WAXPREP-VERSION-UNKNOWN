@@ -1,8 +1,11 @@
 # Dependency Review configuration — Stage 09.
 #
-# This action evaluates only what a pull request changes. License policy here
-# mirrors security/dependency-policy/license-policy.toml; keep them in sync.
-# `deny-licenses` is deprecated by the action; this config uses `allow-licenses`.
+# This action evaluates only what a pull request changes. `allow_licenses` must
+# match the `approved` list in security/dependency-policy/license-policy.toml
+# exactly; the blocking supply-chain gate fails when they disagree. A
+# review-required licence such as MPL-2.0 must never appear here: it would be
+# approved silently in pull requests instead of reaching a human.
+# `deny-licenses` is deprecated by the action; this config uses `allow_licenses`.
 fail_on_severity: high
 fail_on_scopes:
   - runtime
@@ -14,4 +17,3 @@ allow_licenses:
   - Apache-2.0
   - ISC
   - PSF-2.0
-  - MPL-2.0

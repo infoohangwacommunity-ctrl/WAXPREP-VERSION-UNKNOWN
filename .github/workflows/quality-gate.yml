@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: Set up uv
@@ -37,7 +37,7 @@ jobs:
 
       - name: Restore uv package cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -50,7 +50,7 @@ jobs:
 
       - name: Save uv package cache
         if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -68,7 +68,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: Set up uv
@@ -78,7 +78,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -134,7 +134,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: Set up uv
@@ -144,7 +144,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -170,7 +170,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: Set up uv
@@ -180,7 +180,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -200,7 +200,7 @@ jobs:
             --tb=short
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: coverage-report
           path: coverage.xml
@@ -219,7 +219,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: Set up uv
@@ -229,7 +229,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -274,7 +274,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: Set up uv
@@ -284,7 +284,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -310,7 +310,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
       - name: Set up uv
@@ -320,7 +320,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}

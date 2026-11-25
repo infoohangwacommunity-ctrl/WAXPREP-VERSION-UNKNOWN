@@ -77,6 +77,8 @@ def test_clean_project_passes_with_provenance_note(project: Path) -> None:
     assert [record.name for record in assessment.records] == ["alpha", "beta"]
     assert assessment.records[0].direct is True
     assert assessment.records[1].direct is False
+    assert assessment.records[0].dependencies == ("beta",)
+    assert assessment.records[1].dependencies == ()
     assert assessment.record_for("alpha") is not None
     assert assessment.record_for("missing") is None
     assert assessment.findings_for("alpha") == ()
@@ -232,6 +234,106 @@ def test_malicious_match_blocks_and_offline_is_review(project: Path) -> None:
     )
     assert "SC-013" in codes(reviewed)
     assert reviewed.passed
+
+
+def test_review_license_blocks_until_explicitly_accepted(tmp_path: Path) -> None:
+    def mpl(name: str) -> Mapping[str, str]:
+        return {"License-Expression": "MPL-2.0"}
+
+    blocked = assess(
+        write_project(
+            tmp_path / "blocked",
+            packages=(lock_entry("alpha", "1.2.3"),),
+            review=("MPL-2.0",),
+        ),
+        today=TODAY,
+        audit=lambda: controlled_audit(),
+        license_reader=mpl,
+        online=False,
+    )
+    assert "SC-009" in codes(blocked)
+    assert not blocked.passed
+
+    accepted = assess(
+        write_project(
+            tmp_path / "accepted",
+            packages=(lock_entry("alpha", "1.2.3"),),
+            license_policy=(
+                'approved = ["MIT"]\nreview = ["MPL-2.0"]\nprohibited = ["GPL-3.0-only"]\n'
+                '[reviewed]\n"MPL-2.0" = "accepted for the test fixture"\n'
+            ),
+            review=("MPL-2.0",),
+        ),
+        today=TODAY,
+        audit=lambda: controlled_audit(),
+        license_reader=mpl,
+        online=False,
+    )
+    assert "SC-018" in codes(accepted)
+    assert "SC-009" not in codes(accepted)
+    assert accepted.passed
+
+
+def test_unknown_license_blocks(project: Path) -> None:
+    assessment = assess(
+        project,
+        today=TODAY,
+        audit=lambda: controlled_audit(),
+        license_reader=lambda name: None,
+        online=False,
+    )
+    blocking = [finding for finding in assessment.blocking if finding.code == "SC-009"]
+    assert {finding.package for finding in blocking} == {"alpha", "beta"}
+    assert not assessment.passed
+
+
+def test_dependency_review_allow_list_must_match_policy(project: Path) -> None:
+    (project / ".github" / "dependency-review-config.yml").write_text(
+        "allow_licenses:\n  - MIT\n  - MPL-2.0\n",
+        encoding="utf-8",
+    )
+    assessment = assess(
+        project,
+        today=TODAY,
+        audit=lambda: controlled_audit(),
+        license_reader=mit,
+        online=False,
+    )
+    assert "SC-019" in codes(assessment)
+    assert "MPL-2.0" in next(
+        finding.message for finding in assessment.findings if finding.code == "SC-019"
+    )
+    assert not assessment.passed
+
+
+def test_dependency_review_allow_list_must_not_omit_approved(project: Path) -> None:
+    (project / ".github" / "dependency-review-config.yml").write_text(
+        "fail_on_severity: high\nallow_licenses:\n",
+        encoding="utf-8",
+    )
+    assessment = assess(
+        project,
+        today=TODAY,
+        audit=lambda: controlled_audit(),
+        license_reader=mit,
+        online=False,
+    )
+    message = next(finding.message for finding in assessment.findings if finding.code == "SC-019")
+    assert "approved but not allowed: MIT" in message
+    assert not assessment.passed
+
+
+def test_missing_dependency_review_config_blocks(project: Path) -> None:
+    (project / ".github" / "dependency-review-config.yml").unlink()
+    assessment = assess(
+        project,
+        today=TODAY,
+        audit=lambda: controlled_audit(),
+        license_reader=mit,
+        online=False,
+    )
+    assert "SC-019" in codes(assessment)
+    assert not assessment.passed
 
 
 def test_missing_policy_raises(tmp_path: Path) -> None:

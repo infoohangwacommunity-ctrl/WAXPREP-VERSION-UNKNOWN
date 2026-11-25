@@ -2,7 +2,13 @@
 #
 # SPDX identifiers. `approved` passes, `review` needs a human decision,
 # `prohibited` blocks. Anything not listed is unknown and requires review.
-# Compound expressions pass only when every atom is approved.
+# Compound expressions pass only when every atom is approved or explicitly
+# reviewed below.
+#
+# A review-required or unknown licence blocks the gate until an entry in
+# [reviewed] records who accepted it, why, and when to revisit it. The same
+# allow-list must appear in .github/dependency-review-config.yml; the gate
+# fails if the two disagree.
 #
 # This is an engineering policy, not legal advice. WaxPrep is distributed
 # under MIT; the lists reflect that distribution model.
@@ -26,3 +32,6 @@ prohibited = [
     "AGPL-3.0-only",
     "SSPL-1.0",
 ]
+
+[reviewed]
+"MPL-2.0" = "Accepted 2026-11-25 by WaxPrep Engineering Team: certifi (MPL-2.0) is an unmodified transitive runtime dependency of httpx; file-level copyleft does not change WaxPrep's MIT distribution. Re-review by 2027-06-30."
