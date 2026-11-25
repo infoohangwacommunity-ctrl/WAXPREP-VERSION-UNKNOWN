@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from waxprep.detector import (
+    Severity,
     UniversalHardcodingDetector,
 )
 
@@ -89,24 +90,12 @@ def check(message: str) -> str:
             "Ternary with string comparison should be detected"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "match/case routing is not detected by the AST rules; documented "
-            "limitation in docs/DETECTOR_SPECIFICATION.md (WHD-003)"
-        ),
-    )
     def test_match_statement(
         self,
         adversarial_detector: UniversalHardcodingDetector,
         protected_module_path: Path,
     ) -> None:
-        """Match/case statements should be detected as fixed routing.
-
-        This is an explicit, strict xfail: the parser accepts match/case, but
-        none of WHD-001/003/006 detect it. If detection is added, this test
-        fails and must be promoted to a passing test.
-        """
+        """Match/case statements should be detected as fixed routing (WHD-003)."""
         code = """
 def handle(message: str) -> str:
     match message:
@@ -124,9 +113,10 @@ def handle(message: str) -> str:
 
         findings = adversarial_detector.scan_file(file_path)
 
-        assert any(f.rule_id in ("WHD-001", "WHD-003", "WHD-006") for f in findings), (
-            "Match/case routing produced no finding"
-        )
+        match_findings = [f for f in findings if f.rule_id == "WHD-003"]
+        assert match_findings, "Match/case routing produced no WHD-003 finding"
+        assert all(f.severity is Severity.MEDIUM for f in match_findings)
+        assert all(f.blocks_merge is False for f in match_findings)
 
 
 class TestAdversarialMovedData:

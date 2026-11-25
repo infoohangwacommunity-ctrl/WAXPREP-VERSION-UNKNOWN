@@ -251,7 +251,7 @@ Independent, deterministic source-code detection system that identifies prohibit
 |---------|-------------|----------|--------------|
 | WHD-001 | Fixed-string comparisons against student input | HIGH | Yes (protected) |
 | WHD-002 | Fixed vocabulary membership tests | HIGH | Yes (protected) |
-| WHD-003 | Fixed decision trees (if/elif chains) | MEDIUM | No — review |
+| WHD-003 | Fixed decision trees (if/elif chains, match/case) | MEDIUM | No — review |
 | WHD-004 | Regex-based phrase detection | MEDIUM | No — review |
 | WHD-005 | Word-to-action dictionary lookups | MEDIUM | No — review |
 | WHD-006 | Deeply nested conditional structures | LOW | No |
@@ -289,7 +289,7 @@ python -m waxprep.detector.quality_gate [path] --format summary
 - Cross-file data-flow analysis not implemented (imports, helper chains)
 - Variable-based comparisons require constant propagation
 - Dynamic string construction not detected
-- Match/case statements are not detected (`tests/detector/test_adversarial.py` pins this as a strict xfail)
+- Match/case routing is detected only when case patterns are string literals; guards are covered by WHD-001, not the branch count
 - Some adversarial tests marked xfail for documented gaps
 - Files that cannot be read or parsed are reported as scan problems and fail the gate; use `--allow-incomplete-scan` on the quality-gate entry point only when that is intentional
 - Coverage gate excludes `waxprep/detector/quality_gate.py` (see pyproject.toml)

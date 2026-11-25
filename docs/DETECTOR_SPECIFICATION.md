@@ -88,7 +88,7 @@ This document is the single source of truth for what the detector checks and why
 
 ---
 
-## Rule WHD-003: Fixed Decision Trees (If/Elif Chains)
+## Rule WHD-003: Fixed Decision Trees (If/Elif Chains, Match/Case)
 
 **Rule ID:** WHD-003
 
@@ -96,7 +96,7 @@ This document is the single source of truth for what the detector checks and why
 
 **Intent:** Prevent hardcoded branching logic that routes student messages based on predetermined conditions.
 
-**Prohibited behavior:** `if/elif` chains with 3+ branches containing 2+ string comparisons in protected modules.
+**Prohibited behavior:** `if/elif` chains with 3+ branches containing 2+ string comparisons, and `match/case` statements with 3+ cases containing 2+ string-literal case patterns (including `|` alternatives), in protected modules.
 
 **Scope:** Protected modules.
 
@@ -105,7 +105,7 @@ This document is the single source of truth for what the detector checks and why
 - Configuration-based decisions
 - Protocol/format dispatch
 
-**Detection method:** AST analysis counting string comparisons across `if/elif` chains and flagging chains exceeding thresholds.
+**Detection method:** AST analysis counting string comparisons across `if/elif` chains, and string-literal case patterns across `match` statements. Both structures are flagged at the same thresholds (3+ branches, 2+ string-routed branches), because they express the same fixed routing table.
 
 **Severity:** MEDIUM
 
@@ -114,7 +114,8 @@ This document is the single source of truth for what the detector checks and why
 **Confidence threshold:** 0.70
 
 **Tests:**
-- `tests/detector/test_detector.py::TestWHD003IfElifChain`
+- `tests/detector/test_detector.py::TestWHD003IfElifChain` (chains, match/case, and the negative cases)
+- `tests/detector/test_adversarial.py::TestAdversarialAlternateSyntax::test_match_statement`
 - `tests/detector/test_adversarial.py::TestMutationDetection::test_mutation_single_to_chain`
 
 **Status:** Enforced (medium severity)
@@ -123,7 +124,8 @@ This document is the single source of truth for what the detector checks and why
 - Threshold-based detection may miss shorter but significant chains
 - A chain longer than three branches can be reported more than once (the outer chain and a trailing sub-chain)
 - Does not detect nested if/else as chains (only flat elif structures)
-- Does not detect match/case statements; `tests/detector/test_adversarial.py::test_match_statement` is a strict xfail so this gap cannot silently disappear
+- Match/case guards (`case _ if message == "x"`) do not count as string branches; a comparison in a guard is still reported by WHD-001
+- Case patterns built from non-literal values (names, attributes, class patterns) are not treated as string routing
 
 ---
 
@@ -436,7 +438,7 @@ This document is the single source of truth for what the detector checks and why
 |---------|----------|--------------|-----------------|-------|------------------|
 | WHD-001 | HIGH | Yes (protected) | — | Protected modules | AST Compare nodes with token-based input heuristic |
 | WHD-002 | HIGH | Yes (protected) | — | Protected modules | AST Compare + In/NotIn (list/set/tuple) |
-| WHD-003 | MEDIUM | No | Yes | Protected modules | AST If/elif chains |
+| WHD-003 | MEDIUM | No | Yes | Protected modules | AST If/elif chains and match/case patterns |
 | WHD-004 | MEDIUM | No | Yes | Protected modules | AST re calls with `\b` word boundaries |
 | WHD-005 | MEDIUM | No | Yes | Protected modules | AST Subscript reads |
 | WHD-006 | LOW | No | No | Protected modules | AST nesting depth |

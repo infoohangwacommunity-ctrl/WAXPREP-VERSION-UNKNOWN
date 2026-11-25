@@ -240,6 +240,14 @@ def has_word_boundary(pattern: str) -> bool:
     return r"\b" in pattern
 
 
+# WHD-003: a fixed decision tree needs at least three branches, at least two
+# of which route on string literals. The same thresholds apply to if/elif
+# chains and to match/case statements, so both spellings of the same routing
+# table are treated alike.
+MIN_DECISION_BRANCHES = 3
+MIN_STRING_BRANCHES = 2
+
+
 # =============================================================================
 # Core detector class
 # =============================================================================
@@ -557,15 +565,15 @@ class UniversalHardcodingDetector:
         module_path: str,
     ) -> list[Finding]:
         """
-        WHD-003: Detect if/elif chains that create fixed decision trees
-        based on string comparisons in protected modules.
+        WHD-003: Detect if/elif chains and match/case statements that create
+        fixed decision trees based on string comparisons in protected modules.
         """
         findings: list[Finding] = []
         source.splitlines()
 
         class IfChainVisitor(ast.NodeVisitor):
             def __init__(self) -> None:
-                self.chains: list[tuple[ast.If, int]] = []
+                self.chains: list[tuple[ast.If | ast.Match, int, str]] = []
 
             def visit_If(self, node: ast.If) -> None:
                 # Count string comparisons in this if and its elifs
@@ -583,11 +591,40 @@ class UniversalHardcodingDetector:
                     else:
                         break
 
-                # Flag chains with 3+ string comparisons
-                if chain_length >= 3 and string_comparisons >= 2:
-                    self.chains.append((node, chain_length))
+                if (
+                    chain_length >= MIN_DECISION_BRANCHES
+                    and string_comparisons >= MIN_STRING_BRANCHES
+                ):
+                    self.chains.append((node, chain_length, "if/elif chain"))
 
                 self.generic_visit(node)
+
+            def visit_Match(self, node: ast.Match) -> None:
+                """Treat match/case on string literals as a fixed decision tree.
+
+                A match statement is the structural equivalent of an if/elif
+                chain: each string-literal case pattern routes on a fixed
+                value. Match patterns are not ``Compare`` nodes, so without
+                this rule such routing was invisible to WHD-003.
+                """
+                branch_count = len(node.cases)
+                string_patterns = sum(
+                    1 for case in node.cases if self._pattern_is_string_literal(case.pattern)
+                )
+
+                if branch_count >= MIN_DECISION_BRANCHES and string_patterns >= MIN_STRING_BRANCHES:
+                    self.chains.append((node, branch_count, "match/case statement"))
+
+                self.generic_visit(node)
+
+            def _pattern_is_string_literal(self, pattern: ast.pattern) -> bool:
+                """Return True when a case pattern routes on string literal(s)."""
+                if isinstance(pattern, ast.MatchValue):
+                    value = pattern.value
+                    return isinstance(value, Constant) and isinstance(value.value, str)
+                if isinstance(pattern, ast.MatchOr):
+                    return any(self._pattern_is_string_literal(p) for p in pattern.patterns)
+                return False
 
             def _count_string_comparisons(self, test: ast.expr) -> int:
                 """Count string literal comparisons in a test expression."""
@@ -611,25 +648,26 @@ class UniversalHardcodingDetector:
         visitor = IfChainVisitor()
         visitor.visit(tree)
 
-        for if_node, chain_length in visitor.chains:
+        for node, chain_length, structure in visitor.chains:
             finding = Finding(
                 rule_id="WHD-003",
                 file_path=str(file_path),
-                line_number=if_node.lineno,
+                line_number=node.lineno,
                 message=(
-                    f"Fixed decision tree (if/elif chain with {chain_length} branches) "
+                    f"Fixed decision tree ({structure} with {chain_length} branches) "
                     f"in protected module"
                 ),
                 severity=Severity.MEDIUM,
                 confidence=0.70,
                 evidence=[
-                    f"If/elif chain with {chain_length} branches at line {if_node.lineno}",
+                    f"{structure.capitalize()} with {chain_length} branches at line {node.lineno}",
                     "Multiple string comparisons detected",
                     f"Module: {module_path}",
                     f"Protected module: {is_protected_module(module_path)}",
                 ],
                 # WHD-003 is documented as review-required: a long if/elif chain
-                # is evidence for a human, not proof of prohibited behavior.
+                # or a match/case routing table is evidence for a human, not
+                # proof of prohibited behavior.
                 blocks_merge=False,
             )
             findings.append(finding)

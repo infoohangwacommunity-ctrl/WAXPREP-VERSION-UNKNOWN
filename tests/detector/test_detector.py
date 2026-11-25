@@ -305,6 +305,53 @@ def classify_input(text: str) -> str:
         # Should detect the chain pattern
         assert any(f.rule_id in ("WHD-002", "WHD-003") for f in findings)
 
+    def test_detects_match_case_routing(
+        self, detector: UniversalHardcodingDetector, protected_module_file: Path
+    ) -> None:
+        """Match/case on string literals is the same fixed tree as if/elif."""
+        code = """
+def route_message(message: str) -> str:
+    match message:
+        case "hello" | "hi":
+            return "greet"
+        case "help":
+            return "assist"
+        case "exam":
+            return "exam_flow"
+        case _:
+            return "default"
+"""
+        protected_module_file.write_text(code, encoding="utf-8")
+
+        findings = detector.scan_file(protected_module_file)
+
+        match_findings = [f for f in findings if f.rule_id == "WHD-003"]
+        assert match_findings
+        assert all(f.severity is Severity.MEDIUM for f in match_findings)
+        assert all(f.blocks_merge is False for f in match_findings)
+        assert all(f.requires_review for f in match_findings)
+        assert all("match/case statement" in f.message for f in match_findings)
+
+    def test_ignores_short_match_statement(
+        self, detector: UniversalHardcodingDetector, protected_module_file: Path
+    ) -> None:
+        """A short match, or one not routing on strings, is not a fixed tree."""
+        code = """
+def classify_input(text: str) -> str:
+    match text:
+        case "hello":
+            return "greet"
+        case 1:
+            return "number"
+        case _:
+            return "default"
+"""
+        protected_module_file.write_text(code, encoding="utf-8")
+
+        findings = detector.scan_file(protected_module_file)
+
+        assert not any(f.rule_id == "WHD-003" for f in findings)
+
 
 # =============================================================================
 # WHD-004: Regex matching tests
