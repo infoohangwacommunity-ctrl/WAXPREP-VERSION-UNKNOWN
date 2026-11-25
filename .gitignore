@@ -42,3 +42,6 @@ htmlcov/
 
 # Misc binaries
 *.deb
+
+# Generated supply-chain evidence (CI uploads artifacts; never commit them)
+artifacts/

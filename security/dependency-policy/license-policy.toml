@@ -1,0 +1,28 @@
+# License policy — Stage 09.
+#
+# SPDX identifiers. `approved` passes, `review` needs a human decision,
+# `prohibited` blocks. Anything not listed is unknown and requires review.
+# Compound expressions pass only when every atom is approved.
+#
+# This is an engineering policy, not legal advice. WaxPrep is distributed
+# under MIT; the lists reflect that distribution model.
+
+approved = [
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Apache-2.0",
+    "ISC",
+    "PSF-2.0",
+]
+
+review = [
+    "MPL-2.0",
+]
+
+prohibited = [
+    "GPL-2.0-only",
+    "GPL-3.0-only",
+    "AGPL-3.0-only",
+    "SSPL-1.0",
+]

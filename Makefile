@@ -2,7 +2,7 @@
 # `make check` runs the full local equivalent of the CI blocking gate.
 # One command. Deterministic. No paid APIs. Usable by humans and AI agents.
 
-.PHONY: check lint format type import-linter semgrep lockfile-check pip-audit test coverage vulture pyright help
+.PHONY: check lint format type import-linter semgrep lockfile-check supply-chain pip-audit sbom trust test coverage vulture pyright help
 
 # Default target
 default: check
@@ -11,7 +11,7 @@ default: check
 # Blocking gate — `make check` runs all of these (matches CI quality-gate)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-check: lint format type import-linter semgrep lockfile-check pip-audit test coverage
+check: lint format type import-linter semgrep lockfile-check supply-chain test coverage
 
 lint: ## Run ruff linting
 	uv run ruff check src/ tests/
@@ -31,15 +31,19 @@ semgrep: ## Run semgrep security scan
 lockfile-check: ## Verify uv.lock matches pyproject.toml
 	uv lock --check
 
-pip-audit: ## Run pip-audit dependency vulnerability scan
-	# PIP-AUDIT EXCEPTION (tracked):
-	#   Vulnerability: GHSA-53pm-wgxf-c6qf (wcmatch 8.5.2)
-	#   Owner:         WaxPrep Engineering Team
-	#   Justification: semgrep constrains wcmatch to < 9; the fix (wcmatch>=11.2)
-	#                  cannot be installed until semgrep updates its wcmatch bound.
-	#   Review date:   2026-12-22 (reassess when semgrep updates or wcmatch is pinned)
-	# Only this tracked vulnerability is ignored; every other vulnerability still fails.
-	@uv run pip-audit --ignore-vuln GHSA-53pm-wgxf-c6qf
+supply-chain: ## Run dependency + supply-chain gate (Stage 09)
+	# pip-audit runs inside this gate. Exceptions are scoped per advisory,
+	# package and version in security/dependency-policy/vulnerability-exceptions.toml
+	# and expire automatically; no blanket --ignore-vuln is passed.
+	uv run python -m waxprep.supplychain.cli check --format summary
+
+pip-audit: supply-chain ## Alias for the Stage 09 dependency gate
+
+sbom: ## Generate the CycloneDX SBOM for runtime dependencies
+	uv run python -m waxprep.supplychain.cli sbom
+
+trust: ## Generate the Dependency Trust Intelligence report
+	uv run python -m waxprep.supplychain.cli trust --output artifacts/dependency-trust.md
 
 test: ## Run all tests
 	uv run pytest

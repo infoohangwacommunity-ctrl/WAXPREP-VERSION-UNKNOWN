@@ -1,0 +1,21 @@
+# Dependency source policy — Stage 09.
+#
+# Runtime dependencies must resolve from PyPI through uv.lock. A Git URL,
+# direct URL, local path or alternative index requires an explicit policy
+# change and review; it is never accepted silently.
+
+allowed_registries = ["https://pypi.org/simple"]
+allow_vcs = false
+allow_url = false
+
+# Major versions that have been reviewed for each direct runtime dependency.
+# A resolved major version that is absent here is a review finding, so an
+# unreviewed major upgrade cannot silently reach production.
+[reviewed_majors]
+fastapi = [0]
+uvicorn = [0]
+pydantic = [2]
+pydantic-settings = [2]
+httpx = [0]
+structlog = [26]
+python-dotenv = [1]

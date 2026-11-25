@@ -1,0 +1,60 @@
+name: Dependency Security
+
+on:
+  schedule:
+    # Weekly: a package that was safe yesterday can receive an advisory today.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-security:
+    name: Dependency Security — Trust Gate, SBOM, Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
+        with:
+          enable-cache: true
+          python-version: "3.14"
+
+      - name: Install the locked dependency set
+        run: uv sync --extra dev --frozen
+
+      - name: Verify lockfile consistency
+        run: uv lock --check
+
+      - name: Generate Dependency Trust Intelligence report
+        continue-on-error: true
+        run: >-
+          uv run python -m waxprep.supplychain.cli trust
+          --output artifacts/dependency-trust.md
+
+      - name: Generate CycloneDX SBOM for runtime dependencies
+        run: >-
+          uv run python -m waxprep.supplychain.cli sbom
+          --output artifacts/waxprep-sbom.cdx.json
+
+      - name: Run blocking dependency trust gate
+        run: uv run python -m waxprep.supplychain.cli check --format summary
+
+      - name: Upload dependency evidence
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
+        with:
+          name: dependency-security-${{ github.sha }}
+          path: artifacts/
+          retention-days: 90

@@ -105,16 +105,12 @@ jobs:
           echo "==> semgrep (security + Stage 08 custom rules)"
           # Exclude detector directory - the Python AST detector handles it
           uv run semgrep --config .semgrep --error --exclude src/waxprep/detector src/
-          # pip-audit: known transitive vulnerability in wcmatch 8.5.2 (GHSA-53pm-wgxf-c6qf).
-          # semgrep constrains wcmatch to < 9, so the fix (wcmatch>=11.2) cannot be installed yet.
-          # PIP-AUDIT EXCEPTION (tracked):
-          #   Vulnerability: GHSA-53pm-wgxf-c6qf (wcmatch 8.5.2)
-          #   Owner:         WaxPrep Engineering Team
-          #   Justification: semgrep constrains wcmatch to < 9; the fix (wcmatch>=11.2)
-          #                  cannot be installed until semgrep updates its wcmatch bound.
-          #   Review date:   2026-12-22 (reassess when semgrep updates or wcmatch is pinned)
-          # Only this tracked vulnerability is ignored; every other vulnerability still fails the gate.
-          uv run pip-audit --ignore-vuln GHSA-53pm-wgxf-c6qf
+          echo "==> dependency and supply-chain security (Stage 09)"
+          # Runs pip-audit without a blanket ignore, then applies exceptions that
+          # are scoped per advisory/package/version and expire automatically.
+          # Also checks lockfile hashes, dependency sources, licenses and OSV
+          # malicious-package intelligence for the resolved runtime set.
+          uv run python -m waxprep.supplychain.cli check --format summary
           echo "==> Universal Hardcoding Detector (Stage 08)"
           # Explicit default scope (see DEFAULT_SCAN_TARGETS): Python sources,
           # active docs, README, tests/README and pyproject.toml. Not a blind

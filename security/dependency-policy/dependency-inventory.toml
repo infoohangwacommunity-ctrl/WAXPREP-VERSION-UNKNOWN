@@ -1,0 +1,23 @@
+# Direct runtime dependency inventory — Stage 09.
+#
+# Every direct runtime dependency needs a purpose and an owner. A new direct
+# dependency without both fails the gate. Transitive dependencies are not
+# listed here: they are derived from uv.lock, not maintained by hand.
+
+[purpose]
+fastapi = "ASGI web framework for the WaxPrep HTTP surface and health endpoints."
+uvicorn = "ASGI server used to run the WaxPrep application."
+pydantic = "Request/response and configuration data validation."
+pydantic-settings = "Environment-driven application settings."
+httpx = "HTTP client used by adapters and the scheduled OSV supply-chain lookup."
+structlog = "Structured application logging with correlation IDs."
+python-dotenv = "Local development environment loading from .env files."
+
+[owner]
+fastapi = "WaxPrep Engineering Team"
+uvicorn = "WaxPrep Engineering Team"
+pydantic = "WaxPrep Engineering Team"
+pydantic-settings = "WaxPrep Engineering Team"
+httpx = "WaxPrep Engineering Team"
+structlog = "WaxPrep Engineering Team"
+python-dotenv = "WaxPrep Engineering Team"

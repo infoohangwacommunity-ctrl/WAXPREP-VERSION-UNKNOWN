@@ -8,7 +8,7 @@ default: check
 # ── Static Analysis ──────────────────────────────────────────────────────────
 
 # Run all static analysis tools (blocking tools only — matches CI quality-gate)
-check: lint format type import-linter semgrep lockfile-check pip-audit test coverage
+check: lint format type import-linter semgrep lockfile-check supply-chain test coverage
 
 # Run ruff linting (expanded rules)
 lint:
@@ -34,16 +34,23 @@ semgrep:
 lockfile-check:
 	uv lock --check
 
-# Run pip-audit dependency vulnerability scan
-pip-audit:
-	# PIP-AUDIT EXCEPTION (tracked):
-	#   Vulnerability: GHSA-53pm-wgxf-c6qf (wcmatch 8.5.2)
-	#   Owner:         WaxPrep Engineering Team
-	#   Justification: semgrep constrains wcmatch to < 9; the fix (wcmatch>=11.2)
-	#                  cannot be installed until semgrep updates its wcmatch bound.
-	#   Review date:   2026-12-22 (reassess when semgrep updates or wcmatch is pinned)
-	# Only this tracked vulnerability is ignored; every other vulnerability still fails.
-	uv run pip-audit --ignore-vuln GHSA-53pm-wgxf-c6qf
+# Run the Stage 09 dependency + supply-chain gate
+supply-chain:
+	# pip-audit runs inside this gate. Exceptions are scoped per advisory,
+	# package and version in security/dependency-policy/vulnerability-exceptions.toml
+	# and expire automatically; no blanket --ignore-vuln is passed.
+	uv run python -m waxprep.supplychain.cli check --format summary
+
+# Alias for the Stage 09 dependency gate
+pip-audit: supply-chain
+
+# Generate the CycloneDX SBOM for runtime dependencies
+sbom:
+	uv run python -m waxprep.supplychain.cli sbom
+
+# Generate the Dependency Trust Intelligence report
+trust:
+	uv run python -m waxprep.supplychain.cli trust --output artifacts/dependency-trust.md
 
 # Run all tests
 test:

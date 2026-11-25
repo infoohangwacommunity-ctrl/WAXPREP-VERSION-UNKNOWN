@@ -1,0 +1,17 @@
+# Dependency Review configuration — Stage 09.
+#
+# This action evaluates only what a pull request changes. License policy here
+# mirrors security/dependency-policy/license-policy.toml; keep them in sync.
+# `deny-licenses` is deprecated by the action; this config uses `allow-licenses`.
+fail_on_severity: high
+fail_on_scopes:
+  - runtime
+  - development
+allow_licenses:
+  - MIT
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - Apache-2.0
+  - ISC
+  - PSF-2.0
+  - MPL-2.0

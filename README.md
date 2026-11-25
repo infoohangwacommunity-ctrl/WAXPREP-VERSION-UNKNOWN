@@ -1,10 +1,10 @@
 # WaxPrep Foundation
 
-**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 08).**
+**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 09).**
 
-Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Pip-audit runs with a single tracked exception (GHSA-53pm-wgxf-c6qf); all other dependency vulnerabilities fail the gate.
+Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Stage 09 adds dependency and supply-chain security to the same gate: pip-audit without blanket ignores, a scoped expiring exception register, lockfile hashes, dependency source restrictions, license policy, OSV malicious-package intelligence, a CycloneDX SBOM and Dependabot proposals.
 
-**Stage 08 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
+**Stage 09 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
 ## Stage 01: Programming Language
 - Python 3.14+ (tested on 3.14; compatibility with later versions not proven)
@@ -61,6 +61,8 @@ src/waxprep/
 │   ├── channel.py       # ChannelRegistry + ChannelAdapter protocol
 │   ├── model.py         # ModelRegistry + ModelAdapter protocol
 │   └── tool.py          # ToolRegistry + Tool protocol
+├── detector/            # Stage 08 hardcoding detector (development-time only)
+├── supplychain/         # Stage 09 dependency & supply-chain gate (development-time only)
 └── adapters/            # Fake adapter implementations (source of truth)
     ├── __init__.py
     ├── fake_channel.py  # FakeChannelAdapter
@@ -100,6 +102,13 @@ tests/
 │   ├── test_cli_and_quality_gate.py   # CLI and integration tests
 │   ├── test_coverage_gaps.py          # Coverage gap analysis
 │   └── test_property.py               # Property-based tests
+├── supplychain/       # Stage 09 dependency and supply-chain tests
+│   ├── conftest.py                    # Synthetic lockfile/policy fixtures
+│   ├── test_policy.py                 # Exception, license and source policies
+│   ├── test_lockfile.py               # uv.lock and requirement parsing
+│   ├── test_scanners.py               # pip-audit, OSV and license adapters
+│   ├── test_checks.py                 # Aggregate trust assessment
+│   └── test_outputs.py                # SBOM, reports and CLI
 ├── regression/        # Behavior preservation
 │   ├── __init__.py
 │   └── (regression tests)
@@ -215,7 +224,7 @@ Consolidated CI quality gate in `.github/workflows/quality-gate.yml`:
 
 **Blocking jobs** (all must pass):
 - `quality-setup` — uv sync + shared package cache
-- `quality-gate` — ruff lint, ruff format, mypy (strict), import-linter, semgrep, pip-audit
+- `quality-gate` — ruff lint, ruff format, mypy (strict), import-linter, semgrep, dependency and supply-chain gate (Stage 09)
 - `tests` — matrix of unit, integration, contract, lifecycle, architecture, configuration
 - `coverage-gate` — full suite with `--cov-fail-under=100`
 - `smoke-test` — app boot + liveness/readiness health checks
@@ -226,7 +235,7 @@ Consolidated CI quality gate in `.github/workflows/quality-gate.yml`:
 
 **Aggregate job** (`gate-aggregate`) reports the blocking job status and fails if any blocking job fails or is cancelled.
 
-**Pip-audit exception:** `GHSA-53pm-wgxf-c6qf` (wcmatch 8.5.2) is tracked and ignored via `pip-audit --ignore-vuln`. All other vulnerabilities still fail the gate.
+**Vulnerability exceptions:** pip-audit runs without `--ignore-vuln`. `GHSA-53pm-wgxf-c6qf` (wcmatch 8.5.2) is recorded in `security/dependency-policy/vulnerability-exceptions.toml`, scoped to that package and version and expiring 2026-12-22. Expired exceptions and every uncovered advisory fail the gate.
 
 **Local equivalent:** `make check` (Makefile) or `just check` (Justfile) run the same blocking checks locally.
 
@@ -300,6 +309,43 @@ uv run python -m waxprep.detector.cli --format summary
 ```
 This inspects Python in `src/`, the active docs, `README.md`, `tests/README.md` and `pyproject.toml`. It does not scan the whole repository (which would include dependency trees and test fixtures).
 
+## Stage 09: Dependency and Supply-Chain Security
+
+Development and release tooling that protects the external software WaxPrep depends on. It is separate from Stage 08, is never imported by the request path, and adds no runtime service or database.
+
+**Blocking controls:**
+- pip-audit runs without `--ignore-vuln`; exceptions are scoped per advisory, package and version in `security/dependency-policy/vulnerability-exceptions.toml` and expire automatically.
+- `uv.lock` is mandatory; `uv lock --check` and `uv sync --frozen` remain in CI.
+- Every runtime registry package must carry an artifact hash from `uv.lock`.
+- Runtime dependencies must resolve from an approved registry; Git, URL, path and editable sources are rejected by policy.
+- Every direct runtime dependency needs a version constraint, a resolved lock entry, a documented purpose and owner, and a reviewed major version.
+- Licenses are classified from SPDX policy: approved passes, review requires a human decision, prohibited blocks, unknown requires review.
+- OSV malicious-package (`MAL-`) advisories block; an OSV outage is a review finding, never a silent pass.
+
+**Outputs:**
+```bash
+# Blocking gate (also inside make check / just check and CI)
+uv run python -m waxprep.supplychain.cli check --format summary
+
+# Dependency Trust Intelligence report
+uv run python -m waxprep.supplychain.cli trust --output artifacts/dependency-trust.md
+
+# CycloneDX 1.5 SBOM for the resolved runtime set
+uv run python -m waxprep.supplychain.cli sbom --output artifacts/waxprep-sbom.cdx.json
+```
+
+**Policies:** `security/dependency-policy/` contains the vulnerability exception register, license policy, source policy and direct-dependency inventory. Policies are TOML so the gate adds no dependency of its own.
+
+**GitHub workflows:**
+- `quality-gate.yml` — blocking supply-chain gate on push and pull request.
+- `dependency-review.yml` — pull-request review of newly introduced vulnerabilities and licenses.
+- `dependency-security.yml` — weekly scheduled monitoring, trust report and SBOM artifacts keyed by commit SHA.
+- `dependabot.yml` — weekly grouped patch/minor proposals and individual major proposals; nothing is auto-approved.
+
+**Testing:** `tests/supplychain/` covers scoped exceptions and expiry, lockfile/source/hash failures, license decisions, malicious matches, OSV failure, SBOM shape, report rendering and CLI exit codes with synthetic fixtures and mocked scanners. No malicious package is installed.
+
+**Known limitations:** license facts come from installed metadata rather than the source distribution and are not legal advice; provenance attestations are reported as `not-verified`, not checked; OSV coverage depends on published OpenSSF reports; pip-audit audits the installed environment, which includes development tools, while the inventory/SBOM/license checks cover the runtime closure; `uv`'s preview malware check is not enabled. See [docs/security/STAGE_09_DEPENDENCY_SECURITY.md](docs/security/STAGE_09_DEPENDENCY_SECURITY.md) and [docs/security/DEPENDENCY_EXCEPTION_POLICY.md](docs/security/DEPENDENCY_EXCEPTION_POLICY.md).
+
 ## Supporting Documentation
 
 All project documentation is organized in the `docs/` folder:
@@ -310,6 +356,8 @@ All project documentation is organized in the `docs/` folder:
 - `docs/PR_REVIEW_CHECKLIST.md` — What reviewers should check before approving changes
 - `docs/ARCHITECTURE_BOUNDARIES.md` — Package dependency rules and what each layer may import
 - `docs/DETECTOR_SPECIFICATION.md` — Universal Hardcoding Detection rules (Stage 08)
+- `docs/security/STAGE_09_DEPENDENCY_SECURITY.md` — Dependency and supply-chain controls (Stage 09)
+- `docs/security/DEPENDENCY_EXCEPTION_POLICY.md` — Vulnerability exception register and expiry rules
 
 ### Archive (Historical/Superseded)
 - `docs/archive/` — Contains superseded documents:
