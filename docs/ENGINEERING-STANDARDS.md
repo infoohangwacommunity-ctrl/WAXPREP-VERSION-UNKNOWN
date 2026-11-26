@@ -265,6 +265,26 @@ except Exception:
 | Conflict | 409 | Return conflict details |
 | Unexpected errors | 500 | Log full details, return generic message |
 
+### Configuration Errors
+
+Configuration validation failures must not expose secret values.
+
+```python
+from pydantic import ValidationError
+from waxprep.config import Settings
+
+try:
+    settings = Settings()
+except ValidationError as exc:
+    # Log the error details server-side
+    logger.error("Configuration validation failed", errors=exc.errors())
+    # Exit with a clear message that does not leak secrets
+    sys.exit("Application configuration is invalid. Check environment variables.")
+```
+
+Configuration error messages reference the field name and the validation rule violated.
+They do not include the invalid value if the value could be sensitive.
+
 ---
 
 ## Documentation

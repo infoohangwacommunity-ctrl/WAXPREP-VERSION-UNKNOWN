@@ -512,6 +512,42 @@ Acceptance is not a claim in a pull request. It exists only when the workflow
 has executed for that exact commit and the `CI Acceptance — Independent Evidence
 Verification` job has succeeded. See `docs/CI_ACCEPTANCE_POLICY.md`.
 
+## Environment Variables
+
+WaxPrep uses `WAXPREP_`-prefixed environment variables for all operational configuration.
+The settings model lives in `src/waxprep/config.py` and is validated at startup.
+
+| Variable | Default | Allowed Values |
+|----------|---------|----------------|
+| `WAXPREP_ENVIRONMENT` | `development` | `development`, `test`, `staging`, `production` |
+| `WAXPREP_HOST` | `0.0.0.0` | Non-empty string |
+| `WAXPREP_PORT` | `8000` | Integer 1–65535 |
+| `WAXPREP_LOG_LEVEL` | `info` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (case-insensitive) |
+
+Configuration source precedence: OS environment > `.env` file > validated defaults.
+OS environment variables always win over `.env` values.
+
+### Configuration Tests
+
+Tests in `tests/configuration/` must be isolated from the developer's real environment.
+Use the `isolated_env` fixture to strip `WAXPREP_*` variables before a test.
+Override specific values with `monkeypatch.setenv()`, never rely on the host machine's
+environment.
+
+### Adding New Configuration
+
+When a new integration requires configuration (e.g. API keys, database URLs):
+
+1. Add the setting to the `Settings` class in `src/waxprep/config.py`.
+2. Add validation appropriate to the setting type.
+3. Add tests proving the setting defaults, overrides, and validation.
+4. Update `docs/CONFIGURATION_REFERENCE.md` and `.env.example`.
+5. Do not add settings for components that do not yet exist.
+
+Do not introduce configuration for components that do not exist in the current foundation.
+Settings for PostgreSQL, Redis, WhatsApp, Telegram, AI providers, tutor, student notebook,
+embedding providers, audio/TTS, or background workers belong in later stages.
+
 ## Code Quality
 
 ### Linting

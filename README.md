@@ -535,18 +535,33 @@ Or run as module:
 uv run python -m waxprep.main
 ```
 
-## Configuration (WAXPREP_ prefix)
+## Configuration (WAXPREP_ prefix) — Stage 11
 
 All configuration uses the `WAXPREP_` prefix to avoid conflicts with sandbox environment variables.
+Configuration is centrally managed by `src/waxprep/config.py` and validated at startup.
+Invalid configuration prevents application startup with a clear error.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WAXPREP_ENVIRONMENT` | development | Environment name (development/testing/production) |
-| `WAXPREP_HOST` | 0.0.0.0 | Bind host |
-| `WAXPREP_PORT` | 8000 | Bind port |
-| `WAXPREP_LOG_LEVEL` | info | Log level (debug/info/warning/error/critical) |
+| Variable | Default | Description | Validation |
+|----------|---------|-------------|------------|
+| `WAXPREP_ENVIRONMENT` | development | Environment name (`development`, `test`, `staging`, `production`) | Must be one of the four recognised values |
+| `WAXPREP_HOST` | 0.0.0.0 | Bind host | Must be non-empty |
+| `WAXPREP_PORT` | 8000 | Bind port | Integer 1–65535 |
+| `WAXPREP_LOG_LEVEL` | info | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) | Normalised to uppercase; must be a recognised level |
+
+Configuration sources (precedence): OS environment variables > `.env` file > validated defaults.
+OS environment variables always override `.env` file values.
+
+A `.env.example` file is provided with safe development defaults.
+The real `.env` file is excluded from Git via `.gitignore`.
+For production, supply all values via the hosting environment.
+
+Unknown `WAXPREP_` variables (typos, unsupported settings) produce warnings to stderr
+without preventing startup. Known misspellings are detected and mapped to their correct names.
 
 Note: `WAXPREP_SHUTDOWN_GRACE_PERIOD` has been removed. Graceful shutdown is managed by the ASGI server (uvicorn) lifecycle.
+
+For the full configuration reference including validation rules, precedence, production policy,
+unknown-variable detection, and error handling, see `docs/CONFIGURATION_REFERENCE.md`.
 
 ## Health Endpoints
 

@@ -487,11 +487,16 @@ class TestMainReadinessFailurePaths:
             tool_reg.ToolRegistry.register_defaults = orig_tool_rd
 
     def test_readiness_fails_when_config_not_loaded(self, readiness_client):
-        """Line 205: settings.environment is falsy → 503."""
+        """Configuration must have a recognised environment value or readiness returns 503.
+
+        The Stage 11 config uses an Environment enum. Assigning an invalid value
+        makes settings.environment.value raise AttributeError, so readiness fails.
+        """
         import waxprep.config as config_mod
 
         original_env = config_mod.settings.environment
         try:
+            # Assign an invalid value that breaks the enum .value access
             config_mod.settings.environment = ""
             response = readiness_client.get("/health/readiness")
             assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE

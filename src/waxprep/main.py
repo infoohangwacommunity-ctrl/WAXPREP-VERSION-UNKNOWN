@@ -114,8 +114,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
     """
     _app_state.shutting_down = False
 
-    # 1. Load configuration (already done via settings)
-    logger.info("Configuration loaded")
+    # 1. Load configuration (already done via settings singleton)
+    logger.info(
+        "Configuration loaded",
+        environment=settings.environment.value,
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level.value,
+    )
 
     # 2. Initialize registries with explicit registration
     from waxprep.registries.channel import get_channel_registry
@@ -144,9 +150,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
     # 4. Background services - none in foundation stage
     logger.info("No background services (foundation stage)")
 
-    # 5. Log startup
+    # 5. Log startup (without exposing secrets)
     logger.info(
-        "Startup complete", environment=settings.environment, host=settings.host, port=settings.port
+        "Startup complete",
+        environment=settings.environment.value,
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level.value,
     )
 
     yield
@@ -257,8 +267,13 @@ async def readiness() -> JSONResponse:
 
     Liveness != Readiness. This proves the distinction.
     """
-    # Check configuration exists and has a non-empty environment field
-    if not settings.environment:
+    # Check configuration exists and has a recognised environment
+    try:
+        env_value = settings.environment.value
+    except AttributeError:
+        env_value = None
+
+    if not env_value:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "not_ready", "reason": "configuration_not_loaded"},
