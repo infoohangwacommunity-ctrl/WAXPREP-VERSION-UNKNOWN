@@ -493,11 +493,14 @@ acceptance from recorded evidence. When changing anything that CI runs:
 
 1. Keep every action reference pinned to a full 40-character commit SHA.
 2. Keep the top-level `permissions: contents: read`; add no broader scope.
-3. Any new blocking job needs `timeout-minutes`, an evidence step
-   (`--job <id> --class blocking`) and an entry in `REQUIRED_JOBS` plus
-   `ci-acceptance.needs`.
+3. Any new blocking job needs a positive `timeout-minutes`, an evidence step
+   (`--job <id> --class blocking`), an evidence upload (`ci-evidence-<id>` from
+   `ci-evidence/`), an entry in `REQUIRED_JOBS` and a place in
+   `ci-acceptance.needs`. The workflow audit checks all five.
 4. Never replace `set -euo pipefail` with `|| true`, and never move a blocking
-   check to the advisory class to obtain a green run.
+   check to the advisory class to obtain a green run. Advisory jobs record the
+   tool step's own outcome and `--phase setup` when the job failed before the
+   tool ran, so the report can tell those cases apart.
 5. Run the audits before pushing:
 
 ```bash

@@ -52,6 +52,12 @@ def _parser() -> argparse.ArgumentParser:
     record.add_argument("--commit", required=True, help="Commit SHA the job assessed")
     record.add_argument("--run-id", required=True, help="Workflow run identifier")
     record.add_argument("--exit-code", type=int, help="Exit code of the executed check")
+    record.add_argument(
+        "--phase",
+        default="check",
+        choices=["check", "setup"],
+        help="Stage that produced the status: the check itself, or environment preparation",
+    )
     record.add_argument("--output", required=True, help="Evidence output directory")
 
     accept = subparsers.add_parser("accept", help="Decide acceptance from recorded evidence")
@@ -82,6 +88,7 @@ def _record(args: argparse.Namespace) -> int:
             commit=args.commit,
             workflow_run_id=args.run_id,
             exit_code=args.exit_code,
+            phase=args.phase,
         )
     except EvidenceError as exc:
         print(f"CI evidence error: {exc}", file=sys.stderr)

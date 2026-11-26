@@ -325,7 +325,7 @@ Stage 10 does not add another quality inspector. It makes the established system
 
 **Acceptance rules:** a full 40-character commit SHA is required; `git rev-parse HEAD` must equal `github.sha`; every required job needs exactly one record, classified blocking, naming that commit, with status `success`; coverage `line-rate` must meet 1.0; every SBOM component needs a `purl`. Anything else is rejected with a stated reason. Advisory failures are warnings. There is no override flag.
 
-**Workflow audit:** `uv run python -m waxprep.ci.cli audit` fails if any action reference is a mutable tag, if least-privilege `permissions` are missing, if a required trigger/job is absent, if the tests matrix drifts from the declared categories, or if a required job stops recording evidence. All actions are pinned to full commit SHAs.
+**Workflow audit:** `uv run python -m waxprep.ci.cli audit` reads the workflow structure, not just its text. It fails if any action reference is a mutable tag, if least-privilege `permissions` are missing, if a required trigger or job is absent, if the tests matrix drifts from the declared categories, if a job stops recording evidence or records it under the wrong class, if a job stops uploading `ci-evidence-<job>` or uploads it from the wrong directory, if `ci-acceptance` stops downloading the evidence or a required report, if a required report is not validated from its producing job's output, if `ci-acceptance` does not run with `if: always()` or no longer depends on a required job, or if a job loses its timeout. All actions are pinned to full commit SHAs.
 
 **Commands:**
 ```bash
@@ -334,11 +334,11 @@ uv run python -m waxprep.ci.cli accept --help      # evidence-driven decision (C
 uv run pytest tests/regression -q                  # adversarial CI tests
 ```
 
-**Adversarial testing:** `tests/regression/test_ci_*.py` prove that failed, cancelled, skipped, missing, duplicate, misclassified and stale-commit evidence all prevent acceptance, while advisory failures only warn. The workflow audit has mutation tests for unpinned actions, missing permissions, missing triggers/jobs, matrix drift and absent evidence recording.
+**Adversarial testing:** `tests/regression/test_ci_*.py` prove that failed, cancelled, skipped, missing, duplicate, misclassified and stale-commit evidence all prevent acceptance, that malformed records (bad job id/file pair, run id, timestamp or exit code) cannot be read as success, and that advisory failures only warn. Advisory outcomes are reported as `passed`, `failed`, `not-executed`, `infrastructure-failure`, `cancelled`, `missing` or `stale-evidence`, so a tool that never ran is never reported as having passed. The workflow audit is tested by mutating the real pipeline definition: each rule has a case that removes or weakens exactly the property it enforces.
 
-**Documentation:** [docs/STAGE_10_CI_SPECIFICATION.md](docs/STAGE_10_CI_SPECIFICATION.md), [docs/CI_OPERATIONS.md](docs/CI_OPERATIONS.md), [docs/CI_ACCEPTANCE_POLICY.md](docs/CI_ACCEPTANCE_POLICY.md), [docs/CI_SECURITY.md](docs/CI_SECURITY.md).
+**Documentation:** [docs/STAGE_10_CI_SPECIFICATION.md](docs/STAGE_10_CI_SPECIFICATION.md), [docs/CI_OPERATIONS.md](docs/CI_OPERATIONS.md), [docs/CI_ACCEPTANCE_POLICY.md](docs/CI_ACCEPTANCE_POLICY.md), [docs/CI_SECURITY.md](docs/CI_SECURITY.md), [docs/STAGE_10_CORRECTION_REPORT.md](docs/STAGE_10_CORRECTION_REPORT.md).
 
-**Known limitations:** `Dependency Review` is a separate workflow and cannot be consumed via `needs`, so it must be a required check in branch protection; 100% coverage refers to the measured scope (`waxprep` minus the documented `detector/quality_gate.py` exclusion); `tests/detector/` and `tests/supplychain/` run inside the coverage job rather than as matrix categories; evidence must be regenerated for every new commit.
+**Known limitations:** `Dependency Review` is a separate workflow and cannot be consumed via `needs`, so it must be a required check in branch protection and is **not** part of the acceptance decision; 100% coverage refers to the measured scope (`waxprep` minus the documented `detector/quality_gate.py` exclusion); `tests/detector/` and `tests/supplychain/` run inside the coverage job rather than as matrix categories; evidence must be regenerated for every new commit; the workflow audit proves structure, not GitHub expression semantics, so execution evidence remains the only proof that the pipeline behaved as documented.
 
 ## Stage 09: Dependency and Supply-Chain Security
 
@@ -393,6 +393,7 @@ All project documentation is organized in the `docs/` folder:
 - `docs/CI_ACCEPTANCE_POLICY.md` — Blocking versus advisory, evidence requirements and the decision table (Stage 10)
 - `docs/CI_SECURITY.md` — Workflow permissions, action pinning, cache integrity and tool evaluation (Stage 10)
 - `docs/STAGE_10_IMPLEMENTATION_REPORT.md` — Stage 10 implementation results and limitations
+- `docs/STAGE_10_CORRECTION_REPORT.md` — Post-implementation verification pass: issues found, corrections and evidence
 - `docs/security/DEPENDENCY_EXCEPTION_POLICY.md` — Vulnerability exception register and expiry rules
 
 ### Archive (Historical/Superseded)

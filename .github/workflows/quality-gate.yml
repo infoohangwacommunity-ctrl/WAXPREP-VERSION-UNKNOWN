@@ -531,7 +531,8 @@ jobs:
         if: always()
         run: >
           uv run python -m waxprep.ci.cli record
-          --job pyright --class advisory --status "${{ steps.pyright.outcome }}"
+          --job pyright --class advisory --phase "${{ steps.pyright.outcome == '' && 'setup' || 'check' }}"
+          --status "${{ steps.pyright.outcome || job.status }}"
           --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
           --output ci-evidence
 
@@ -587,7 +588,8 @@ jobs:
         if: always()
         run: >
           uv run python -m waxprep.ci.cli record
-          --job vulture --class advisory --status "${{ steps.vulture.outcome }}"
+          --job vulture --class advisory --phase "${{ steps.vulture.outcome == '' && 'setup' || 'check' }}"
+          --status "${{ steps.vulture.outcome || job.status }}"
           --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
           --output ci-evidence
 

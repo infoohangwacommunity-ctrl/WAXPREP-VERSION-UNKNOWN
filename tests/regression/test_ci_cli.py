@@ -14,6 +14,7 @@ from waxprep.ci.acceptance import (
     REQUIRED_JOBS,
     AcceptanceDecision,
     CheckClass,
+    ExecutionPhase,
     Status,
     evaluate_acceptance,
 )
@@ -24,6 +25,8 @@ from waxprep.ci.report import decision_to_dict, render_markdown
 pytestmark = pytest.mark.regression
 
 COMMIT = "a" * 40
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "quality-gate.yml"
 
 
 def write_evidence(directory: Path, commit: str = COMMIT) -> None:
@@ -52,10 +55,10 @@ def write_evidence(directory: Path, commit: str = COMMIT) -> None:
         )
 
 
-def write_reports(directory: Path) -> tuple[Path, Path]:
+def write_reports(directory: Path, rate: str = "1.0") -> tuple[Path, Path]:
     directory.mkdir(parents=True, exist_ok=True)
     coverage = directory / "coverage.xml"
-    coverage.write_text('<?xml version="1.0" ?><coverage line-rate="1.0"></coverage>', "utf-8")
+    coverage.write_text(f'<?xml version="1.0" ?><coverage line-rate="{rate}"></coverage>', "utf-8")
     sbom = directory / "sbom.json"
     sbom.write_text(
         json.dumps({
@@ -65,6 +68,30 @@ def write_reports(directory: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     return coverage, sbom
+
+
+def accept_arguments(tmp_path: Path, evidence: Path, coverage: Path, sbom: Path) -> list[str]:
+    return [
+        "accept",
+        "--evidence-dir",
+        str(evidence),
+        "--commit",
+        COMMIT,
+        "--coverage",
+        str(coverage),
+        "--sbom",
+        str(sbom),
+        "--report",
+        str(tmp_path / "acceptance.json"),
+    ]
+
+
+def write_repository_workflow(root: Path) -> None:
+    directory = root / ".github" / "workflows"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "quality-gate.yml").write_text(
+        REPOSITORY_WORKFLOW.read_text(encoding="utf-8"), encoding="utf-8"
+    )
 
 
 def test_record_writes_evidence_and_reports_success(
@@ -91,6 +118,33 @@ def test_record_writes_evidence_and_reports_success(
     assert "Recorded quality-gate evidence" in capsys.readouterr().out
 
 
+def test_record_stores_the_execution_phase(tmp_path: Path) -> None:
+    assert (
+        main([
+            "record",
+            "--job",
+            "pyright",
+            "--class",
+            "advisory",
+            "--status",
+            "failure",
+            "--phase",
+            "setup",
+            "--commit",
+            COMMIT,
+            "--run-id",
+            "1-1",
+            "--output",
+            str(tmp_path / "evidence"),
+        ])
+        == 0
+    )
+
+    payload = json.loads((tmp_path / "evidence" / "pyright.json").read_text(encoding="utf-8"))
+
+    assert payload["phase"] == ExecutionPhase.SETUP.value
+
+
 def test_record_rejects_unusable_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     status = main([
         "record",
@@ -112,6 +166,29 @@ def test_record_rejects_unusable_status(tmp_path: Path, capsys: pytest.CaptureFi
     assert "CI evidence error" in capsys.readouterr().err
 
 
+def test_record_rejects_an_unusable_run_id(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    status = main([
+        "record",
+        "--job",
+        "quality-gate",
+        "--class",
+        "blocking",
+        "--status",
+        "success",
+        "--commit",
+        COMMIT,
+        "--run-id",
+        "local",
+        "--output",
+        str(tmp_path),
+    ])
+
+    assert status == 1
+    assert "CI evidence error" in capsys.readouterr().err
+
+
 def test_accept_accepts_when_evidence_and_reports_are_valid(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -122,23 +199,18 @@ def test_accept_accepts_when_evidence_and_reports_are_valid(
     summary = tmp_path / "summary.md"
 
     status = main([
-        "accept",
-        "--evidence-dir",
-        str(evidence),
-        "--commit",
-        COMMIT,
-        "--coverage",
-        str(coverage),
-        "--sbom",
-        str(sbom),
-        "--report",
-        str(report),
+        *accept_arguments(tmp_path, evidence, coverage, sbom),
         "--summary",
         str(summary),
     ])
 
     assert status == 0
-    assert json.loads(report.read_text(encoding="utf-8"))["accepted"] is True
+    written = json.loads(report.read_text(encoding="utf-8"))
+    assert written["accepted"] is True
+    assert written["advisory"] == [
+        {"job": "pyright", "state": "passed"},
+        {"job": "vulture", "state": "passed"},
+    ]
     assert "CI Acceptance Report" in summary.read_text(encoding="utf-8")
     assert "ACCEPTED" in capsys.readouterr().out
 
@@ -174,21 +246,60 @@ def test_accept_rejects_missing_required_reports(
 def test_accept_rejects_missing_evidence(tmp_path: Path) -> None:
     coverage, sbom = write_reports(tmp_path / "reports")
 
-    status = main([
-        "accept",
-        "--evidence-dir",
-        str(tmp_path / "absent-evidence"),
-        "--commit",
-        COMMIT,
-        "--coverage",
-        str(coverage),
-        "--sbom",
-        str(sbom),
-        "--report",
-        str(tmp_path / "acceptance.json"),
-    ])
+    status = main(accept_arguments(tmp_path, tmp_path / "absent-evidence", coverage, sbom))
 
     assert status == 1
+
+
+def test_accept_rejects_an_empty_download_directory(tmp_path: Path) -> None:
+    """A failed artifact download leaves an empty (or absent) evidence directory."""
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    coverage, sbom = write_reports(tmp_path / "reports")
+
+    status = main(accept_arguments(tmp_path, evidence, coverage, sbom))
+
+    written = json.loads((tmp_path / "acceptance.json").read_text(encoding="utf-8"))
+
+    assert status == 1
+    assert len(written["failures"]) == len(REQUIRED_JOBS)
+
+
+def test_accept_rejects_coverage_below_the_policy_threshold(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence"
+    write_evidence(evidence)
+    coverage, sbom = write_reports(tmp_path / "reports", rate="0.99")
+
+    status = main(accept_arguments(tmp_path, evidence, coverage, sbom))
+
+    written = json.loads((tmp_path / "acceptance.json").read_text(encoding="utf-8"))
+
+    assert status == 1
+    assert any("below the required" in failure for failure in written["failures"])
+
+
+def test_accept_rejects_a_failing_required_job(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence"
+    write_evidence(evidence)
+    write_record(
+        evidence,
+        build_record(
+            job="smoke-test",
+            check_class=CheckClass.BLOCKING.value,
+            status=Status.FAILURE.value,
+            commit=COMMIT,
+            workflow_run_id="1-1",
+            exit_code=1,
+        ),
+    )
+    coverage, sbom = write_reports(tmp_path / "reports")
+
+    status = main(accept_arguments(tmp_path, evidence, coverage, sbom))
+
+    written = json.loads((tmp_path / "acceptance.json").read_text(encoding="utf-8"))
+
+    assert status == 1
+    assert "required job 'smoke-test' finished as failure" in written["failures"]
 
 
 def test_accept_rejects_unreadable_evidence(
@@ -199,30 +310,29 @@ def test_accept_rejects_unreadable_evidence(
     (evidence / "broken.json").write_text("{", encoding="utf-8")
     coverage, sbom = write_reports(tmp_path / "reports")
 
-    status = main([
-        "accept",
-        "--evidence-dir",
-        str(evidence),
-        "--commit",
-        COMMIT,
-        "--coverage",
-        str(coverage),
-        "--sbom",
-        str(sbom),
-        "--report",
-        str(tmp_path / "acceptance.json"),
-    ])
+    status = main(accept_arguments(tmp_path, evidence, coverage, sbom))
 
     assert status == 1
     assert "CI evidence error" in capsys.readouterr().err
 
 
-def test_audit_passes_for_clean_workflows(
+def test_accept_rejects_a_job_record_filed_under_the_wrong_name(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence"
+    write_evidence(evidence)
+    payload = json.loads((evidence / "smoke-test.json").read_text(encoding="utf-8"))
+    payload["job"] = "quality-gate"
+    (evidence / "smoke-test.json").write_text(json.dumps(payload), encoding="utf-8")
+    coverage, sbom = write_reports(tmp_path / "reports")
+
+    status = main(accept_arguments(tmp_path, evidence, coverage, sbom))
+
+    assert status == 1
+
+
+def test_audit_passes_for_the_repository_workflow(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from tests.regression.test_ci_workflows import build_workflow, write_workflow
-
-    write_workflow(tmp_path, build_workflow())
+    write_repository_workflow(tmp_path)
 
     assert main(["audit", "--root", str(tmp_path)]) == 0
     assert "Workflow audit PASSED" in capsys.readouterr().out
@@ -231,9 +341,7 @@ def test_audit_passes_for_clean_workflows(
 def test_module_main_block_exits_with_the_audit_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tests.regression.test_ci_workflows import build_workflow, write_workflow
-
-    write_workflow(tmp_path, build_workflow())
+    write_repository_workflow(tmp_path)
     monkeypatch.setattr(sys, "argv", ["cli", "audit", "--root", str(tmp_path)])
 
     with pytest.warns(RuntimeWarning), pytest.raises(SystemExit) as exit_info:
@@ -270,7 +378,9 @@ def test_render_markdown_handles_an_empty_decision() -> None:
 
     assert "ACCEPTED" in markdown
     assert "(no evidence recorded)" in markdown
+    assert "(none recorded)" in markdown
     assert decision_to_dict(decision)["observed"] == []
+    assert decision_to_dict(decision)["advisory"] == []
 
 
 def test_render_markdown_lists_failures_and_warnings() -> None:
@@ -283,3 +393,28 @@ def test_render_markdown_lists_failures_and_warnings() -> None:
     assert "produced no evidence" in markdown
     assert payload["accepted"] is False
     assert payload["failures"]
+    assert payload["advisory"] == [
+        {"job": "pyright", "state": "missing"},
+        {"job": "vulture", "state": "missing"},
+    ]
+
+
+def test_render_markdown_separates_advisory_execution_states() -> None:
+    records = [
+        build_record(
+            job=job,
+            check_class=CheckClass.ADVISORY.value,
+            status=Status.FAILURE.value,
+            commit=COMMIT,
+            workflow_run_id="1-1",
+            exit_code=1,
+            phase=ExecutionPhase.SETUP.value,
+        )
+        for job in ADVISORY_JOBS
+    ]
+
+    markdown = render_markdown(evaluate_acceptance(records, COMMIT))
+
+    assert "### Advisory checks (non-blocking)" in markdown
+    assert "| pyright | infrastructure-failure |" in markdown
+    assert "| vulture | infrastructure-failure |" in markdown

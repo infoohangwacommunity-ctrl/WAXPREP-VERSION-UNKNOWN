@@ -14,6 +14,7 @@ from waxprep.ci.acceptance import (
     REQUIRED_JOBS,
     TEST_CATEGORIES,
     CheckClass,
+    ExecutionPhase,
     JobRecord,
     Status,
     evaluate_acceptance,
@@ -32,6 +33,8 @@ def make_record(
     status: Status = Status.SUCCESS,
     commit: str = COMMIT,
     check_class: CheckClass = CheckClass.BLOCKING,
+    exit_code: int | None = 0,
+    phase: ExecutionPhase = ExecutionPhase.CHECK,
 ) -> JobRecord:
     return JobRecord(
         job=job,
@@ -40,7 +43,8 @@ def make_record(
         commit=commit,
         workflow_run_id="12345-1",
         recorded_at="2026-11-25T00:00:00+00:00",
-        exit_code=0,
+        exit_code=exit_code,
+        phase=phase,
     )
 
 
@@ -62,6 +66,7 @@ def test_all_required_jobs_succeed_and_advisories_succeed() -> None:
     assert decision.warnings == ()
     assert decision.commit == COMMIT
     assert dict(decision.observed)["quality-gate"] == "success"
+    assert decision.advisory == (("pyright", "passed"), ("vulture", "passed"))
 
 
 def test_required_jobs_cover_every_declared_test_category() -> None:
@@ -70,12 +75,16 @@ def test_required_jobs_cover_every_declared_test_category() -> None:
 
 
 def test_advisory_failure_is_a_warning_not_a_rejection() -> None:
-    records = successful_evidence()
     records = [
-        make_record(record.job, status=Status.FAILURE, check_class=CheckClass.ADVISORY)
+        make_record(
+            record.job,
+            status=Status.FAILURE,
+            check_class=CheckClass.ADVISORY,
+            exit_code=2,
+        )
         if record.job == "pyright"
         else record
-        for record in records
+        for record in successful_evidence()
     ]
 
     decision = evaluate_acceptance(records, COMMIT)
@@ -83,6 +92,7 @@ def test_advisory_failure_is_a_warning_not_a_rejection() -> None:
     assert decision.accepted is True
     assert decision.failures == ()
     assert any("pyright" in warning and "non-blocking" in warning for warning in decision.warnings)
+    assert any("exit code 2" in warning for warning in decision.warnings)
 
 
 def test_missing_advisory_evidence_is_a_warning() -> None:
@@ -158,7 +168,7 @@ def test_evidence_for_another_commit_rejects() -> None:
 
 def test_duplicate_evidence_rejects() -> None:
     records = successful_evidence()
-    records.append(make_record("quality-gate", status=Status.FAILURE))
+    records.append(make_record("quality-gate", status=Status.FAILURE, exit_code=1))
 
     decision = evaluate_acceptance(records, COMMIT)
 
@@ -195,3 +205,100 @@ def test_no_evidence_at_all_rejects_every_required_job() -> None:
 @pytest.mark.parametrize("value", ["a" * 40, "0" * 40])
 def test_full_commit_accepts_lowercase_hex(value: str) -> None:
     assert is_full_commit(value) is True
+
+
+@pytest.mark.parametrize(
+    ("status", "phase", "expected_state"),
+    [
+        (Status.SUCCESS, ExecutionPhase.CHECK, "passed"),
+        (Status.FAILURE, ExecutionPhase.CHECK, "failed"),
+        (Status.SKIPPED, ExecutionPhase.CHECK, "not-executed"),
+        (Status.CANCELLED, ExecutionPhase.CHECK, "cancelled"),
+        (Status.FAILURE, ExecutionPhase.SETUP, "infrastructure-failure"),
+        (Status.CANCELLED, ExecutionPhase.SETUP, "infrastructure-failure"),
+    ],
+)
+def test_advisory_execution_state_is_reported(
+    status: Status, phase: ExecutionPhase, expected_state: str
+) -> None:
+    records = [
+        make_record(
+            "pyright",
+            status=status,
+            check_class=CheckClass.ADVISORY,
+            exit_code=None if status is not Status.SUCCESS else 0,
+            phase=phase,
+        )
+        if record.job == "pyright"
+        else record
+        for record in successful_evidence()
+    ]
+
+    decision = evaluate_acceptance(records, COMMIT)
+
+    assert decision.accepted is True
+    assert dict(decision.advisory)["pyright"] == expected_state
+
+
+def test_missing_advisory_evidence_is_reported_as_missing_not_as_passed() -> None:
+    records = [record for record in successful_evidence() if record.job != "pyright"]
+
+    decision = evaluate_acceptance(records, COMMIT)
+
+    assert dict(decision.advisory)["pyright"] == "missing"
+    assert any("never executed" in warning for warning in decision.warnings)
+
+
+def test_stale_advisory_evidence_is_reported_as_stale() -> None:
+    records = [
+        make_record("vulture", commit=OTHER_COMMIT, check_class=CheckClass.ADVISORY)
+        if record.job == "vulture"
+        else record
+        for record in successful_evidence()
+    ]
+
+    decision = evaluate_acceptance(records, COMMIT)
+
+    assert dict(decision.advisory)["vulture"] == "stale-evidence"
+
+
+def test_advisory_infrastructure_failure_is_not_reported_as_a_check_result() -> None:
+    records = [
+        make_record(
+            "pyright",
+            status=Status.FAILURE,
+            check_class=CheckClass.ADVISORY,
+            exit_code=1,
+            phase=ExecutionPhase.SETUP,
+        )
+        if record.job == "pyright"
+        else record
+        for record in successful_evidence()
+    ]
+
+    decision = evaluate_acceptance(records, COMMIT)
+
+    assert decision.accepted is True
+    assert any(
+        "infrastructure failure, not a check result" in warning for warning in decision.warnings
+    )
+
+
+def test_advisory_job_recorded_as_blocking_is_flagged() -> None:
+    records = [
+        make_record("pyright", check_class=CheckClass.BLOCKING)
+        if record.job == "pyright"
+        else record
+        for record in successful_evidence()
+    ]
+
+    decision = evaluate_acceptance(records, COMMIT)
+
+    assert decision.accepted is True
+    assert any("classification is ignored" in warning for warning in decision.warnings)
+
+
+def test_advisory_checks_are_reported_in_policy_order() -> None:
+    decision = evaluate_acceptance(successful_evidence(), COMMIT)
+
+    assert tuple(job for job, _state in decision.advisory) == ADVISORY_JOBS

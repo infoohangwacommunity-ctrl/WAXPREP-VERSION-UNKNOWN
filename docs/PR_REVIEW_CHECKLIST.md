@@ -139,7 +139,9 @@ Ask these during review:
 - [ ] **No blocking check made advisory** — `pyright` and `vulture` remain the only advisory jobs
 - [ ] **Actions stay pinned** — any workflow change references full commit SHAs, not tags
 - [ ] **Workflow audit passes** — `uv run python -m waxprep.ci.cli audit` is clean
-- [ ] **Adversarial tests updated** — `tests/regression/test_ci_*.py` still prove skipped, cancelled, failed, missing and stale evidence are rejected
+- [ ] **Audit covers the structure, not just the text** — `needs`, timeouts, evidence artifact names/paths and the coverage/SBOM producer wiring are consistent with the acceptance policy
+- [ ] **Advisory reporting is honest** — a tool that never executed shows as `not-executed` or `infrastructure-failure`, never as `passed`
+- [ ] **Adversarial tests updated** — `tests/regression/test_ci_*.py` still prove skipped, cancelled, failed, missing, malformed and stale evidence are rejected
 
 ---
 

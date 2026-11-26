@@ -46,7 +46,23 @@ requirements were unmet, and fails.
 
 For advisory jobs (`pyright`, `vulture`) the same statuses appear, but only as
 warnings. Their workflow step uses `continue-on-error: true`, so the job is
-green while the record preserves the tool's real outcome.
+green while the record preserves the tool's real outcome (`steps.<id>.outcome`).
+Because a step that never ran has an empty outcome, the workflow also records
+`--phase setup` when the job failed before reaching the tool. The acceptance
+report therefore reports advisory jobs by execution state:
+
+| State | Meaning |
+| --- | --- |
+| `passed` | The tool ran and exited zero |
+| `failed` | The tool ran and failed (the record carries the exit code) |
+| `not-executed` | The job was skipped, so the tool never ran |
+| `infrastructure-failure` | The job failed during setup (uv sync, cache), before the tool |
+| `cancelled` | The run was cancelled before the tool finished |
+| `missing` | No evidence artifact was produced at all |
+| `stale-evidence` | The record names a different commit |
+
+None of these states changes the decision. They exist so that a tool that never
+ran is never described as a tool that passed.
 
 ## 4. Investigating a rejection
 
@@ -101,15 +117,43 @@ can. Local green output is useful for diagnosis, not for acceptance.
    blocking`).
 2. Add the id to `REQUIRED_JOBS` in `src/waxprep/ci/acceptance.py`.
 3. Add the id to `needs` of `ci-acceptance`.
-4. Run `uv run python -m waxprep.ci.cli audit`; it fails until every required
-   job records evidence and every action is pinned.
+4. Run `uv run python -m waxprep.ci.cli audit`; it fails until the job records
+   and uploads evidence under `ci-evidence-<id>`, is classified correctly, has a
+   positive timeout, and is listed in `needs` of `ci-acceptance`.
 5. Add or update a regression test in `tests/regression/`.
 
 Removing a required job requires the same changes in reverse and must be
 justified in the pull request; the acceptance policy forbids silently
 downgrading a blocking check to advisory.
 
-## 8. Required checks in branch protection
+## 8. What the audit enforces
+
+`uv run python -m waxprep.ci.cli audit` is a blocking job (`ci-audit`). Its
+rules:
+
+| Rule | Fails when |
+| --- | --- |
+| `workflow-invalid` | The file is not valid YAML, has no `jobs`/triggers, or a job is not a mapping |
+| `workflow-permissions` | Least-privilege `permissions` are absent |
+| `missing-trigger` | `push`, `pull_request` or `workflow_dispatch` is missing |
+| `action-not-pinned` | An action reference is a tag, branch or `docker://` image |
+| `missing-job` | A required, advisory or acceptance job is absent |
+| `unregistered-job` | A job exists that is neither required nor advisory |
+| `matrix-mismatch` | The test matrix diverges from `TEST_CATEGORIES` |
+| `missing-evidence-recording` | A job does not record evidence for the expected id |
+| `misclassified-evidence` | A job records evidence as the wrong blocking/advisory class |
+| `evidence-artifact-missing` / `evidence-artifact-mismatch` | A job does not upload `ci-evidence-<job>` from `ci-evidence/` |
+| `acceptance-download-mismatch` | `ci-acceptance` does not download `ci-evidence-*` or a required report |
+| `report-producer-mismatch` | A required report is not produced by its declared job, or acceptance validates another file |
+| `acceptance-report-missing` | Acceptance has no `--coverage` or `--sbom` argument |
+| `acceptance-not-always` | `ci-acceptance` does not use `if: always()` |
+| `acceptance-missing-dependency` / `acceptance-unknown-dependency` | `needs` omits a required job, or names an undeclared one |
+| `missing-timeout` | A job has no positive `timeout-minutes` |
+
+The audit does not evaluate GitHub expression semantics; only the run's evidence
+can establish what actually executed.
+
+## 9. Required checks in branch protection
 
 The repository accepts direct pushes to `main`, so branch protection is not part
 of Stage 10. If protection is enabled later, the required checks should be:

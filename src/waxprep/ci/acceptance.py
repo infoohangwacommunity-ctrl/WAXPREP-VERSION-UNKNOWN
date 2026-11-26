@@ -12,7 +12,8 @@ Acceptance rules (see ``docs/CI_ACCEPTANCE_POLICY.md``):
   ``cancelled``, ``skipped`` and anything unrecognised reject the commit;
 * every record must name the exact commit being assessed;
 * duplicate evidence never resolves to a pass;
-* advisory jobs are reported, and their failure never blocks acceptance.
+* advisory jobs are reported by execution state — passed, failed, never
+  executed, infrastructure failure, cancelled, missing — and never block.
 """
 
 from __future__ import annotations
@@ -67,6 +68,30 @@ class CheckClass(StrEnum):
     ADVISORY = "advisory"
 
 
+class ExecutionPhase(StrEnum):
+    """Which stage of a job produced the recorded status.
+
+    Advisory jobs run after environment preparation. Recording ``setup`` means
+    the check itself never ran, which is an infrastructure failure and must not
+    be reported as a failed or a passed check.
+    """
+
+    CHECK = "check"
+    SETUP = "setup"
+
+
+class AdvisoryState(StrEnum):
+    """How an advisory job ended, as reported in the decision."""
+
+    PASSED = "passed"
+    FAILED = "failed"
+    NOT_EXECUTED = "not-executed"
+    INFRASTRUCTURE_FAILURE = "infrastructure-failure"
+    CANCELLED = "cancelled"
+    MISSING = "missing"
+    STALE_EVIDENCE = "stale-evidence"
+
+
 @dataclass(frozen=True)
 class JobRecord:
     """One machine-readable job result recorded by the workflow."""
@@ -78,6 +103,7 @@ class JobRecord:
     workflow_run_id: str
     recorded_at: str
     exit_code: int | None = None
+    phase: ExecutionPhase = ExecutionPhase.CHECK
 
 
 @dataclass(frozen=True)
@@ -89,6 +115,7 @@ class AcceptanceDecision:
     failures: tuple[str, ...]
     warnings: tuple[str, ...]
     observed: tuple[tuple[str, str], ...]
+    advisory: tuple[tuple[str, str], ...] = ()
 
 
 def is_full_commit(value: str) -> bool:
@@ -128,21 +155,70 @@ def _check_required(index: dict[str, JobRecord], expected_commit: str, failures:
             failures.append(f"required job '{job}' finished as {record.status.value}")
 
 
-def _check_advisory(index: dict[str, JobRecord], expected_commit: str, warnings: list[str]) -> None:
+def _advisory_state(record: JobRecord | None, expected_commit: str) -> AdvisoryState:
+    """Classify an advisory job's recorded execution."""
+    if record is None:
+        return AdvisoryState.MISSING
+    if record.commit != expected_commit:
+        return AdvisoryState.STALE_EVIDENCE
+    if record.phase is ExecutionPhase.SETUP:
+        return AdvisoryState.INFRASTRUCTURE_FAILURE
+    if record.status is Status.SUCCESS:
+        return AdvisoryState.PASSED
+    if record.status is Status.CANCELLED:
+        return AdvisoryState.CANCELLED
+    if record.status is Status.SKIPPED:
+        return AdvisoryState.NOT_EXECUTED
+    return AdvisoryState.FAILED
+
+
+def _advisory_warning(
+    job: str, record: JobRecord | None, state: AdvisoryState, expected_commit: str
+) -> str | None:
+    """Render the warning for one advisory state (``None`` when it passed)."""
+    if state is AdvisoryState.PASSED:
+        return None
+    if state is AdvisoryState.MISSING:
+        return f"advisory job '{job}' produced no evidence: its check never executed (non-blocking)"
+    if state is AdvisoryState.STALE_EVIDENCE:
+        recorded = record.commit if record is not None else ""
+        return (
+            f"advisory job '{job}' recorded commit {recorded!r}, "
+            f"expected {expected_commit!r} (non-blocking)"
+        )
+    if state is AdvisoryState.INFRASTRUCTURE_FAILURE:
+        finished = record.status.value if record is not None else "unknown"
+        return (
+            f"advisory job '{job}' finished as {finished} before its check ran: "
+            "infrastructure failure, not a check result (non-blocking)"
+        )
+    if state is AdvisoryState.CANCELLED:
+        return f"advisory job '{job}' was cancelled before its check completed (non-blocking)"
+    if state is AdvisoryState.NOT_EXECUTED:
+        return f"advisory job '{job}' was skipped, so its check never executed (non-blocking)"
+    detail = record.status.value if record is not None else "unknown"
+    if record is not None and record.exit_code is not None:
+        detail = f"{detail}, exit code {record.exit_code}"
+    return f"advisory job '{job}' executed and failed ({detail}, non-blocking)"
+
+
+def _check_advisory(
+    index: dict[str, JobRecord], expected_commit: str, warnings: list[str]
+) -> tuple[tuple[str, str], ...]:
+    reported: list[tuple[str, str]] = []
     for job in ADVISORY_JOBS:
         record = index.get(job)
-        if record is None:
-            warnings.append(f"advisory job '{job}' produced no evidence")
-            continue
-        if record.commit != expected_commit:
+        if record is not None and record.check_class is not CheckClass.ADVISORY:
             warnings.append(
-                f"advisory job '{job}' recorded commit {record.commit!r}, "
-                f"expected {expected_commit!r}"
+                f"advisory job '{job}' is recorded as {record.check_class.value}; "
+                "its classification is ignored (non-blocking)"
             )
-        if record.status is not Status.SUCCESS:
-            warnings.append(
-                f"advisory job '{job}' finished as {record.status.value} (non-blocking)"
-            )
+        state = _advisory_state(record, expected_commit)
+        reported.append((job, state.value))
+        warning = _advisory_warning(job, record, state, expected_commit)
+        if warning is not None:
+            warnings.append(warning)
+    return tuple(reported)
 
 
 def _check_extras(index: dict[str, JobRecord], warnings: list[str]) -> None:
@@ -156,7 +232,7 @@ def evaluate_acceptance(records: Sequence[JobRecord], expected_commit: str) -> A
 
     A required job that is absent, skipped, cancelled, failed, misclassified or
     bound to another commit rejects the assessment. Advisory outcomes are
-    reported as warnings only.
+    reported by execution state and never reject.
     """
     failures: list[str] = []
     warnings: list[str] = []
@@ -169,7 +245,7 @@ def evaluate_acceptance(records: Sequence[JobRecord], expected_commit: str) -> A
 
     index = _index_records(records, failures)
     _check_required(index, expected_commit, failures)
-    _check_advisory(index, expected_commit, warnings)
+    advisory = _check_advisory(index, expected_commit, warnings)
     _check_extras(index, warnings)
 
     observed = tuple((job, index[job].status.value) for job in sorted(index))
@@ -179,4 +255,5 @@ def evaluate_acceptance(records: Sequence[JobRecord], expected_commit: str) -> A
         failures=tuple(failures),
         warnings=tuple(warnings),
         observed=observed,
+        advisory=advisory,
     )

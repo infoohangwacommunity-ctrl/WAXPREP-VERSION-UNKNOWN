@@ -15,6 +15,7 @@ def decision_to_dict(decision: AcceptanceDecision) -> dict[str, Any]:
         "failures": list(decision.failures),
         "warnings": list(decision.warnings),
         "observed": [{"job": job, "status": status} for job, status in decision.observed],
+        "advisory": [{"job": job, "state": state} for job, state in decision.advisory],
     }
 
 
@@ -36,11 +37,23 @@ def render_markdown(decision: AcceptanceDecision) -> str:
     else:
         lines.append("| (no evidence recorded) | - |")
 
+    lines.extend([
+        "",
+        "### Advisory checks (non-blocking)",
+        "",
+        "| Job | Execution |",
+        "| --- | --- |",
+    ])
+    if decision.advisory:
+        lines.extend(f"| {job} | {state} |" for job, state in decision.advisory)
+    else:
+        lines.append("| (none recorded) | - |")
+
     lines.extend(["", "### Failures (blocking)", ""])
     for failure in decision.failures or ("None",):
         lines.append(f"- {failure}")
 
-    lines.extend(["", "### Warnings (advisory, non-blocking)", ""])
+    lines.extend(["\n### Warnings (advisory, non-blocking)", ""])
     for warning in decision.warnings or ("None",):
         lines.append(f"- {warning}")
 

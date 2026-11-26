@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from waxprep.ci.acceptance import CheckClass, Status
+from waxprep.ci.acceptance import CheckClass, ExecutionPhase, Status
 from waxprep.ci.evidence import (
     EvidenceError,
     build_record,
@@ -37,6 +38,23 @@ def sbom_json(path: Path, payload: object) -> Path:
     return path
 
 
+def valid_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "job": "quality-gate",
+        "check_class": "blocking",
+        "status": "success",
+        "commit": COMMIT,
+        "workflow_run_id": "1-1",
+        "recorded_at": "2026-11-25T00:00:00+00:00",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def write_payload(path: Path, payload: dict[str, Any]) -> Path:
+    return sbom_json(path, payload)
+
+
 def test_parse_status_normalises_known_outcomes() -> None:
     assert parse_status("success") is Status.SUCCESS
     assert parse_status("skipped") is Status.SKIPPED
@@ -60,6 +78,7 @@ def test_build_record_uses_current_time_and_keeps_exit_code() -> None:
     assert record.check_class is CheckClass.BLOCKING
     assert record.status is Status.SUCCESS
     assert record.exit_code == 0
+    assert record.phase is ExecutionPhase.CHECK
     assert record.recorded_at
 
 
@@ -72,24 +91,34 @@ def test_build_record_accepts_an_explicit_timestamp() -> None:
         status="failure",
         commit=COMMIT,
         workflow_run_id="99-2",
+        phase="setup",
         recorded_at=moment,
     )
 
     assert record.recorded_at == "2026-11-25T12:00:00+00:00"
     assert record.exit_code is None
+    assert record.phase is ExecutionPhase.SETUP
 
 
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
         ({"job": ""}, "job id must not be empty"),
+        ({"job": "Quality Gate"}, "unusable job id"),
+        ({"job": "../escape"}, "unusable job id"),
         ({"commit": ""}, "commit must not be empty"),
         ({"check_class": "optional"}, "unrecognised check class"),
         ({"status": "neutral"}, "unrecognised job status"),
+        ({"phase": "deploy"}, "unrecognised execution phase"),
+        ({"workflow_run_id": "run-1"}, "unusable workflow_run_id"),
+        ({"workflow_run_id": "0-1"}, "unusable workflow_run_id"),
+        ({"workflow_run_id": ""}, "unusable workflow_run_id"),
+        ({"exit_code": 2}, "status 'success' with exit code 2"),
+        ({"status": "failure", "exit_code": 0}, "status 'failure' with exit code 0"),
     ],
 )
-def test_build_record_rejects_invalid_input(kwargs: dict[str, str], message: str) -> None:
-    arguments = {
+def test_build_record_rejects_invalid_input(kwargs: dict[str, Any], message: str) -> None:
+    arguments: dict[str, Any] = {
         "job": "quality-gate",
         "check_class": "blocking",
         "status": "success",
@@ -118,6 +147,7 @@ def test_write_and_read_record_round_trip(tmp_path: Path) -> None:
     assert restored == record
     assert record_to_dict(record)["status"] == "failure"
     assert record_to_dict(record)["exit_code"] == 1
+    assert record_to_dict(record)["phase"] == "check"
 
 
 def test_load_evidence_returns_records_in_name_order(tmp_path: Path) -> None:
@@ -170,15 +200,7 @@ def test_read_record_rejects_missing_field(tmp_path: Path) -> None:
 
 
 def test_read_record_rejects_unknown_check_class(tmp_path: Path) -> None:
-    payload = {
-        "job": "quality-gate",
-        "check_class": "optional",
-        "status": "success",
-        "commit": COMMIT,
-        "workflow_run_id": "1-1",
-        "recorded_at": "2026-11-25T00:00:00+00:00",
-    }
-    path = sbom_json(tmp_path / "class.json", payload)
+    path = write_payload(tmp_path / "class.json", valid_payload(check_class="optional"))
 
     with pytest.raises(EvidenceError, match="unknown check_class"):
         read_record(path)
@@ -186,19 +208,62 @@ def test_read_record_rejects_unknown_check_class(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("value", [True, "0", 1.5])
 def test_read_record_rejects_non_integer_exit_code(tmp_path: Path, value: object) -> None:
-    payload = {
-        "job": "quality-gate",
-        "check_class": "blocking",
-        "status": "success",
-        "commit": COMMIT,
-        "workflow_run_id": "1-1",
-        "recorded_at": "2026-11-25T00:00:00+00:00",
-        "exit_code": value,
-    }
-    path = sbom_json(tmp_path / "exit.json", payload)
+    path = write_payload(tmp_path / "exit.json", valid_payload(exit_code=value))
 
     with pytest.raises(EvidenceError, match="non-integer exit_code"):
         read_record(path)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"job": "Bad Job"}, "unusable job id"),
+        ({"workflow_run_id": "workflow-7"}, "unusable workflow_run_id"),
+        ({"recorded_at": "yesterday"}, "not an ISO 8601 timestamp"),
+        ({"recorded_at": "2026-11-25T00:00:00"}, "without a timezone"),
+        ({"recorded_at": "2026-11-25"}, "without a timezone"),
+        ({"exit_code": 4}, "status 'success' with exit code 4"),
+        ({"status": "failure", "exit_code": 0}, "status 'failure' with exit code 0"),
+        ({"phase": "deploy"}, "unknown phase"),
+        ({"phase": 7}, "non-string phase"),
+    ],
+)
+def test_read_record_rejects_inconsistent_payloads(
+    tmp_path: Path, overrides: dict[str, Any], message: str
+) -> None:
+    payload = valid_payload(**overrides)
+    file_name = "quality-gate.json" if payload.get("job") == "quality-gate" else "record.json"
+    if not isinstance(payload.get("job"), str) or payload["job"] != "quality-gate":
+        file_name = "record.json"
+    path = write_payload(tmp_path / file_name, payload)
+
+    with pytest.raises(EvidenceError, match=message):
+        read_record(path)
+
+
+def test_read_record_rejects_a_job_that_does_not_match_its_file_name(tmp_path: Path) -> None:
+    path = write_payload(tmp_path / "smoke-test.json", valid_payload(job="quality-gate"))
+
+    with pytest.raises(EvidenceError, match="does not match its file name"):
+        read_record(path)
+
+
+def test_read_record_accepts_a_setup_phase_advisory_record(tmp_path: Path) -> None:
+    path = write_payload(
+        tmp_path / "pyright.json",
+        valid_payload(
+            job="pyright",
+            check_class="advisory",
+            status="failure",
+            exit_code=1,
+            phase="setup",
+        ),
+    )
+
+    record = read_record(path)
+
+    assert record.phase is ExecutionPhase.SETUP
+    assert record.status is Status.FAILURE
 
 
 def test_valid_coverage_report_passes(tmp_path: Path) -> None:
