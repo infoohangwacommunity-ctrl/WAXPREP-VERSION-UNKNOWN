@@ -7,6 +7,10 @@ threshold, or adding a runtime subsystem.
 Baseline commit: `6be6f6ba954ed8f4c0556a34816d999b30575556` (Stage 09 corrections).
 This report describes the change applied on top of that baseline.
 
+> The post-implementation review pass is recorded separately in
+> `docs/STAGE_10_CORRECTION_REPORT.md`. Where the two disagree, the correction
+> report and the current tests are authoritative.
+
 ## 1. What changed
 
 | File | Change |
