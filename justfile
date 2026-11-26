@@ -8,7 +8,7 @@ default: check
 # ── Static Analysis ──────────────────────────────────────────────────────────
 
 # Run all static analysis tools (blocking tools only — matches CI quality-gate)
-check: lint format type import-linter semgrep lockfile-check supply-chain test coverage
+check: lint format type import-linter semgrep lockfile-check supply-chain ci-audit test coverage
 
 # Run ruff linting (expanded rules)
 lint:
@@ -51,6 +51,10 @@ sbom:
 # Generate the Dependency Trust Intelligence report
 trust:
 	uv run python -m waxprep.supplychain.cli trust --output artifacts/dependency-trust.md
+
+# Audit workflow integrity (Stage 10: pinning, permissions, jobs, matrix, evidence)
+ci-audit:
+	uv run python -m waxprep.ci.cli audit
 
 # Run all tests
 test:

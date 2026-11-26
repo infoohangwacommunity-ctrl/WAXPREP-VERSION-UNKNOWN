@@ -45,3 +45,8 @@ htmlcov/
 
 # Generated supply-chain evidence (CI uploads artifacts; never commit them)
 artifacts/
+
+# Generated CI evidence (written by the workflow and the local accept command)
+ci-evidence/
+ci-acceptance/
+coverage.xml

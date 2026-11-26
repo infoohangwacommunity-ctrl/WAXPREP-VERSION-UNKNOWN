@@ -2,7 +2,7 @@
 # `make check` runs the full local equivalent of the CI blocking gate.
 # One command. Deterministic. No paid APIs. Usable by humans and AI agents.
 
-.PHONY: check lint format type import-linter semgrep lockfile-check supply-chain pip-audit sbom trust test coverage vulture pyright help
+.PHONY: check lint format type import-linter semgrep lockfile-check supply-chain pip-audit sbom trust ci-audit test coverage vulture pyright help
 
 # Default target
 default: check
@@ -11,7 +11,7 @@ default: check
 # Blocking gate — `make check` runs all of these (matches CI quality-gate)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-check: lint format type import-linter semgrep lockfile-check supply-chain test coverage
+check: lint format type import-linter semgrep lockfile-check supply-chain ci-audit test coverage
 
 lint: ## Run ruff linting
 	uv run ruff check src/ tests/
@@ -44,6 +44,9 @@ sbom: ## Generate the CycloneDX SBOM for runtime dependencies
 
 trust: ## Generate the Dependency Trust Intelligence report
 	uv run python -m waxprep.supplychain.cli trust --output artifacts/dependency-trust.md
+
+ci-audit: ## Audit workflow integrity (Stage 10: pinning, permissions, jobs, matrix, evidence)
+	uv run python -m waxprep.ci.cli audit
 
 test: ## Run all tests
 	uv run pytest

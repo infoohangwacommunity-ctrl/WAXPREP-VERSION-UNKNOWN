@@ -130,7 +130,20 @@ Ask these during review:
 
 ---
 
-## 9. Stage 08: Universal Hardcoding Detection
+## 9. Stage 10: CI Acceptance and Evidence
+
+- [ ] **Acceptance comes from evidence** — the PR links a `CI — Quality Gate` run for the exact HEAD commit, and `CI Acceptance — Independent Evidence Verification` succeeded
+- [ ] **No skipped required job** — every blocking job's evidence record says `success`; a skipped or cancelled check is not claimed as passing
+- [ ] **New commit, new run** — an earlier accepted run is not reused for a newer commit
+- [ ] **No threshold weakened** — coverage, lint, type, detector and supply-chain settings are unchanged unless the PR explains why
+- [ ] **No blocking check made advisory** — `pyright` and `vulture` remain the only advisory jobs
+- [ ] **Actions stay pinned** — any workflow change references full commit SHAs, not tags
+- [ ] **Workflow audit passes** — `uv run python -m waxprep.ci.cli audit` is clean
+- [ ] **Adversarial tests updated** — `tests/regression/test_ci_*.py` still prove skipped, cancelled, failed, missing and stale evidence are rejected
+
+---
+
+## 10. Stage 08: Universal Hardcoding Detection
 
 When modifying code in protected modules (`waxprep.messaging`, `waxprep.context`, `waxprep.services`):
 

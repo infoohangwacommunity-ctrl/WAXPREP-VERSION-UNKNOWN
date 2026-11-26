@@ -486,6 +486,29 @@ def test_get_raises_key_error_for_missing():
 
 ---
 
+## Continuous Integration (Stage 10)
+
+`.github/workflows/quality-gate.yml` runs the quality systems and then decides
+acceptance from recorded evidence. When changing anything that CI runs:
+
+1. Keep every action reference pinned to a full 40-character commit SHA.
+2. Keep the top-level `permissions: contents: read`; add no broader scope.
+3. Any new blocking job needs `timeout-minutes`, an evidence step
+   (`--job <id> --class blocking`) and an entry in `REQUIRED_JOBS` plus
+   `ci-acceptance.needs`.
+4. Never replace `set -euo pipefail` with `|| true`, and never move a blocking
+   check to the advisory class to obtain a green run.
+5. Run the audits before pushing:
+
+```bash
+uv run python -m waxprep.ci.cli audit      # workflow integrity
+uv run pytest tests/regression -q          # acceptance-enforcement tests
+```
+
+Acceptance is not a claim in a pull request. It exists only when the workflow
+has executed for that exact commit and the `CI Acceptance — Independent Evidence
+Verification` job has succeeded. See `docs/CI_ACCEPTANCE_POLICY.md`.
+
 ## Code Quality
 
 ### Linting

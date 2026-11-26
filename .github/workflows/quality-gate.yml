@@ -1,21 +1,84 @@
-name: Quality Gate
+name: CI — Quality Gate
+
+# Stage 10: this workflow is the acceptance system, not another quality
+# inspector. Each job executes one established quality system (Stages 05–09)
+# and records machine-readable evidence. The `ci-acceptance` job decides
+# acceptance from that evidence alone: a skipped, cancelled, failed, missing or
+# stale-commit result can never be reported as a pass.
+# See docs/STAGE_10_CI_SPECIFICATION.md and docs/CI_ACCEPTANCE_POLICY.md.
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
+# A newer pull-request run supersedes the older one; a main run is never
+# cancelled, because its evidence is the record for that commit.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 0. Setup — single uv sync + shared package cache (run once)
+  # 0a. CI audit — the acceptance system audits its own definition
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ci-audit:
+    name: CI Audit — Workflow Integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
+        with:
+          enable-cache: true
+          python-version: '3.14'
+
+      - name: Restore uv package cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/uv
+          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            waxprep-uv-${{ runner.os }}-
+
+      - name: Verify dev environment
+        run: uv sync --extra dev --frozen
+
+      - name: Audit workflow definitions (pinning, triggers, jobs, matrix, evidence)
+        run: uv run python -m waxprep.ci.cli audit
+
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job ci-audit --class blocking --status "${{ job.status }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-ci-audit
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 0b. Setup — single uv sync + shared package cache (run once)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   quality-setup:
     name: Prepare environment (single uv sync + shared cache)
@@ -26,9 +89,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.14'
+
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
@@ -37,7 +101,7 @@ jobs:
 
       - name: Restore uv package cache
         id: cache-restore
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -48,15 +112,34 @@ jobs:
         if: steps.cache-restore.outputs.cache-hit != 'true'
         run: uv sync --extra dev
 
+      # The cache is an optimisation only: every job still verifies the locked
+      # environment with `uv sync --frozen` before running anything.
       - name: Save uv package cache
         if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
 
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job quality-setup --class blocking --status "${{ job.status }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-quality-setup
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
+
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 1. Quality Gate — unified blocking static analysis (fast failure)
+  # 1. Quality Gate — Stages 06–09 blocking static analysis (fast failure)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   quality-gate:
     name: Quality Gate — Blocking Static Analysis
@@ -68,9 +151,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.14'
+
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
@@ -78,7 +162,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -117,8 +201,25 @@ jobs:
           # whole-repository scan, so dependency trees are never inspected.
           uv run python -m waxprep.detector.cli --format summary
 
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job quality-gate --class blocking --status "${{ job.status }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-quality-gate
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
+
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 2. Tests — all categories in parallel (matrix)
+  # 2. Tests — every declared category in parallel (matrix)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   tests:
     name: Tests — ${{ matrix.category }}
@@ -128,15 +229,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        category: [unit, integration, contract, lifecycle, architecture, configuration]
+        category: [unit, integration, contract, lifecycle, architecture, configuration, regression]
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.14'
+
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
@@ -144,7 +246,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -156,6 +258,23 @@ jobs:
 
       - name: Run ${{ matrix.category }} tests
         run: uv run pytest tests/${{ matrix.category }} -m ${{ matrix.category }} --tb=short -o addopts=""
+
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job "tests-${{ matrix.category }}" --class blocking --status "${{ job.status }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-tests-${{ matrix.category }}
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 3. Coverage gate — full suite, 100% threshold (never lower)
@@ -170,9 +289,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.14'
+
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
@@ -180,7 +300,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -206,6 +326,23 @@ jobs:
           path: coverage.xml
           retention-days: 30
 
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job coverage-gate --class blocking --status "${{ job.status }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-coverage-gate
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
+
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # 4. Smoke test — app boot + healthcheck (blocking)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -219,9 +356,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.14'
+
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
@@ -229,7 +367,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -261,8 +399,97 @@ jobs:
           kill "$SERVER_PID" 2>/dev/null
           echo "Smoke test PASSED: app boots and both health endpoints respond"
 
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job smoke-test --class blocking --status "${{ job.status }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-smoke-test
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
+
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 5a. Pyright — advisory (does not fail the gate)
+  # 5. Supply-chain evidence — SBOM + trust report required by acceptance
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  supply-chain-evidence:
+    name: Supply-Chain Evidence — SBOM + Trust Report
+    needs: [quality-setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
+        with:
+          enable-cache: true
+          python-version: '3.14'
+
+      - name: Restore uv package cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/uv
+          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            waxprep-uv-${{ runner.os }}-
+
+      - name: Verify dev environment
+        run: uv sync --extra dev --frozen
+
+      - name: Verify lockfile integrity
+        run: uv lock --check
+
+      - name: Generate CycloneDX SBOM (required evidence)
+        run: uv run python -m waxprep.supplychain.cli sbom --output artifacts/waxprep-sbom.cdx.json
+
+      - name: Generate Dependency Trust Intelligence report (advisory)
+        continue-on-error: true
+        run: >-
+          uv run python -m waxprep.supplychain.cli trust
+          --output artifacts/dependency-trust.md
+
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job supply-chain-evidence --class blocking --status "${{ job.status }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-supply-chain-evidence
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: supply-chain-evidence
+          path: artifacts/
+          retention-days: 90
+          if-no-files-found: error
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 6a. Pyright — advisory (reported, never blocks acceptance)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   pyright:
     name: Pyright — Advisory Type Check
@@ -274,9 +501,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.14'
+
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
@@ -284,7 +512,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -294,11 +522,30 @@ jobs:
       - name: Verify dev environment
         run: uv sync --extra dev --frozen
 
-      - name: Run pyright (advisory — does not block)
-        run: uv run pyright src/ || true
+      - name: Run pyright (advisory — recorded, does not block)
+        id: pyright
+        continue-on-error: true
+        run: uv run pyright src/
+
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job pyright --class advisory --status "${{ steps.pyright.outcome }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-pyright
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 5b. Vulture — advisory dead code report (does not fail the gate)
+  # 6b. Vulture — advisory dead code report (reported, never blocks acceptance)
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   vulture:
     name: Vulture — Advisory Dead Code Report
@@ -310,9 +557,10 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.14'
+
       - name: Set up uv
         uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
         with:
@@ -320,7 +568,7 @@ jobs:
           python-version: '3.14'
 
       - name: Restore uv package cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ~/.cache/uv
           key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
@@ -330,46 +578,118 @@ jobs:
       - name: Verify dev environment
         run: uv sync --extra dev --frozen
 
-      - name: Run vulture (advisory — does not block)
-        run: uv run vulture src/waxprep/ || true
+      - name: Run vulture (advisory — recorded, does not block)
+        id: vulture
+        continue-on-error: true
+        run: uv run vulture src/waxprep/
+
+      - name: Record CI evidence
+        if: always()
+        run: >
+          uv run python -m waxprep.ci.cli record
+          --job vulture --class advisory --status "${{ steps.vulture.outcome }}"
+          --commit "${{ github.sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}"
+          --output ci-evidence
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-evidence-vulture
+          path: ci-evidence/
+          retention-days: 30
+          if-no-files-found: error
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 6. Gate aggregate — overall status (final gate decision, blocking only)
+  # 7. Acceptance — the only job allowed to declare a commit accepted
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  gate-aggregate:
-    name: Gate Aggregate — Overall Status
-    needs: [quality-setup, quality-gate, tests, coverage-gate, smoke-test]
+  ci-acceptance:
+    name: CI Acceptance — Independent Evidence Verification
+    needs:
+      - ci-audit
+      - quality-setup
+      - quality-gate
+      - tests
+      - coverage-gate
+      - smoke-test
+      - supply-chain-evidence
+      - pyright
+      - vulture
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Report overall gate status
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d
+        with:
+          enable-cache: true
+          python-version: '3.14'
+
+      - name: Restore uv package cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/uv
+          key: waxprep-uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            waxprep-uv-${{ runner.os }}-
+
+      - name: Verify dev environment
+        run: uv sync --extra dev --frozen
+
+      - name: Bind evidence to the assessed commit
         run: |
-          echo "## Quality Gate Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| quality-setup | ${{ needs.quality-setup.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| quality-gate | ${{ needs.quality-gate.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| tests | ${{ needs.tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| coverage-gate | ${{ needs.coverage-gate.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| smoke-test | ${{ needs.smoke-test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Advisory (non-blocking)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The following jobs run independently of the aggregate and do not block the gate:" >> $GITHUB_STEP_SUMMARY
-          echo "- pyright (advisory type check)" >> $GITHUB_STEP_SUMMARY
-          echo "- vulture (advisory dead code report)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Their results are reported in their own job summaries, not here, so an advisory" >> $GITHUB_STEP_SUMMARY
-          echo "failure can never be mistaken for a blocking gate failure." >> $GITHUB_STEP_SUMMARY
-      - name: Fail gate if any blocking job failed or was cancelled
-        if: >
-          contains(needs.*.result, 'failure') ||
-          contains(needs.*.result, 'cancelled')
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}" || {
+            echo "Checked-out HEAD does not match the assessed commit ${{ github.sha }}"
+            exit 1
+          }
+
+      # Downloads continue on error so that a missing artifact becomes an
+      # explicit rejection with a reason, never a silent pass.
+      - name: Download job evidence
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          pattern: ci-evidence-*
+          path: evidence
+          merge-multiple: true
+
+      - name: Download coverage report
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          name: coverage-report
+          path: reports
+
+      - name: Download supply-chain evidence
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          name: supply-chain-evidence
+          path: reports/supply-chain
+
+      - name: Decide acceptance from recorded evidence
         run: |
-          echo "One or more blocking jobs failed or were cancelled. Gate FAILED."
-          exit 1
-      - name: Gate passed
-        if: success()
-        run: echo "All blocking jobs passed. Gate PASSED."
+          uv run python -m waxprep.ci.cli accept \
+            --evidence-dir evidence \
+            --commit "${{ github.sha }}" \
+            --coverage reports/coverage.xml \
+            --sbom reports/supply-chain/waxprep-sbom.cdx.json \
+            --report ci-acceptance/acceptance.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload acceptance decision
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ci-acceptance-${{ github.sha }}
+          path: ci-acceptance/
+          retention-days: 90
+          if-no-files-found: error

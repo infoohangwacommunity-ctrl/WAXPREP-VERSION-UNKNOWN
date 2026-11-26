@@ -1,10 +1,10 @@
 # WaxPrep Foundation
 
-**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 09).**
+**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 10).**
 
-Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Stage 09 adds dependency and supply-chain security to the same gate: pip-audit without blanket ignores, a scoped expiring exception register, lockfile hashes, dependency source restrictions, license policy, OSV malicious-package intelligence, a CycloneDX SBOM and Dependabot proposals.
+Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Stage 09 adds dependency and supply-chain security to the same gate: pip-audit without blanket ignores, a scoped expiring exception register, lockfile hashes, dependency source restrictions, license policy, OSV malicious-package intelligence, a CycloneDX SBOM and Dependabot proposals. Stage 10 turns that collection into an acceptance system: every job records machine-readable evidence, the workflow audits its own definition, and acceptance is decided only from evidence bound to the exact commit being assessed.
 
-**Stage 09 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
+**Stage 10 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
 ## Stage 01: Programming Language
 - Python 3.14+ (tested on 3.14; compatibility with later versions not proven)
@@ -63,6 +63,7 @@ src/waxprep/
 │   └── tool.py          # ToolRegistry + Tool protocol
 ├── detector/            # Stage 08 hardcoding detector (development-time only)
 ├── supplychain/         # Stage 09 dependency & supply-chain gate (development-time only)
+├── ci/                  # Stage 10 CI evidence, acceptance and workflow audit (development-time only)
 └── adapters/            # Fake adapter implementations (source of truth)
     ├── __init__.py
     ├── fake_channel.py  # FakeChannelAdapter
@@ -109,9 +110,12 @@ tests/
 │   ├── test_scanners.py               # pip-audit, OSV and license adapters
 │   ├── test_checks.py                 # Aggregate trust assessment
 │   └── test_outputs.py                # SBOM, reports and CLI
-├── regression/        # Behavior preservation
+├── regression/        # Behavior preservation + Stage 10 adversarial CI tests
 │   ├── __init__.py
-│   └── (regression tests)
+│   ├── test_ci_acceptance.py         # Acceptance rejects skipped/cancelled/missing/stale evidence
+│   ├── test_ci_evidence.py           # Evidence records and required-report validation
+│   ├── test_ci_cli.py                # record / accept / audit CLI and reporting
+│   └── test_ci_workflows.py          # Workflow pinning, triggers, jobs, matrix, evidence audit
 └── conftest.py                        # Shared fixtures
 
 
@@ -220,20 +224,22 @@ Configuration lives in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`, `[tool.py
 
 Consolidated CI quality gate in `.github/workflows/quality-gate.yml`:
 
-**Trigger:** push to `main` and pull requests targeting `main`.
+**Trigger:** push to `main`, pull requests targeting `main`, and manual dispatch (Stage 10).
 
 **Blocking jobs** (all must pass):
+- `ci-audit` — workflow integrity: action pinning, permissions, triggers, jobs, matrix and evidence recording (Stage 10)
 - `quality-setup` — uv sync + shared package cache
-- `quality-gate` — ruff lint, ruff format, mypy (strict), import-linter, semgrep, dependency and supply-chain gate (Stage 09)
-- `tests` — matrix of unit, integration, contract, lifecycle, architecture, configuration
-- `coverage-gate` — full suite with `--cov-fail-under=100`
+- `quality-gate` — ruff lint, ruff format, mypy (strict), import-linter, semgrep, dependency and supply-chain gate (Stage 09), hardcoding detector (Stage 08)
+- `tests` — matrix of unit, integration, contract, lifecycle, architecture, configuration, regression
+- `coverage-gate` — full suite with `--cov-fail-under=100` and the coverage XML artifact
 - `smoke-test` — app boot + liveness/readiness health checks
+- `supply-chain-evidence` — CycloneDX SBOM (required evidence) and trust report
 
-**Advisory jobs** (run independently, do not block the gate):
-- `pyright` — strict type check (`|| true`)
-- `vulture` — dead code report (`|| true`)
+**Advisory jobs** (recorded, never block acceptance):
+- `pyright` — strict type check (`continue-on-error`, outcome recorded)
+- `vulture` — dead code report (`continue-on-error`, outcome recorded)
 
-**Aggregate job** (`gate-aggregate`) reports the blocking job status and fails if any blocking job fails or is cancelled.
+**Acceptance job** (`ci-acceptance`) downloads every evidence artifact, binds it to `github.sha`, validates the coverage XML and SBOM contents, writes a JSON decision and the job summary, and fails unless every required job succeeded for that exact commit. A skipped, cancelled, failed, missing or stale result is a rejection, never a pass. See Stage 10 below.
 
 **Vulnerability exceptions:** pip-audit runs without `--ignore-vuln`. `GHSA-53pm-wgxf-c6qf` (wcmatch 8.5.2) is recorded in `security/dependency-policy/vulnerability-exceptions.toml`, scoped to that package and version and expiring 2026-12-22. Expired exceptions and every uncovered advisory fail the gate.
 
@@ -309,6 +315,31 @@ uv run python -m waxprep.detector.cli --format summary
 ```
 This inspects Python in `src/`, the active docs, `README.md`, `tests/README.md` and `pyproject.toml`. It does not scan the whole repository (which would include dependency trees and test fixtures).
 
+## Stage 10: Continuous Integration
+
+Stage 10 does not add another quality inspector. It makes the established systems independently executable, independently evidenced and independently verifiable, so a change is accepted because the systems actually ran and succeeded for exactly that commit.
+
+**Architecture:** triggers → one job per responsibility (workflow audit, environment, static analysis + Stage 08/09 gates, test matrix, coverage, smoke test, supply-chain evidence, advisory pyright/vulture) → per-job evidence artifacts → a single `ci-acceptance` job that decides and reports.
+
+**Evidence:** every job writes `ci-evidence/<job>.json` (job, classification, status, commit, run id, timestamp) and uploads it, including on failure (`if: always()`). Required reports are coverage XML and the CycloneDX SBOM; both are validated by content, not by existence.
+
+**Acceptance rules:** a full 40-character commit SHA is required; `git rev-parse HEAD` must equal `github.sha`; every required job needs exactly one record, classified blocking, naming that commit, with status `success`; coverage `line-rate` must meet 1.0; every SBOM component needs a `purl`. Anything else is rejected with a stated reason. Advisory failures are warnings. There is no override flag.
+
+**Workflow audit:** `uv run python -m waxprep.ci.cli audit` fails if any action reference is a mutable tag, if least-privilege `permissions` are missing, if a required trigger/job is absent, if the tests matrix drifts from the declared categories, or if a required job stops recording evidence. All actions are pinned to full commit SHAs.
+
+**Commands:**
+```bash
+uv run python -m waxprep.ci.cli audit              # workflow integrity
+uv run python -m waxprep.ci.cli accept --help      # evidence-driven decision (CI use)
+uv run pytest tests/regression -q                  # adversarial CI tests
+```
+
+**Adversarial testing:** `tests/regression/test_ci_*.py` prove that failed, cancelled, skipped, missing, duplicate, misclassified and stale-commit evidence all prevent acceptance, while advisory failures only warn. The workflow audit has mutation tests for unpinned actions, missing permissions, missing triggers/jobs, matrix drift and absent evidence recording.
+
+**Documentation:** [docs/STAGE_10_CI_SPECIFICATION.md](docs/STAGE_10_CI_SPECIFICATION.md), [docs/CI_OPERATIONS.md](docs/CI_OPERATIONS.md), [docs/CI_ACCEPTANCE_POLICY.md](docs/CI_ACCEPTANCE_POLICY.md), [docs/CI_SECURITY.md](docs/CI_SECURITY.md).
+
+**Known limitations:** `Dependency Review` is a separate workflow and cannot be consumed via `needs`, so it must be a required check in branch protection; 100% coverage refers to the measured scope (`waxprep` minus the documented `detector/quality_gate.py` exclusion); `tests/detector/` and `tests/supplychain/` run inside the coverage job rather than as matrix categories; evidence must be regenerated for every new commit.
+
 ## Stage 09: Dependency and Supply-Chain Security
 
 Development and release tooling that protects the external software WaxPrep depends on. It is separate from Stage 08, is never imported by the request path, and adds no runtime service or database.
@@ -357,6 +388,11 @@ All project documentation is organized in the `docs/` folder:
 - `docs/ARCHITECTURE_BOUNDARIES.md` — Package dependency rules and what each layer may import
 - `docs/DETECTOR_SPECIFICATION.md` — Universal Hardcoding Detection rules (Stage 08)
 - `docs/security/STAGE_09_DEPENDENCY_SECURITY.md` — Dependency and supply-chain controls (Stage 09)
+- `docs/STAGE_10_CI_SPECIFICATION.md` — CI architecture, execution model and acceptance rules (Stage 10)
+- `docs/CI_OPERATIONS.md` — Running, reading, investigating and re-running the pipeline (Stage 10)
+- `docs/CI_ACCEPTANCE_POLICY.md` — Blocking versus advisory, evidence requirements and the decision table (Stage 10)
+- `docs/CI_SECURITY.md` — Workflow permissions, action pinning, cache integrity and tool evaluation (Stage 10)
+- `docs/STAGE_10_IMPLEMENTATION_REPORT.md` — Stage 10 implementation results and limitations
 - `docs/security/DEPENDENCY_EXCEPTION_POLICY.md` — Vulnerability exception register and expiry rules
 
 ### Archive (Historical/Superseded)
@@ -465,12 +501,20 @@ With coverage:
 uv run pytest tests/ -v --cov=waxprep --cov-report=term-missing
 ```
 
-Local quality gate (matches CI blocking checks):
+Local quality gate (matches CI blocking checks, including the Stage 10 workflow audit):
 
 ```bash
 make check
 # or
 just check
+```
+
+Acceptance evidence can only be produced by a workflow run. The local equivalent
+of the acceptance decision is the adversarial regression suite:
+
+```bash
+uv run pytest tests/regression -q
+uv run python -m waxprep.ci.cli audit
 ```
 
 
