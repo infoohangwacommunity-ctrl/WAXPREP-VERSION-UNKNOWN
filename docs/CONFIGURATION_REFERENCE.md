@@ -22,9 +22,9 @@ produces a clear validation error without exposing secrets.
 | Name | Environment Variable | Data Type | Default | Required in Production | Sensitive | Allowed Values / Validation | Purpose |
 |------|---------------------|-----------|---------|----------------------|-----------|----------------------------|---------|
 | Environment | `WAXPREP_ENVIRONMENT` | `Environment` enum | `development` | Yes — must be explicitly set | No | `development`, `test`, `staging`, `production` | Identifies the active deployment environment |
-| Host | `WAXPREP_HOST` | `str` | `0.0.0.0` | Recommended | No | Non-empty string | Network interface to bind the ASGI server to |
-| Port | `WAXPREP_PORT` | `int` | `8000` | Recommended | No | Integer 1–65535 | TCP port the ASGI server listens on |
-| Log Level | `WAXPREP_LOG_LEVEL` | `LogLevel` enum | `INFO` | Recommended | No | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | Structured logging verbosity (case-insensitive) |
+| Host | `WAXPREP_HOST` | `str` | `0.0.0.0` | Yes — must be explicitly set | No | Non-empty string | Network interface to bind the ASGI server to |
+| Port | `WAXPREP_PORT` | `int` | `8000` | Yes — must be explicitly set | No | Integer 1–65535 | TCP port the ASGI server listens on |
+| Log Level | `WAXPREP_LOG_LEVEL` | `LogLevel` enum | `INFO` | Yes — must be explicitly set | No | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | Structured logging verbosity (case-insensitive) |
 
 ## Validation Rules
 
@@ -37,8 +37,8 @@ produces a clear validation error without exposing secrets.
   so `info` and `INFO` behave identically. Invalid values are rejected.
 - **Defaults**: The development defaults themselves pass validation. The application cannot
   start with invalid defaults.
-- **Production**: When `WAXPREP_ENVIRONMENT=production`, the deployment must explicitly
-  supply the value. A production instance must not accidentally identify itself as `development`.
+- **Production**: When `WAXPREP_ENVIRONMENT=production`, host, port, and log level must be
+  supplied explicitly. Relying on development defaults in production is rejected.
 
 ## Configuration Source Precedence
 
@@ -52,14 +52,17 @@ produces a clear validation error without exposing secrets.
 
 OS environment variables always win over `.env` file values.
 
+Safe origin diagnostics are available via `Settings.configuration_sources()`, which reports
+whether each field came from `environment`, `env_file`, or `default` without exposing values.
+
 ## Unknown Variable Detection
 
 Pydantic Settings ignores unknown OS environment variables by default. This means a typo
 such as `WAXPREP_PORRT=8000` would silently fall back to the default port without warning.
 
-WaxPrep addresses this with an explicit check that inspects the process environment for
-unsupported `WAXPREP_` variables at import time. Known misspellings are mapped to their
-correct names and produce actionable warnings.
+WaxPrep addresses this with an explicit check that inspects both the process environment and
+the local `.env` file for unsupported `WAXPREP_` variables during `load_settings()`.
+Known misspellings are mapped to their correct names and produce actionable warnings.
 
 Known misspellings detected:
 
@@ -70,18 +73,26 @@ Known misspellings detected:
 | `WAXPREP_LOG_LEVEl` | `WAXPREP_LOG_LEVEL` |
 | `WAXPREP_HOSTT` | `WAXPREP_HOST` |
 
-Warnings are written to stderr with the prefix `WAXPREP_CONFIG_WARNING`. They do not
-prevent the application from starting; they alert the operator to a likely mistake.
+Warnings are written to stderr with the prefix `WAXPREP_CONFIG_WARNING`. They include the
+incorrect name, suggested correction, and source (`environment` or `env_file`). They never
+include the variable's value.
 
 Unrelated environment variables (e.g. `PATH`, `HOME`) are never flagged.
+
+### Severity policy
+
+- **Non-production**: unknown or misspelled `WAXPREP_` variables emit warnings; startup continues.
+- **Production**: a known misspelling of a critical setting (`PORT`, `ENVIRONMENT`, `HOST`,
+  `LOG_LEVEL`) blocks startup with a `ValueError` that names the misspelled variables only.
 
 ## Production Configuration Policy
 
 Production deployments must:
 
 - Explicitly set `WAXPREP_ENVIRONMENT=production`.
-- Supply valid values for host, port, and log level.
+- Explicitly supply `WAXPREP_HOST`, `WAXPREP_PORT`, and `WAXPREP_LOG_LEVEL`.
 - Never rely on development defaults for operational parameters.
+- Correct any known critical misspellings before the process will start.
 
 Production secrets (API keys, database credentials, messaging credentials) are **not**
 part of the current configuration model. They will be introduced alongside their
@@ -97,15 +108,17 @@ corresponding integrations in later stages.
 | Port out of range | `ValidationError` at startup; application does not start |
 | Non-integer port | `ValidationError` at startup; application does not start |
 | Empty host | `ValidationError` at startup; application does not start |
-| Misspelled `WAXPREP_` variable | Warning printed to stderr; application continues with default |
+| Production missing explicit host/port/log level | `ValidationError` at startup; application does not start |
+| Misspelled `WAXPREP_` variable (non-production) | Warning printed to stderr; application continues with default |
+| Critical misspelling in production | `ValueError` at startup; application does not start |
 | Unknown `WAXPREP_` variable | Warning printed to stderr; application continues with default |
 
-Validation errors do not expose secret values. Error messages reference the field name
-and the validation rule that was violated.
+Validation errors and warnings do not expose secret values. Messages reference the field or
+variable name and the rule that was violated — never the configured value.
 
 ## Files
 
-- `src/waxprep/config.py` — Settings model, validation, unknown-variable detection
+- `src/waxprep/config.py` — Settings model, validation, unknown-variable detection, source diagnostics
 - `.env.example` — Safe example with non-secret development defaults
 - `.env` — Local overrides (excluded from Git via `.gitignore`)
 - `tests/configuration/test_config.py` — Comprehensive configuration tests
@@ -119,6 +132,13 @@ uv run uvicorn waxprep.main:get_app --host 0.0.0.0 --port 8000
 # Override via environment
 WAXPREP_ENVIRONMENT=staging WAXPREP_PORT=9000 \
   uv run uvicorn waxprep.main:get_app --host 0.0.0.0 --port 9000
+
+# Production (all operational settings must be explicit)
+WAXPREP_ENVIRONMENT=production \
+WAXPREP_HOST=0.0.0.0 \
+WAXPREP_PORT=8000 \
+WAXPREP_LOG_LEVEL=info \
+  uv run uvicorn waxprep.main:get_app
 
 # With .env file (copy .env.example to .env and edit)
 cp .env.example .env

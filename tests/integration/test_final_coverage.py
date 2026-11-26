@@ -491,19 +491,23 @@ class TestMainReadinessFailurePaths:
 
         The Stage 11 config uses an Environment enum. Assigning an invalid value
         makes settings.environment.value raise AttributeError, so readiness fails.
-        """
-        import waxprep.config as config_mod
 
-        original_env = config_mod.settings.environment
+        Patch the settings object bound in main.py — that is the instance the
+        readiness endpoint reads. Mutating waxprep.config.settings alone can miss
+        after importlib.reload() creates a new singleton while main keeps the old.
+        """
+        import waxprep.main as main_mod
+
+        original_env = main_mod.settings.environment
         try:
             # Assign an invalid value that breaks the enum .value access
-            config_mod.settings.environment = ""
+            main_mod.settings.environment = ""
             response = readiness_client.get("/health/readiness")
             assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
             data = response.json()
             assert data["reason"] == "configuration_not_loaded"
         finally:
-            config_mod.settings.environment = original_env
+            main_mod.settings.environment = original_env
 
     def test_readiness_fails_when_registries_not_initialized(self, readiness_client):
         """Verify readiness fails when registries are not initialized via app state."""

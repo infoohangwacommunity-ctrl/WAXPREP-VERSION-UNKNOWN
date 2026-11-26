@@ -19,13 +19,16 @@ from __future__ import annotations
 import os
 import sys
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-if TYPE_CHECKING:
-    pass
+ConfigSource = Literal["environment", "env_file", "default"]
+
+# Fields that production deployments must supply explicitly (not from defaults).
+_PRODUCTION_REQUIRED_FIELDS: tuple[str, ...] = ("host", "port", "log_level")
 
 
 class Environment(StrEnum):
@@ -56,13 +59,90 @@ KNOWN_MISSPELLINGS: dict[str, str] = {
     "WAXPREP_HOSTT": "WAXPREP_HOST",
 }
 
+# Critical settings: a known misspelling of these must not silently use defaults
+# in production (startup fails). In non-production they remain warnings.
+_CRITICAL_SETTING_NAMES: frozenset[str] = frozenset({"PORT", "ENVIRONMENT", "HOST", "LOG_LEVEL"})
+
+
+def _declared_env_names() -> set[str]:
+    """Return uppercase env names for all Settings fields (with WAXPREP_ prefix)."""
+    return {f"WAXPREP_{name.upper()}" for name in Settings.model_fields}
+
+
+def _iter_env_file_entries(env_file: Path) -> list[tuple[str, str]]:
+    """Return (key, value) pairs from a .env file for WAXPREP_ keys only.
+
+    Callers must not log or expose values outside production-intent checks.
+    """
+    if not env_file.is_file():
+        return []
+    try:
+        text = env_file.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    entries: list[tuple[str, str]] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        if key.startswith("WAXPREP_"):
+            entries.append((key, raw_value.strip().strip("\"'")))
+    return entries
+
+
+def _parse_env_file_keys(env_file: Path) -> set[str]:
+    """Return WAXPREP_ key names present in a .env file (values are never returned)."""
+    return {key for key, _value in _iter_env_file_entries(env_file)}
+
+
+def _read_env_file_environment(env_file: Path) -> str | None:
+    """Return the WAXPREP_ENVIRONMENT value from a .env file, if present."""
+    expected = f"WAXPREP_{'environment'.upper()}"
+    for key, value in _iter_env_file_entries(env_file):
+        if key.upper() == expected:
+            return value.lower()
+    return None
+
+
+def _format_unknown_variable_warning(
+    env_name: str,
+    *,
+    source: str,
+) -> str:
+    """Build a safe warning that never includes variable values."""
+    if env_name in KNOWN_MISSPELLINGS:
+        suggested = KNOWN_MISSPELLINGS[env_name]
+        return (
+            f"Unrecognised configuration variable {env_name} "
+            f"(from {source}) — did you mean {suggested}?"
+        )
+    return (
+        f"Unrecognised configuration variable {env_name} "
+        f"(from {source}) — no matching setting found."
+    )
+
+
+def _is_critical_misspelling(env_name: str) -> bool:
+    if env_name not in KNOWN_MISSPELLINGS:
+        return False
+    suggested = KNOWN_MISSPELLINGS[env_name]
+    suffix = suggested.removeprefix("WAXPREP_")
+    return suffix in _CRITICAL_SETTING_NAMES
+
 
 class Settings(BaseSettings):
     """Validated application settings.
 
     Configured via WAXPREP_ environment variables.
     Development defaults are provided for convenience.
-    Production deployments must supply their own values via environment.
+    Production deployments must supply host, port, and log_level explicitly.
     """
 
     model_config = SettingsConfigDict(
@@ -70,6 +150,9 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         env_prefix="WAXPREP_",
+        # Unknown keys are reported by check_for_unknown_waxprep_variables(),
+        # not by Pydantic extras — keep OS env and .env behaviour aligned.
+        extra="ignore",
     )
 
     environment: Environment = Field(
@@ -111,67 +194,134 @@ class Settings(BaseSettings):
             return value.upper()
         return value
 
-    def check_for_unknown_waxprep_variables(self) -> list[str]:
+    @model_validator(mode="after")
+    def enforce_production_explicit_settings(self) -> Settings:
+        """Reject production configs that silently rely on development defaults."""
+        if self.environment != Environment.PRODUCTION:
+            return self
+
+        missing = [
+            field for field in _PRODUCTION_REQUIRED_FIELDS if field not in self.model_fields_set
+        ]
+        if missing:
+            names = ", ".join(f"WAXPREP_{name.upper()}" for name in missing)
+            raise ValueError(
+                "Production requires explicitly supplied configuration for: "
+                f"{names}. Development defaults must not be used in production."
+            )
+        return self
+
+    def check_for_unknown_waxprep_variables(
+        self,
+        *,
+        env_file: str | Path = ".env",
+    ) -> list[str]:
         """Detect likely configuration mistakes from unsupported WAXPREP_ variables.
 
-        Pydantic Settings ignores unknown OS environment variables by default,
-        so a typo like WAXPREP_PORRT=8000 would silently fall back to the default.
-        This method inspects the process environment for suspicious WAXPREP_ variables
-        and returns a list of warnings.
+        Inspects both the process environment and the local .env file.
+        Warning messages never include variable values.
         """
         warnings: list[str] = []
-        waxprep_prefix = "WAXPREP_"
+        declared = _declared_env_names()
+        seen: set[str] = set()
 
-        for env_name, env_value in os.environ.items():
-            if not env_name.startswith(waxprep_prefix):
+        for env_name in os.environ:
+            if not env_name.startswith("WAXPREP_"):
                 continue
-
-            # Determine the field name without the prefix
-            field_name = env_name[len(waxprep_prefix) :].lower()
-
-            # Check if it matches a declared field (case-insensitive)
-            declared_field_names = {
-                field_name.lower() for field_name in Settings.model_fields.keys()
-            }
-            if field_name in declared_field_names:
+            canonical = env_name.upper()
+            # Preserve original casing for known-misspelling lookup
+            lookup_name = env_name if env_name in KNOWN_MISSPELLINGS else canonical
+            if canonical in declared:
                 continue
-
-            # Check known misspellings
-            if env_name in KNOWN_MISSPELLINGS:
-                suggested = KNOWN_MISSPELLINGS[env_name]
-                warnings.append(
-                    f"Unrecognised configuration variable {env_name}={env_value!r} "
-                    f"— did you mean {suggested}?"
-                )
+            if lookup_name in seen or canonical in seen:
                 continue
+            seen.add(lookup_name)
+            warnings.append(_format_unknown_variable_warning(lookup_name, source="environment"))
 
-            # Generic unknown WAXPREP_ variable
-            warnings.append(
-                f"Unrecognised configuration variable {env_name}={env_value!r} "
-                f"— no matching setting found."
-            )
+        for env_name in _parse_env_file_keys(Path(env_file)):
+            canonical = env_name.upper()
+            lookup_name = env_name if env_name in KNOWN_MISSPELLINGS else canonical
+            if canonical in declared:
+                continue
+            # Already reported from the OS environment (including case variants).
+            if lookup_name in seen or canonical in seen:
+                continue
+            seen.add(lookup_name)
+            warnings.append(_format_unknown_variable_warning(lookup_name, source="env_file"))
 
         return warnings
 
+    def collect_critical_misspellings(
+        self,
+        *,
+        env_file: str | Path = ".env",
+    ) -> list[str]:
+        """Return known critical misspellings found in environment or .env."""
+        found: list[str] = []
+        for env_name in list(os.environ.keys()) + list(_parse_env_file_keys(Path(env_file))):
+            if _is_critical_misspelling(env_name) and env_name not in found:
+                found.append(env_name)
+        return found
 
-def _detect_unknown_waxprep_variables() -> None:
-    """Check for unsupported WAXPREP_ environment variables at import time.
+    def configuration_sources(
+        self,
+        *,
+        env_file: str | Path = ".env",
+    ) -> dict[str, ConfigSource]:
+        """Return where each setting's effective value originated (never values).
 
-    This runs once when config.py is first imported. It inspects the current
-    process environment and warns about likely typos or unsupported variables.
+        Precedence: OS environment > .env file > default.
+        """
+        env_file_keys = {k.upper() for k in _parse_env_file_keys(Path(env_file))}
+        sources: dict[str, ConfigSource] = {}
+        for field_name in type(self).model_fields:
+            env_name = f"WAXPREP_{field_name.upper()}"
+            if any(k.upper() == env_name for k in os.environ):
+                sources[field_name] = "environment"
+            elif env_name in env_file_keys:
+                sources[field_name] = "env_file"
+            else:
+                sources[field_name] = "default"
+        return sources
+
+
+def _emit_config_warnings(warnings: list[str]) -> None:
+    for warning in warnings:
+        print(f"WAXPREP_CONFIG_WARNING: {warning}", file=sys.stderr)
+
+
+def load_settings(*, env_file: str | Path = ".env") -> Settings:
+    """Load and validate settings once, then report unknown-variable warnings.
+
+    Known critical misspellings fail startup when targeting production
+    (via WAXPREP_ENVIRONMENT=production in the process environment or .env).
     """
-    settings_instance = Settings()
-    warnings = settings_instance.check_for_unknown_waxprep_variables()
+    # Detect production intent before constructing Settings so a misspelled
+    # port cannot silently fall through to the default during validation.
+    env_name = os.environ.get("WAXPREP_ENVIRONMENT", "").strip().lower()
+    if not env_name:
+        # Fall back to .env for production-intent detection only.
+        env_name = _read_env_file_environment(Path(env_file)) or ""
+
+    provisional = Settings()
+    critical = provisional.collect_critical_misspellings(env_file=env_file)
+    if critical and env_name == Environment.PRODUCTION.value:
+        names = ", ".join(critical)
+        raise ValueError(
+            "Production startup blocked due to critical configuration misspellings: "
+            f"{names}. Correct the variable names and restart. "
+            "(Variable values are intentionally omitted.)"
+        )
+
+    warnings = provisional.check_for_unknown_waxprep_variables(env_file=env_file)
     if warnings:
-        for warning in warnings:
-            print(f"WAXPREP_CONFIG_WARNING: {warning}", file=sys.stderr)
+        _emit_config_warnings(warnings)
 
+    return provisional
 
-# Trigger unknown-variable detection once at module import.
-# This runs after the Settings class is defined so it has field metadata.
-_detect_unknown_waxprep_variables()
 
 # Module-level validated settings instance.
 # Application code should import and use this rather than reading environment
-# variables directly.
-settings = Settings()
+# variables directly. Constructed once via load_settings() — no duplicate
+# Settings() call for detection.
+settings = load_settings()

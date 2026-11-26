@@ -257,6 +257,9 @@ jobs:
         run: uv sync --extra dev --frozen
 
       - name: Run ${{ matrix.category }} tests
+        # Directory already scopes the category. Keep -m for categories that declare
+        # markers (unit/integration/…). Configuration also declares
+        # pytestmark = configuration so the matrix filter stays consistent.
         run: uv run pytest tests/${{ matrix.category }} -m ${{ matrix.category }} --tb=short -o addopts=""
 
       - name: Record CI evidence
