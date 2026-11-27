@@ -22,6 +22,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
+from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -69,46 +70,77 @@ def _declared_env_names() -> set[str]:
     return {f"WAXPREP_{name.upper()}" for name in Settings.model_fields}
 
 
-def _iter_env_file_entries(env_file: Path) -> list[tuple[str, str]]:
+def _iter_env_file_entries(env_file: Path | None) -> list[tuple[str, str]]:
     """Return (key, value) pairs from a .env file for WAXPREP_ keys only.
+
+    Parsing is delegated to ``python-dotenv`` so the detector and Pydantic
+    Settings interpret the same file syntax identically (quotes, ``export``,
+    inline comments, duplicate keys, escapes and malformed entries).
 
     Callers must not log or expose values outside production-intent checks.
     """
-    if not env_file.is_file():
+    if env_file is None or not env_file.is_file():
         return []
     try:
-        text = env_file.read_text(encoding="utf-8")
-    except OSError:
+        parsed = dotenv_values(env_file, encoding="utf-8")
+    except OSError, UnicodeDecodeError:
         return []
 
     entries: list[tuple[str, str]] = []
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
+    for key, value in parsed.items():
+        if not key.startswith("WAXPREP_"):
             continue
-        if line.startswith("export "):
-            line = line[7:].strip()
-        if "=" not in line:
-            continue
-        key, raw_value = line.split("=", 1)
-        key = key.strip()
-        if key.startswith("WAXPREP_"):
-            entries.append((key, raw_value.strip().strip("\"'")))
+        entries.append((key, "" if value is None else value))
     return entries
 
 
-def _parse_env_file_keys(env_file: Path) -> set[str]:
+def _as_env_path(env_file: str | Path | None) -> Path | None:
+    """Normalise an env_file argument, preserving an explicitly disabled source."""
+    if env_file is None:
+        return None
+    return Path(env_file)
+
+
+def _parse_env_file_keys(env_file: str | Path | None) -> set[str]:
     """Return WAXPREP_ key names present in a .env file (values are never returned)."""
-    return {key for key, _value in _iter_env_file_entries(env_file)}
+    return {key for key, _value in _iter_env_file_entries(_as_env_path(env_file))}
 
 
-def _read_env_file_environment(env_file: Path) -> str | None:
+def _read_env_file_environment(env_file: Path | None) -> str | None:
     """Return the WAXPREP_ENVIRONMENT value from a .env file, if present."""
     expected = f"WAXPREP_{'environment'.upper()}"
     for key, value in _iter_env_file_entries(env_file):
         if key.upper() == expected:
-            return value.lower()
+            return value.strip().lower()
     return None
+
+
+def _explicit_environment_value(env_file: Path | None) -> str | None:
+    """Return the effective explicitly configured environment (OS env wins)."""
+    from_process = os.environ.get("WAXPREP_ENVIRONMENT")
+    if from_process is not None:
+        return from_process.strip().lower()
+    return _read_env_file_environment(env_file)
+
+
+def _detect_production_intent(env_file: Path | None) -> bool:
+    """Return True when the effective configuration is intended for production.
+
+    The correctly spelled ``WAXPREP_ENVIRONMENT`` takes precedence. Only when it
+    is absent do we honour a misspelled ``WAXPREP_ENVIRONMET=production`` so that
+    a typo cannot silently downgrade a production deployment to development.
+    """
+    explicit = _explicit_environment_value(env_file)
+    if explicit is not None:
+        return explicit == Environment.PRODUCTION.value
+
+    values = [value for key, value in os.environ.items() if key.upper() == "WAXPREP_ENVIRONMET"]
+    values.extend(
+        value
+        for key, value in _iter_env_file_entries(env_file)
+        if key.upper() == "WAXPREP_ENVIRONMET"
+    )
+    return any(value.strip().lower() == Environment.PRODUCTION.value for value in values)
 
 
 def _format_unknown_variable_warning(
@@ -129,10 +161,26 @@ def _format_unknown_variable_warning(
     )
 
 
+def _canonical_misspelling(env_name: str) -> str | None:
+    """Return the KNOWN_MISSPELLINGS key for a typo, if it is one.
+
+    Exact matches are checked first so entries that only differ by casing
+    (e.g. ``WAXPREP_LOG_LEVEl``) are not mistaken for the correctly spelled
+    variable when uppercased.
+    """
+    if env_name in KNOWN_MISSPELLINGS:
+        return env_name
+    canonical = env_name.upper()
+    if canonical in KNOWN_MISSPELLINGS:
+        return canonical
+    return None
+
+
 def _is_critical_misspelling(env_name: str) -> bool:
-    if env_name not in KNOWN_MISSPELLINGS:
+    misspelling = _canonical_misspelling(env_name)
+    if misspelling is None:
         return False
-    suggested = KNOWN_MISSPELLINGS[env_name]
+    suggested = KNOWN_MISSPELLINGS[misspelling]
     suffix = suggested.removeprefix("WAXPREP_")
     return suffix in _CRITICAL_SETTING_NAMES
 
@@ -214,7 +262,7 @@ class Settings(BaseSettings):
     def check_for_unknown_waxprep_variables(
         self,
         *,
-        env_file: str | Path = ".env",
+        env_file: str | Path | None = ".env",
     ) -> list[str]:
         """Detect likely configuration mistakes from unsupported WAXPREP_ variables.
 
@@ -226,53 +274,63 @@ class Settings(BaseSettings):
         seen: set[str] = set()
 
         for env_name in os.environ:
-            if not env_name.startswith("WAXPREP_"):
+            if not env_name.upper().startswith("WAXPREP_"):
                 continue
-            canonical = env_name.upper()
-            # Preserve original casing for known-misspelling lookup
-            lookup_name = env_name if env_name in KNOWN_MISSPELLINGS else canonical
-            if canonical in declared:
+            misspelling = _canonical_misspelling(env_name)
+            if misspelling is None:
+                canonical = env_name.upper()
+                if canonical in declared:
+                    continue
+            else:
+                canonical = misspelling
+            if canonical in seen:
                 continue
-            if lookup_name in seen or canonical in seen:
-                continue
-            seen.add(lookup_name)
-            warnings.append(_format_unknown_variable_warning(lookup_name, source="environment"))
+            seen.add(canonical)
+            warnings.append(_format_unknown_variable_warning(canonical, source="environment"))
 
-        for env_name in _parse_env_file_keys(Path(env_file)):
-            canonical = env_name.upper()
-            lookup_name = env_name if env_name in KNOWN_MISSPELLINGS else canonical
-            if canonical in declared:
-                continue
+        for env_name in _parse_env_file_keys(_as_env_path(env_file)):
+            misspelling = _canonical_misspelling(env_name)
+            if misspelling is None:
+                canonical = env_name.upper()
+                if canonical in declared:
+                    continue
+            else:
+                canonical = misspelling
             # Already reported from the OS environment (including case variants).
-            if lookup_name in seen or canonical in seen:
+            if canonical in seen:
                 continue
-            seen.add(lookup_name)
-            warnings.append(_format_unknown_variable_warning(lookup_name, source="env_file"))
+            seen.add(canonical)
+            warnings.append(_format_unknown_variable_warning(canonical, source="env_file"))
 
         return warnings
 
     def collect_critical_misspellings(
         self,
         *,
-        env_file: str | Path = ".env",
+        env_file: str | Path | None = ".env",
     ) -> list[str]:
         """Return known critical misspellings found in environment or .env."""
         found: list[str] = []
-        for env_name in list(os.environ.keys()) + list(_parse_env_file_keys(Path(env_file))):
-            if _is_critical_misspelling(env_name) and env_name not in found:
-                found.append(env_name)
+        seen: set[str] = set()
+        candidates = list(os.environ.keys()) + list(_parse_env_file_keys(_as_env_path(env_file)))
+        for env_name in candidates:
+            misspelling = _canonical_misspelling(env_name)
+            if misspelling is not None and _is_critical_misspelling(misspelling):
+                if misspelling not in seen:
+                    seen.add(misspelling)
+                    found.append(misspelling)
         return found
 
     def configuration_sources(
         self,
         *,
-        env_file: str | Path = ".env",
+        env_file: str | Path | None = ".env",
     ) -> dict[str, ConfigSource]:
         """Return where each setting's effective value originated (never values).
 
         Precedence: OS environment > .env file > default.
         """
-        env_file_keys = {k.upper() for k in _parse_env_file_keys(Path(env_file))}
+        env_file_keys = {k.upper() for k in _parse_env_file_keys(_as_env_path(env_file))}
         sources: dict[str, ConfigSource] = {}
         for field_name in type(self).model_fields:
             env_name = f"WAXPREP_{field_name.upper()}"
@@ -290,22 +348,32 @@ def _emit_config_warnings(warnings: list[str]) -> None:
         print(f"WAXPREP_CONFIG_WARNING: {warning}", file=sys.stderr)
 
 
-def load_settings(*, env_file: str | Path = ".env") -> Settings:
+def load_settings(*, env_file: str | Path | None = ".env") -> Settings:
     """Load and validate settings once, then report unknown-variable warnings.
 
+    The same ``env_file`` is used for one consistent view of configuration:
+    the file Pydantic Settings loads, the file inspected for unknown variables,
+    and the file used for production-intent detection. Passing ``None`` disables
+    dotenv loading entirely.
+
     Known critical misspellings fail startup when targeting production
-    (via WAXPREP_ENVIRONMENT=production in the process environment or .env).
+    (via WAXPREP_ENVIRONMENT=production in the process environment or .env),
+    including when production is only expressed through the misspelled
+    WAXPREP_ENVIRONMET variable.
     """
+    selected_file = _as_env_path(env_file)
+
     # Detect production intent before constructing Settings so a misspelled
     # port cannot silently fall through to the default during validation.
-    env_name = os.environ.get("WAXPREP_ENVIRONMENT", "").strip().lower()
-    if not env_name:
-        # Fall back to .env for production-intent detection only.
-        env_name = _read_env_file_environment(Path(env_file)) or ""
+    production_intent = _detect_production_intent(selected_file)
 
-    provisional = Settings()
-    critical = provisional.collect_critical_misspellings(env_file=env_file)
-    if critical and env_name == Environment.PRODUCTION.value:
+    # Load exactly the selected file — never the implicit working-directory .env.
+    # pydantic-settings accepts _env_file at runtime; its generated __init__
+    # signature does not expose the keyword to mypy.
+    provisional = Settings(_env_file=selected_file)  # type: ignore[call-arg]
+
+    critical = provisional.collect_critical_misspellings(env_file=selected_file)
+    if critical and production_intent:
         names = ", ".join(critical)
         raise ValueError(
             "Production startup blocked due to critical configuration misspellings: "
@@ -313,7 +381,7 @@ def load_settings(*, env_file: str | Path = ".env") -> Settings:
             "(Variable values are intentionally omitted.)"
         )
 
-    warnings = provisional.check_for_unknown_waxprep_variables(env_file=env_file)
+    warnings = provisional.check_for_unknown_waxprep_variables(env_file=selected_file)
     if warnings:
         _emit_config_warnings(warnings)
 

@@ -1,6 +1,6 @@
 # WaxPrep Foundation
 
-**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 10).**
+**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 11).**
 
 Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Stage 09 adds dependency and supply-chain security to the same gate: pip-audit without blanket ignores, a scoped expiring exception register, lockfile hashes, dependency source restrictions, license policy, OSV malicious-package intelligence, a CycloneDX SBOM and Dependabot proposals. Stage 10 turns that collection into an acceptance system: every job records machine-readable evidence, the workflow audits its own definition, and acceptance is decided only from evidence bound to the exact commit being assessed.
 
@@ -394,6 +394,10 @@ All project documentation is organized in the `docs/` folder:
 - `docs/CI_SECURITY.md` — Workflow permissions, action pinning, cache integrity and tool evaluation (Stage 10)
 - `docs/STAGE_10_IMPLEMENTATION_REPORT.md` — Stage 10 implementation results and limitations
 - `docs/STAGE_10_CORRECTION_REPORT.md` — Post-implementation verification pass: issues found, corrections and evidence
+- `docs/CONFIGURATION_REFERENCE.md` — Configuration settings, validation, precedence and production policy (Stage 11)
+- `docs/ENVIRONMENT_SETUP.md` — Operating WaxPrep in development, test, staging and production (Stage 11)
+- `docs/STAGE_11_CORRECTION_REPORT.md` — Stage 11 corrective verification pass (historical record)
+- `docs/STAGE_11_HARDENING_REPORT.md` — Independent review follow-up: loading consistency, isolation, startup and typo hardening
 - `docs/security/DEPENDENCY_EXCEPTION_POLICY.md` — Vulnerability exception register and expiry rules
 
 ### Archive (Historical/Superseded)
@@ -521,19 +525,25 @@ uv run python -m waxprep.ci.cli audit
 
 ## Running the Application
 
-```bash
-uv run uvicorn waxprep.main:get_app --host 0.0.0.0 --port 8000
-```
+The canonical startup method is the application entrypoint. It reads the validated
+configuration, so `WAXPREP_HOST` and `WAXPREP_PORT` always control the address the
+server actually binds:
 
-With auto-reload during development:
-```bash
-uv run uvicorn waxprep.main:get_app --host 0.0.0.0 --port 8000 --reload
-```
-
-Or run as module:
 ```bash
 uv run python -m waxprep.main
+# or, after `uv sync`, the console script:
+uv run waxprep
 ```
+
+For development with auto-reload, Uvicorn's CLI can be used, but it does not read
+`WAXPREP_HOST`/`WAXPREP_PORT` implicitly — pass the same values explicitly:
+
+```bash
+uv run uvicorn waxprep.main:get_app --host "${WAXPREP_HOST:-0.0.0.0}" --port "${WAXPREP_PORT:-8000}" --reload
+```
+
+Direct `uvicorn` invocation is an advanced/debug path; use the entrypoint above for
+deployments on Railway or Render so configuration stays authoritative.
 
 ## Configuration (WAXPREP_ prefix) — Stage 11
 

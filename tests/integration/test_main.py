@@ -10,6 +10,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
@@ -297,10 +298,11 @@ class TestMainBlock:
             # run_path executes the file with __name__ == "__main__"
             runpy.run_path(main.__file__, run_name="__main__")
 
-        # uvicorn.run is called with app as the first positional arg
+        # uvicorn.run is called with the ASGI app object as the first positional
+        # arg so the validated settings — not uvicorn's CLI defaults — apply.
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
-        assert args[0] == "waxprep.main:get_app"
+        assert isinstance(args[0], FastAPI)
         assert kwargs["host"] == main.settings.host
         assert kwargs["port"] == main.settings.port
         assert kwargs["reload"] is False

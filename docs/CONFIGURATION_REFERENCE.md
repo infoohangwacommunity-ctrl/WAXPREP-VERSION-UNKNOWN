@@ -125,22 +125,30 @@ variable name and the rule that was violated — never the configured value.
 
 ## Quick Reference
 
+The canonical startup method is `python -m waxprep.main` (or the `waxprep`
+console script). It applies the validated `WAXPREP_HOST` and `WAXPREP_PORT` to
+the actual Uvicorn listener.
+
 ```bash
 # Development defaults (no environment variables needed)
-uv run uvicorn waxprep.main:get_app --host 0.0.0.0 --port 8000
+uv run python -m waxprep.main
 
-# Override via environment
+# Override via environment — the server binds 0.0.0.0:9000
 WAXPREP_ENVIRONMENT=staging WAXPREP_PORT=9000 \
-  uv run uvicorn waxprep.main:get_app --host 0.0.0.0 --port 9000
+  uv run python -m waxprep.main
 
 # Production (all operational settings must be explicit)
 WAXPREP_ENVIRONMENT=production \
 WAXPREP_HOST=0.0.0.0 \
 WAXPREP_PORT=8000 \
 WAXPREP_LOG_LEVEL=info \
-  uv run uvicorn waxprep.main:get_app
+  uv run python -m waxprep.main
 
 # With .env file (copy .env.example to .env and edit)
 cp .env.example .env
-uv run uvicorn waxprep.main:get_app
+uv run python -m waxprep.main
 ```
+
+Invoking `uvicorn waxprep.main:get_app` directly is supported for debugging and
+auto-reload, but Uvicorn's own `--host`/`--port` defaults apply unless you pass
+them explicitly. Use the entrypoint above for deployments.

@@ -43,9 +43,17 @@ These values must not be left at development defaults in production.
    cp .env.example .env
    ```
 2. Edit `.env` if you need different values.
-3. Start the application:
+3. Start the application using the canonical entrypoint:
    ```bash
-   uv run uvicorn waxprep.main:get_app --reload
+   uv run python -m waxprep.main
+   ```
+
+   The entrypoint starts Uvicorn on the validated `WAXPREP_HOST` and
+   `WAXPREP_PORT`, so the server cannot listen on a different address than the
+   configuration reports. For auto-reload during development, use the Uvicorn
+   CLI and pass the values explicitly:
+   ```bash
+   uv run uvicorn waxprep.main:get_app --host "${WAXPREP_HOST:-0.0.0.0}" --port "${WAXPREP_PORT:-8000}" --reload
    ```
 
 The `.env` file is loaded automatically from the working directory.
@@ -56,9 +64,16 @@ The real `.env` file is excluded from Git. Only `.env.example` is tracked.
 ## Testing
 
 Tests must not rely on the developer's real environment or `.env` file.
-The `tests/configuration/` suite uses the `isolated_env` fixture to strip
-all `WAXPREP_*` variables before each test, then sets specific values via
-`monkeypatch.setenv()`.
+The `tests/configuration/` suite has an autouse fixture that:
+
+1. Strips every `WAXPREP_*` variable from the process environment.
+2. Changes the working directory to an empty temporary directory so an
+   implicit `Settings()` cannot read a developer's real `.env` file.
+
+Tests that need dotenv values pass an explicit temporary file to
+`load_settings(env_file=...)` or `Settings(_env_file=...)`. Tests that expect
+clean defaults pass `_env_file=None`. No test mutates the shared
+`Settings.model_config`.
 
 Do not rely on the host machine's environment variables to make tests pass.
 Always set the values a test needs explicitly.

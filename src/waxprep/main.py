@@ -343,15 +343,25 @@ def get_app() -> FastAPI:
     return cast(FastAPI, _app)
 
 
-# For running with uvicorn directly
-if __name__ == "__main__":
+def run() -> None:
+    """Canonical application entrypoint.
+
+    Starts Uvicorn on the validated ``settings.host`` and ``settings.port`` so
+    that ``WAXPREP_HOST`` and ``WAXPREP_PORT`` always control the actual
+    listening address. Prefer this entrypoint (``python -m waxprep.main`` or
+    the ``waxprep`` console script) over invoking ``uvicorn`` directly.
+    """
     import uvicorn
 
     uvicorn.run(
-        "waxprep.main:get_app",
+        get_app(),
         host=settings.host,
         port=settings.port,
         reload=False,
         log_config=None,  # structlog handles logging
         interface="asgi3",
     )
+
+
+if __name__ == "__main__":
+    run()

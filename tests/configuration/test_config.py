@@ -45,6 +45,23 @@ pytestmark = pytest.mark.configuration
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _isolate_configuration_sources(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Guarantee every configuration test is independent of the developer's machine.
+
+    Two leaks are closed:
+    1. WAXPREP_* variables from the developer's shell are removed.
+    2. The working directory is moved to an empty temporary directory so an
+       implicit Settings() cannot read the developer's real .env file.
+
+    Tests that need dotenv values must supply a dedicated temporary file.
+    """
+    for key in list(os.environ.keys()):
+        if key.startswith("WAXPREP_"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Remove all WAXPREP_ variables from the test process so tests are isolated.
@@ -70,7 +87,7 @@ def _make_settings_with_env(
     """
     for key, value in env_vars.items():
         monkeypatch.setenv(key, value)
-    return Settings()
+    return Settings(_env_file=None)
 
 
 # ---------------------------------------------------------------------------
@@ -82,24 +99,24 @@ class TestValidDefaults:
     """Prove the application loads valid defaults when no overrides are supplied."""
 
     def test_default_environment(self, isolated_env: None) -> None:
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert settings.environment == Environment.DEVELOPMENT
 
     def test_default_host(self, isolated_env: None) -> None:
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert settings.host == "0.0.0.0"
 
     def test_default_port(self, isolated_env: None) -> None:
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert settings.port == 8000
 
     def test_default_log_level(self, isolated_env: None) -> None:
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert settings.log_level == LogLevel.INFO
 
     def test_all_defaults_are_valid(self, isolated_env: None) -> None:
         """Defaults themselves must pass validation (they are not magic bypasses)."""
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert settings.environment in tuple(Environment)
         assert settings.log_level in tuple(LogLevel)
         assert 1 <= settings.port <= 65535
@@ -182,19 +199,10 @@ class TestEnvPrecedenceOverDotenv:
 
         monkeypatch.setenv("WAXPREP_PORT", "7000")
 
-        # Force Settings to use our .env file by monkeypatching the config dict
-        original_config = Settings.model_config.copy()
-        Settings.model_config = {
-            "env_file": dotenv_path,
-            "env_file_encoding": "utf-8",
-            "case_sensitive": False,
-            "env_prefix": "WAXPREP_",
-        }
-        try:
-            settings = Settings()
-            assert settings.port == 7000, "OS env should override .env"
-        finally:
-            Settings.model_config = original_config
+        # Load the dedicated file directly; no global model_config mutation that
+        # could leak into tests running in parallel.
+        settings = Settings(_env_file=dotenv_path)
+        assert settings.port == 7000, "OS env should override .env"
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +408,7 @@ class TestUnknownVariableDetection:
     ) -> None:
         """Adding a known misspelling like WAXPREP_PORRT should produce a warning."""
         monkeypatch.setenv("WAXPREP_PORRT", "9999")
-        settings = Settings()
+        settings = Settings(_env_file=None)
         warnings = settings.check_for_unknown_waxprep_variables()
         assert len(warnings) >= 1
         assert any("WAXPREP_PORRT" in w and "WAXPREP_PORT" in w for w in warnings)
@@ -411,7 +419,7 @@ class TestUnknownVariableDetection:
         secretish = "super-secret-value-do-not-leak"
         monkeypatch.setenv("WAXPREP_PORRT", secretish)
         monkeypatch.setenv("WAXPREP_FOOBAR", secretish)
-        settings = Settings()
+        settings = Settings(_env_file=None)
         warnings = settings.check_for_unknown_waxprep_variables()
         joined = "\n".join(warnings)
         assert secretish not in joined
@@ -450,7 +458,7 @@ class TestUnknownVariableDetection:
     ) -> None:
         """Setting a supported variable does not produce warnings."""
         monkeypatch.setenv("WAXPREP_PORT", "8000")
-        settings = Settings()
+        settings = Settings(_env_file=None)
         warnings = settings.check_for_unknown_waxprep_variables()
         assert warnings == []
 
@@ -458,7 +466,7 @@ class TestUnknownVariableDetection:
         self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("WAXPREP_FOOBAR", "baz")
-        settings = Settings()
+        settings = Settings(_env_file=None)
         warnings = settings.check_for_unknown_waxprep_variables()
         assert any("WAXPREP_FOOBAR" in w for w in warnings)
         assert all("baz" not in w for w in warnings)
@@ -470,7 +478,7 @@ class TestUnknownVariableDetection:
         monkeypatch.setenv("PATH", "/usr/bin")
         monkeypatch.setenv("HOME", "/home/user")
         monkeypatch.setenv("SOME_OTHER_VAR", "value")
-        settings = Settings()
+        settings = Settings(_env_file=None)
         warnings = settings.check_for_unknown_waxprep_variables()
         assert warnings == []
 
@@ -523,7 +531,7 @@ class TestTestIsolation:
 
     def test_building_settings_without_env_yields_defaults(self, isolated_env: None) -> None:
         """With a clean environment, Settings returns validated defaults."""
-        settings = Settings()
+        settings = Settings(_env_file=None)
         assert settings.environment == Environment.DEVELOPMENT
         assert settings.host == "0.0.0.0"
         assert settings.port == 8000
@@ -703,10 +711,12 @@ class TestLoadSettingsLifecycle:
         env_file = tmp_path / ".env"
         env_file.write_text("WAXPREP_ENVIRONMENT=development\n", encoding="utf-8")
 
-        def boom(self: Path, *args: object, **kwargs: object) -> str:
+        import waxprep.config as config_module
+
+        def boom(*args: object, **kwargs: object) -> dict[str, str | None]:
             raise OSError("unreadable")
 
-        monkeypatch.setattr(Path, "read_text", boom)
+        monkeypatch.setattr(config_module, "dotenv_values", boom)
         loaded = load_settings(env_file=env_file)
         assert loaded.environment == Environment.DEVELOPMENT
 
@@ -748,10 +758,12 @@ class TestEnvFileParsingHelpers:
         env_file = tmp_path / ".env"
         env_file.write_text("WAXPREP_PORT=1\n", encoding="utf-8")
 
-        def boom(self: Path, *args: object, **kwargs: object) -> str:
+        import waxprep.config as config_module
+
+        def boom(*args: object, **kwargs: object) -> dict[str, str | None]:
             raise OSError("unreadable")
 
-        monkeypatch.setattr(Path, "read_text", boom)
+        monkeypatch.setattr(config_module, "dotenv_values", boom)
         assert _parse_env_file_keys(env_file) == set()
 
     def test_duplicate_case_variants_in_environ_deduped(
@@ -783,3 +795,297 @@ class TestEnvFileParsingHelpers:
         warnings = settings.check_for_unknown_waxprep_variables(env_file=env_file)
         assert len([w for w in warnings if "FOOBAR" in w]) == 1
         assert any("environment" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# PART 2 — load_settings() must use the exact file it was given
+# ---------------------------------------------------------------------------
+
+
+class TestLoadSettingsEnvFileConsistency:
+    """The file inspected and the file loaded are always the same file."""
+
+    def test_custom_env_file_is_loaded(self, isolated_env: None, tmp_path: Path) -> None:
+        env_file = tmp_path / "custom.env"
+        env_file.write_text("WAXPREP_PORT=6001\n", encoding="utf-8")
+        assert load_settings(env_file=env_file).port == 6001
+
+    def test_each_selected_file_is_loaded_independently(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        first = tmp_path / "first.env"
+        first.write_text("WAXPREP_PORT=6001\nWAXPREP_HOST=127.0.0.1\n", encoding="utf-8")
+        second = tmp_path / "second.env"
+        second.write_text("WAXPREP_PORT=6002\nWAXPREP_HOST=127.0.0.2\n", encoding="utf-8")
+
+        assert load_settings(env_file=first).port == 6001
+        assert load_settings(env_file=first).host == "127.0.0.1"
+        assert load_settings(env_file=second).port == 6002
+        assert load_settings(env_file=second).host == "127.0.0.2"
+
+    def test_working_directory_dotenv_is_ignored_for_custom_file(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        (tmp_path / ".env").write_text("WAXPREP_PORT=9999\nWAXPREP_FOOBAR=leak\n", encoding="utf-8")
+        selected = tmp_path / "selected.env"
+        selected.write_text("WAXPREP_PORT=6001\n", encoding="utf-8")
+
+        loaded = load_settings(env_file=selected)
+        assert loaded.port == 6001
+        warnings = loaded.check_for_unknown_waxprep_variables(env_file=selected)
+        assert all("FOOBAR" not in w for w in warnings)
+
+    def test_disabled_dotenv_source_stays_disabled(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        (tmp_path / ".env").write_text("WAXPREP_PORT=9999\n", encoding="utf-8")
+        loaded = load_settings(env_file=None)
+        assert loaded.port == 8000
+        assert loaded.configuration_sources(env_file=None)["port"] == "default"
+
+    def test_selected_file_production_is_enforced(self, isolated_env: None, tmp_path: Path) -> None:
+        env_file = tmp_path / "prod.env"
+        env_file.write_text("WAXPREP_ENVIRONMENT=production\nWAXPREP_PORT=8000\n", encoding="utf-8")
+        with pytest.raises(ValidationError, match="WAXPREP_HOST"):
+            load_settings(env_file=env_file)
+
+    def test_production_intent_uses_selected_file_not_working_directory(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        # A production .env in the working directory must not influence a load
+        # that explicitly selects a different development file.
+        (tmp_path / ".env").write_text("WAXPREP_ENVIRONMENT=production\n", encoding="utf-8")
+        selected = tmp_path / "dev.env"
+        selected.write_text("WAXPREP_ENVIRONMENT=development\n", encoding="utf-8")
+
+        assert load_settings(env_file=selected).environment == Environment.DEVELOPMENT
+
+
+# ---------------------------------------------------------------------------
+# PART 5 — dotenv parsing is delegated to python-dotenv
+# ---------------------------------------------------------------------------
+
+
+class TestDotenvParsing:
+    """The detector and Pydantic must interpret .env syntax identically."""
+
+    def test_export_quotes_inline_comments_and_whitespace(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        from waxprep.config import _parse_env_file_keys
+
+        env_file = tmp_path / "complex.env"
+        env_file.write_text(
+            "# comment\n"
+            "\n"
+            'export WAXPREP_HOST = "127.0.0.1"  # inline comment\n'
+            "WAXPREP_PORT='6003'\n"
+            "WAXPREP_LOG_LEVEL=debug # trailing\n"
+            "MALFORMED_LINE\n"
+            "OTHER=1\n",
+            encoding="utf-8",
+        )
+        assert _parse_env_file_keys(env_file) == {
+            "WAXPREP_HOST",
+            "WAXPREP_PORT",
+            "WAXPREP_LOG_LEVEL",
+        }
+
+    def test_duplicate_keys_use_last_value_in_both_systems(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        env_file = tmp_path / "dupes.env"
+        env_file.write_text("WAXPREP_PORT=6004\nWAXPREP_PORT=6005\n", encoding="utf-8")
+        assert load_settings(env_file=env_file).port == 6005
+
+    def test_escaped_characters_do_not_break_key_extraction(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        from waxprep.config import _parse_env_file_keys
+
+        env_file = tmp_path / "escaped.env"
+        env_file.write_text(
+            'WAXPREP_UNKNOWNOWN="line\\nbreak"\nWAXPREP_HOST="127.0.0.1"\n',
+            encoding="utf-8",
+        )
+        keys = _parse_env_file_keys(env_file)
+        assert "WAXPREP_UNKNOWNOWN" in keys
+        assert "WAXPREP_HOST" in keys
+
+    def test_unreadable_dotenv_is_treated_as_empty(
+        self, isolated_env: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import waxprep.config as config_module
+
+        env_file = tmp_path / "unreadable.env"
+        env_file.write_text("WAXPREP_PORT=1\n", encoding="utf-8")
+
+        def boom(*args: object, **kwargs: object) -> dict[str, str | None]:
+            raise OSError("unreadable")
+
+        monkeypatch.setattr(config_module, "dotenv_values", boom)
+        assert config_module._parse_env_file_keys(env_file) == set()
+
+    def test_detector_and_loader_agree_on_quoted_export_values(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        env_file = tmp_path / "agree.env"
+        env_file.write_text(
+            'export WAXPREP_PORT="6006"\nexport WAXPREP_HOST="127.0.0.1"\n',
+            encoding="utf-8",
+        )
+        loaded = load_settings(env_file=env_file)
+        assert loaded.port == 6006
+        assert loaded.host == "127.0.0.1"
+
+
+# ---------------------------------------------------------------------------
+# PART 6 — production typo detection
+# ---------------------------------------------------------------------------
+
+
+class TestProductionTypoDetection:
+    """A misspelled environment must never silently downgrade to development."""
+
+    def test_misspelled_environment_production_blocks_startup(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WAXPREP_ENVIRONMET", "production")
+        monkeypatch.setenv("WAXPREP_HOST", "0.0.0.0")
+        monkeypatch.setenv("WAXPREP_PORT", "8000")
+        monkeypatch.setenv("WAXPREP_LOG_LEVEL", "info")
+        with pytest.raises(ValueError, match="critical configuration misspellings"):
+            load_settings(env_file=None)
+
+    def test_misspelled_environment_in_dotenv_blocks_startup(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        env_file = tmp_path / "prod.env"
+        env_file.write_text(
+            "WAXPREP_ENVIRONMET=production\nWAXPREP_PORRT=9000\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="critical configuration misspellings"):
+            load_settings(env_file=env_file)
+
+    def test_misspelled_environment_alone_still_blocks(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WAXPREP_ENVIRONMET", "production")
+        with pytest.raises(ValueError, match="WAXPREP_ENVIRONMET"):
+            load_settings(env_file=None)
+
+    def test_misspelled_host_in_production_blocks(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WAXPREP_ENVIRONMENT", "production")
+        monkeypatch.setenv("WAXPREP_HOST", "0.0.0.0")
+        monkeypatch.setenv("WAXPREP_PORT", "8000")
+        monkeypatch.setenv("WAXPREP_LOG_LEVEL", "info")
+        monkeypatch.setenv("WAXPREP_HOSTT", "127.0.0.1")
+        with pytest.raises(ValueError, match="WAXPREP_HOSTT"):
+            load_settings(env_file=None)
+
+    def test_production_block_message_omits_values(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WAXPREP_ENVIRONMENT", "production")
+        monkeypatch.setenv("WAXPREP_HOST", "0.0.0.0")
+        monkeypatch.setenv("WAXPREP_PORT", "8000")
+        monkeypatch.setenv("WAXPREP_LOG_LEVEL", "info")
+        monkeypatch.setenv("WAXPREP_PORRT", "9876")
+        with pytest.raises(ValueError) as exc_info:
+            load_settings(env_file=None)
+        assert "9876" not in str(exc_info.value)
+
+    def test_correct_environment_wins_over_misspelled_dotenv(
+        self, isolated_env: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / "typo.env"
+        env_file.write_text("WAXPREP_ENVIRONMET=production\n", encoding="utf-8")
+        monkeypatch.setenv("WAXPREP_ENVIRONMENT", "development")
+        assert load_settings(env_file=env_file).environment == Environment.DEVELOPMENT
+
+    def test_os_production_wins_over_dotenv_development(
+        self, isolated_env: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / "development.env"
+        env_file.write_text("WAXPREP_ENVIRONMENT=development\n", encoding="utf-8")
+        monkeypatch.setenv("WAXPREP_ENVIRONMENT", "production")
+        monkeypatch.setenv("WAXPREP_HOST", "0.0.0.0")
+        monkeypatch.setenv("WAXPREP_PORT", "8000")
+        monkeypatch.setenv("WAXPREP_LOG_LEVEL", "info")
+        assert load_settings(env_file=env_file).environment == Environment.PRODUCTION
+
+    def test_os_production_with_dotenv_critical_typo_blocks(
+        self, isolated_env: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / "typo.env"
+        env_file.write_text("WAXPREP_PORRT=9000\n", encoding="utf-8")
+        monkeypatch.setenv("WAXPREP_ENVIRONMENT", "production")
+        monkeypatch.setenv("WAXPREP_HOST", "0.0.0.0")
+        monkeypatch.setenv("WAXPREP_PORT", "8000")
+        monkeypatch.setenv("WAXPREP_LOG_LEVEL", "info")
+        with pytest.raises(ValueError, match="WAXPREP_PORRT"):
+            load_settings(env_file=env_file)
+
+    def test_invalid_production_dotenv_is_rejected(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        env_file = tmp_path / "invalid.env"
+        env_file.write_text(
+            "WAXPREP_ENVIRONMENT=production\n"
+            "WAXPREP_HOST=0.0.0.0\n"
+            "WAXPREP_PORT=70000\n"
+            "WAXPREP_LOG_LEVEL=info\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ValidationError, match="port"):
+            load_settings(env_file=env_file)
+
+
+# ---------------------------------------------------------------------------
+# PART 3 — prove isolation from a deliberate local .env
+# ---------------------------------------------------------------------------
+
+
+class TestLocalDotenvIsolation:
+    """A fake local .env with conflicting values cannot leak into clean tests."""
+
+    def test_deliberate_local_dotenv_is_not_loaded_when_disabled(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        (tmp_path / ".env").write_text(
+            "WAXPREP_PORT=9999\nWAXPREP_HOST=10.0.0.1\nWAXPREP_ENVIRONMENT=production\n",
+            encoding="utf-8",
+        )
+        settings = Settings(_env_file=None)
+        assert settings.port == 8000
+        assert settings.host == "0.0.0.0"
+        assert settings.environment == Environment.DEVELOPMENT
+
+    def test_deliberate_local_dotenv_would_be_loaded_without_isolation(
+        self, isolated_env: None, tmp_path: Path
+    ) -> None:
+        # Proves the assertion above is meaningful: the file is real and loadable.
+        (tmp_path / ".env").write_text("WAXPREP_PORT=9999\n", encoding="utf-8")
+        assert Settings().port == 9999
+
+    def test_lowercase_misspelling_is_normalised_and_blocks(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("WAXPREP_ENVIRONMENT", "production")
+        monkeypatch.setenv("WAXPREP_HOST", "0.0.0.0")
+        monkeypatch.setenv("WAXPREP_PORT", "8000")
+        monkeypatch.setenv("WAXPREP_LOG_LEVEL", "info")
+        monkeypatch.setenv("waxprep_porrt", "9000")
+        with pytest.raises(ValueError, match="WAXPREP_PORRT"):
+            load_settings(env_file=None)
+
+    def test_correct_variable_is_not_a_critical_misspelling(self, isolated_env: None) -> None:
+        from waxprep.config import _is_critical_misspelling
+
+        assert _is_critical_misspelling("WAXPREP_PORT") is False
+        assert _is_critical_misspelling("WAXPREP_NONSENSE") is False
+        assert _is_critical_misspelling("WAXPREP_PORRT") is True
+        assert _is_critical_misspelling("WAXPREP_LOG_LEVEl") is True
