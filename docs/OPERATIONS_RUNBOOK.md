@@ -14,7 +14,8 @@
    `503` returns a `reason`: `configuration_not_loaded`,
    `registries_not_initialized`, `channel_registry_not_initialized`,
    `model_registry_not_initialized`, `tool_registry_not_initialized`.
-3. Check CPU/memory in the dashboard for a spike or a leak-shaped ramp.
+3. Check CPU/memory for a spike or a leak-shaped ramp, using the platform's
+   resource metrics or `ps` inside the container.
 4. Open logs and look for `"level":"error"`.
 
 ## 2. Triage by error category
@@ -49,9 +50,9 @@ names the offending variable but never prints its value.
   or disable telemetry.
 
 ### Requests are slow
-Read p95 in the dashboard, then find the slow operation in traces by `trace_id`.
-If telemetry is off, re-enable it to get traces — logs alone will not show where
-time went.
+Read p95 from the `http.server.request.duration` histogram in the metrics backend,
+then find the slow operation in traces by `trace_id`. If telemetry is off,
+re-enable it to get traces — logs alone will not show where time went.
 
 ### Error rate spiked
 Filter logs to `"level":"error"` and group by `error.category`. A single category
@@ -84,4 +85,5 @@ Follow `SECURITY_AND_SECRETS.md` §7. **Revoke first, investigate second.**
   `provider_rejected` or `programming_defect`.
 - Do not paste log lines containing credentials into a ticket. Redaction covers
   the application's own output; a shell echo is not redacted.
-- Do not judge health from CPU graphs alone; a process can be idle and broken.
+- Do not judge health from resource metrics alone; a process can be idle and
+  broken.
