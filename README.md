@@ -1,8 +1,15 @@
 # WaxPrep Foundation
 
-**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 11).**
+**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 15).**
 
 Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Stage 09 adds dependency and supply-chain security to the same gate: pip-audit without blanket ignores, a scoped expiring exception register, lockfile hashes, dependency source restrictions, license policy, OSV malicious-package intelligence, a CycloneDX SBOM and Dependabot proposals. Stage 10 turns that collection into an acceptance system: every job records machine-readable evidence, the workflow audits its own definition, and acceptance is decided only from evidence bound to the exact commit being assessed.
+
+Stage 12–15 add the operational layer, implemented in dependency order (12 → 13 → 15 → 14) so error categories are stable before telemetry is built:
+
+- **Stage 12 — Secrets:** `SecretStr` configuration, provider-neutral secret boundary, a metadata-only inventory, and defence-in-depth redaction covering key names, bearer tokens, URL credentials, PEM blocks and provider token shapes.
+- **Stage 13 — Logging:** one logging contract (`configure_logging`) with a fixed UTC/JSON schema, documented severity policy, request/trace correlation and redaction applied *before* output.
+- **Stage 15 — Errors:** a typed taxonomy with stable codes and bounded categories, category→HTTP mapping that preserves the existing public contract, single-owner reporting, and a bounded, jittered, cancellation-aware retry policy.
+- **Stage 14 — Observability:** vendor-neutral OpenTelemetry behind an **optional extra**, low-cardinality metrics using route *templates*, and a fail-open exporter policy so a collector outage never breaks a request.
 
 **Stage 10 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
@@ -399,6 +406,10 @@ All project documentation is organized in the `docs/` folder:
 - `docs/STAGE_11_CORRECTION_REPORT.md` — Stage 11 corrective verification pass (historical record)
 - `docs/STAGE_11_HARDENING_REPORT.md` — Independent review follow-up: loading consistency, isolation, startup and typo hardening
 - `docs/security/DEPENDENCY_EXCEPTION_POLICY.md` — Vulnerability exception register and expiry rules
+- `docs/SECURITY_AND_SECRETS.md` — Secret classification, precedence, inventory, rotation/revocation and incident response (Stage 12)
+- `docs/OBSERVABILITY_AND_LOGGING.md` — Log schema, severity policy, correlation, telemetry, metric catalogue and cardinality (Stages 13–14)
+- `docs/ERROR_HANDLING.md` — Error taxonomy, boundaries, public HTTP contract and retry policy (Stage 15)
+- `docs/OPERATIONS_RUNBOOK.md` — On-call triage, category table, scenarios, deploy and rollback
 
 ### Archive (Historical/Superseded)
 - `docs/archive/` — Contains superseded documents:

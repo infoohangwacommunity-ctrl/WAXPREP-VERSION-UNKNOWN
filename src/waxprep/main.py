@@ -25,22 +25,25 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from waxprep.config import settings
+from waxprep.errors.http import public_body, status_for
+from waxprep.errors.taxonomy import WaxPrepError
+from waxprep.middleware.observability import ObservabilityMiddleware
 from waxprep.middleware.request_id import RequestIdMiddleware
+from waxprep.observability.logging import configure_logging
+from waxprep.observability.metrics import metrics
+from waxprep.observability.telemetry import TelemetryConfig, telemetry
 from waxprep.registries.channel import ChannelRegistry
 from waxprep.registries.model import ModelRegistry
 from waxprep.registries.tool import ToolRegistry
 
-# Configure structured logging
-structlog.configure(
-    processors=[
-        structlog.contextvars.merge_contextvars,
-        structlog.processors.add_log_level,
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.JSONRenderer(),
-    ],
-    context_class=dict,
-    logger_factory=structlog.PrintLoggerFactory(),
+# Logging is configured once from validated settings (Stage 13). This is an
+# explicit call rather than an import side effect so CLI entry points, tests
+# and future workers share one contract.
+configure_logging(
+    level=settings.log_level.value,
+    json_output=settings.log_json,
+    service_version="0.1.0",
+    environment=settings.environment.value,
 )
 logger = structlog.get_logger()
 
@@ -139,6 +142,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
 
     _app_state.registries_ready = True
 
+    # Stage 14: telemetry is optional and must never block startup. A disabled
+    # or unconfigured exporter degrades to a no-op with a logged reason.
+    telemetry_state = telemetry.configure(
+        TelemetryConfig(
+            enabled=settings.telemetry_enabled,
+            endpoint=settings.telemetry_endpoint,
+            service_version="0.1.0",
+            environment=settings.environment.value,
+            sample_ratio=settings.telemetry_sample_ratio,
+        )
+    )
+    if telemetry_state.active:
+        metrics.configure()
+    logger.info(
+        "telemetry_configured", active=telemetry_state.active, reason=telemetry_state.reason
+    )
+
     logger.info("Registries initialized")
     logger.info(f"  Channels: {_app_state.channel_registry.list_all()}")
     logger.info(f"  Models: {_app_state.model_registry.list_all()}")
@@ -168,6 +188,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
     _app_state.model_registry = None
     _app_state.tool_registry = None
     logger.info("Shutdown started")
+    telemetry.shutdown()
     logger.info("Shutdown complete")
 
 
@@ -181,6 +202,8 @@ _app = FastAPI(
 
 # Add request correlation ID middleware
 _app.add_middleware(RequestIdMiddleware)
+# Observability runs outermost so it times the full request
+_app.add_middleware(ObservabilityMiddleware)
 
 
 # Exception handlers
@@ -227,6 +250,21 @@ async def validation_exception_handler(  # noqa: RUF029
             "errors": [{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()],
         },
     )
+
+
+@_app.exception_handler(WaxPrepError)
+async def waxprep_error_handler(request: Request, exc: WaxPrepError) -> JSONResponse:  # noqa: RUF029
+    """Translate a typed WaxPrep error into a safe public response.
+
+    This is the single authoritative reporting point for application failures:
+    it logs once, records one bounded metric, and never leaks internals.
+    """
+    status_code = status_for(exc.category)
+    if status_code >= 500:
+        logger.error("request_failed", path=request.url.path, **exc.to_fields())
+    else:
+        logger.warning("request_rejected", path=request.url.path, **exc.to_fields())
+    return JSONResponse(status_code=status_code, content=public_body(exc))
 
 
 @_app.exception_handler(Exception)

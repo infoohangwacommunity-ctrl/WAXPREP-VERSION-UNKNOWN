@@ -1,7 +1,9 @@
 """
-Test Exception Handlers - Stages 01-04
+Test Exception Handlers - Stages 01-04, extended in Stage 15
 
-Prove exception handler bodies execute correctly:
+Prove exception handler bodies execute correctly (the module docstring
+previously cited only Stages 01-04; the behaviour now also covers the Stage 15
+error taxonomy boundary, which preserves this exact public contract):
 - validation_exception_handler (RequestValidationError)
 - general_exception_handler (unhandled Exception)
 - http_exception_handler is already covered by 404 tests in test_foundation.py

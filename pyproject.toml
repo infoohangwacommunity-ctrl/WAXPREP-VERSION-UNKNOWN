@@ -25,6 +25,16 @@ dependencies = [
 waxprep = "waxprep.main:run"
 
 [project.optional-dependencies]
+# ── Stage 14: telemetry is an OPTIONAL extra ─────────────────────────────────
+# Deliberately not a base dependency. The application degrades to a documented
+# no-op when these are absent, so a lean deployment (or a unit-test run) never
+# pulls protobuf/requests/wrapt it does not use. Deployments that export
+# telemetry install `waxprep[telemetry]`. CI installs it via the dev extra so
+# the real exporter integration is exercised, not just the degraded path.
+telemetry = [
+    "opentelemetry-sdk>=1.45.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.0",
+]
 dev = [
     "mypy>=1.8.0",
     "pyright>=1.1.0",
@@ -43,6 +53,10 @@ dev = [
     # Stage 10 workflow audit parses .github/workflows/*.yml. PyYAML is already
     # present through uvicorn[standard]; declaring it makes that explicit.
     "pyyaml>=6.0",
+    # Stage 14 — install the optional telemetry extra in CI so the real
+    # exporter integration is tested, not only the degraded no-op path.
+    "opentelemetry-sdk>=1.45.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.0",
 ]
 
 # ── Vulture: dead code detection ─────────────────────────────────────────────
