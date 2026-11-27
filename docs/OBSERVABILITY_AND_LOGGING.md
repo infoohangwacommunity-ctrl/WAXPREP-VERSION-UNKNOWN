@@ -1,7 +1,7 @@
 # Observability and Logging (Stages 13–14)
 
-**Owner:** Log schema and severity policy, log correlation, telemetry configuration, metric catalogue, cardinality, exporter failure policy, dashboards.
-**Does not cover:** Secret rotation (see `SECURITY_AND_SECRETS.md`) or error taxonomy (see `ERROR_HANDLING.md`).
+**Owner:** Log schema and severity policy, log correlation, telemetry configuration, metric catalogue, cardinality, exporter failure policy.
+**Does not cover:** Any in-app operational UI (none is built — signals are exported to an operator-chosen backend); secret rotation (see `SECURITY_AND_SECRETS.md`); error taxonomy (see `ERROR_HANDLING.md`).
 
 ---
 
@@ -161,38 +161,26 @@ orchestration, model providers, persistence and outbound delivery. Those
 components do not exist. Trigger: the first real component is built — instrument
 it at that point using the same boundary.
 
-## 4. Dashboard and alerts (specification, not a build)
-
-Panels: is it up · request rate · p50/p95/p99 latency · error rate · errors by
-bounded category · CPU/memory vs limit · export failures · readiness failures ·
-slowest operations (from traces).
-
-Alert only on actionable symptoms: sustained 5xx rate, sustained p95 breach,
-repeated readiness failure, memory near a known limit, repeated restarts,
-persistent export failure. **Do not choose production thresholds before baseline
-data exists** — record a baseline first, then document provisional thresholds.
-
-## 5. Cost and retention
+## 4. Cost and retention
 
 Decide and record: signals exported, sampling policy, log/trace/metric retention,
 max attribute size, debug logs off in production, student content categorically
-excluded, dashboard access control, credential rotation, and deletion/
-retention-shortening procedure. Never use observability as a second copy of the
-conversation database.
+excluded, credential rotation, and deletion/retention-shortening procedure. Never
+use observability as a second copy of the conversation database.
 
-## 6. Operating procedure (non-specialist)
+## 5. Operating procedure (non-specialist)
 
-1. Open the hosting dashboard → confirm the deployment is healthy.
-2. Check CPU and memory graphs.
-3. Open application logs.
-4. **Search the `request_id`** from the failed request (it is in the response
+1. Call `GET /health/liveness` and `GET /health/readiness` → confirm the
+   deployment is healthy.
+2. Open the platform's application log stream.
+3. **Search the `request_id`** from the failed request (it is in the response
    header).
-5. Read the structured error event: `error.code` + `error.category`.
-6. If a trace backend is connected, follow `trace_id`.
-7. Classify: transient (retryable category), configuration, or code defect.
-8. Follow `OPERATIONS_RUNBOOK.md`.
+4. Read the structured error event: `error.code` + `error.category`.
+5. If a trace backend is connected, follow `trace_id`.
+6. Classify: transient (retryable category), configuration, or code defect.
+7. Follow `OPERATIONS_RUNBOOK.md`.
 
-## 7. Verification
+## 6. Verification
 
 `tests/observability/test_logging.py` (16) proves: valid JSON, required fields,
 UTC timestamps, severity mapping and filtering, console fallback, no duplicate
