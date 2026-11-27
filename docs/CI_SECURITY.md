@@ -17,6 +17,12 @@ dependency diff. Its least-privilege permission set is therefore
 fails with `HTTP 403 Forbidden`. It still does not write to the repository, and
 it runs on `pull_request` with no secrets.
 
+The action also depends on GitHub's **dependency graph** for the repository. If
+the graph is disabled, both the compare API and the SBOM API return 403/404 even
+when the workflow permissions are correct. Enable the dependency graph (and
+Dependabot alerts) in repository security settings; this is a repository
+configuration prerequisite, not a code change.
+
 `pull_request` (not `pull_request_target`) is used, so a fork's code never runs
 with a privileged token or with repository secrets. No secrets are referenced by
 the CI workflow at all.

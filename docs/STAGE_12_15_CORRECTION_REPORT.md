@@ -22,7 +22,7 @@ by a test that observes the final output rather than a helper call.
 | 4 | Exception handlers logged `request.url.path`, which can embed identifiers. | High (privacy) | HTTP, validation, typed-error and general handlers now log the matched route template (or fixed `unmatched`). A sentinel-in-URL regression test asserts the identifier never appears in log output. |
 | 5 | The retry budget was checked only before sleeping; a hanging operation could exceed the deadline. | High | A monotonic deadline now bounds each operation via `asyncio.wait_for`, as well as delays and subsequent attempts. An over-budget operation raises `DependencyTimeoutError`; external cancellation still propagates untouched. |
 | 6 | `WAXPREP_TELEMETRY_AUTH_TOKEN` was not passed to the exporter. | High | The `SecretStr` value is revealed at one call site and sent as `Authorization: Bearer <token>` on both OTLP exporters. It is excluded from `repr()` and never logged. A non-empty token is now documented as active, not reserved. |
-| 7 | Dependency Review failed with HTTP 403 because it lacked PR read permission. | CI | `.github/workflows/dependency-review.yml` adds least-privilege `pull-requests: read` alongside `contents: read`; a regression test locks the permission set. |
+| 7 | Dependency Review failed with HTTP 403. | CI | The workflow was missing PR read permission **and** the repository dependency graph was disabled. `.github/workflows/dependency-review.yml` adds least-privilege `pull-requests: read`; the dependency graph was enabled through the repository security setting (no code change). Verified on a pull request. |
 | 8 | Dependabot could not resolve the dependency set for Python 3.15. | CI | `requires-python` is now `>=3.14,<3.15`; `uv.lock` was regenerated for the supported range. |
 
 The optional-telemetry and fail-open policies are preserved: a missing metrics
@@ -121,11 +121,21 @@ Baseline before the pass: 888 passed, 100% coverage. This pass adds 30 tests.
 
 ## 5. GitHub Actions evidence
 
-The acceptance rule is the same: acceptance is decided from CI evidence bound to
-the exact commit. After this report's commit is pushed to `main`, the full
-`CI — Quality Gate` run, the `Dependency Security` run and a re-run of
-`Dependency Review` on a pull request are the remote evidence. Run links are
-recorded in the repository's **Actions** tab for the correction commit.
+Correction commit: `6b5c05d` (`main`).
+
+| Workflow | Result | Run |
+|---|---|---|
+| Dependency Security | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46071079953 |
+| CI — Quality Gate | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46071079812 |
+| Dependency Review (verification PR #10) | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46071543537 |
+
+Dependency Review required two corrections: the workflow permission and a
+repository setting. The repository dependency graph was disabled (the
+`dependency-graph/sbom` endpoint returned 404 and the compare endpoint returned
+403 even with an admin token). Enabling Dependabot vulnerability alerts activated
+the dependency graph; the action then passed on the verification pull request.
+The verification PR was closed without merging and contained no application
+changes.
 
 Local green results are not a substitute for that remote evidence.
 
