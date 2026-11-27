@@ -299,3 +299,15 @@ Semgrep with the expanded rules, detector, supply chain, workflow audit,
 lockfile, tests, coverage).
 
 Commit-bound CI evidence is recorded below after the correction commit.
+
+### 11.6 Correction CI evidence
+
+**Correction commit:** `e85c1e44c5b339986bc893415a6cf0ccb092f753`.
+
+| Workflow | Result | Run |
+|---|---|---|
+| CI — Quality Gate | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46081674318 |
+| Dependency Security | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46081675523 |
+
+These runs are bound to the correction commit, not to the earlier Stage 16
+implementation commit.
