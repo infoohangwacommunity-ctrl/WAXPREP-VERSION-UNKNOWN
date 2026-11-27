@@ -177,4 +177,39 @@ When modifying Semgrep configuration (`.semgrep/config.yml`):
 
 ---
 
+When changing secrets, logging, telemetry or error handling (Stages 12–15):
+
+**Secrets (Stage 12)**
+- [ ] No real credential in code, docs, fixtures, CI output or commit history
+- [ ] New credentials use `SecretStr` and appear in the inventory in `SECURITY_AND_SECRETS.md`
+- [ ] No secret value can reach logs, traces, metrics, responses or diagnostics (test asserts the *final* output)
+- [ ] Redaction test covers both a true positive **and** that unrelated safe values survive
+- [ ] No vendor secret SDK imported by `core/`
+
+**Logging (Stage 13)**
+- [ ] Events use stable names and the documented schema — no arbitrary sentences
+- [ ] Correct severity per the policy; the owning layer logs the failure **once**
+- [ ] Correlation IDs bound and cleared; no cross-request leakage
+- [ ] No request/response bodies, student content or prompts logged by default
+
+**Errors (Stage 15)**
+- [ ] New failure maps to a taxonomy type with a stable code and bounded category
+- [ ] Vendor exceptions translated at the adapter boundary; no vendor type reaches `core/`
+- [ ] Retry only for `TRANSIENT` categories, with attempts + budget + jitter
+- [ ] Cancellation propagates and is never retried
+- [ ] Public response stays generic for 5xx; `X-Request-ID` preserved
+
+**Observability (Stage 14)**
+- [ ] Telemetry remains optional; disabled/unavailable degrades to a no-op
+- [ ] Metric labels are low-cardinality (route *templates*, bounded vocabularies)
+- [ ] No PII, secrets or raw identifiers as labels
+- [ ] A collector outage cannot fail a request
+
+**Documentation**
+- [ ] `CONFIGURATION_REFERENCE.md` updated for every new setting
+- [ ] `.env.example` placeholders only
+- [ ] Deferred work marked as deferred with a trigger condition
+
+---
+
 *Based on Stage 03 Architecture Guide and ARCHITECTURE_BOUNDARIES.md*

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ConfigSource = Literal["environment", "env_file", "default"]
@@ -220,6 +220,36 @@ class Settings(BaseSettings):
         description="Application log level. One of: DEBUG, INFO, WARNING, ERROR, CRITICAL.",
     )
 
+    # ── Stage 12: secret-typed inputs ────────────────────────────────────────
+    # SecretStr keeps values out of repr(), model_dump() and logging. There is
+    # deliberately no default: a missing credential must fail loudly, not
+    # silently fall back. No component requires one yet, so it is optional.
+    telemetry_auth_token: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Optional OTLP exporter credential. Never logged or serialized. "
+            "Supplied by the hosting platform, never committed."
+        ),
+    )
+
+    # ── Stage 14: telemetry (disabled by default) ────────────────────────────
+    telemetry_enabled: bool = Field(
+        default=False,
+        description="Enable OpenTelemetry export. Disabled by default; no-op when off.",
+    )
+    telemetry_endpoint: str | None = Field(
+        default=None,
+        description="OTLP HTTP/protobuf endpoint. Required when telemetry is enabled.",
+    )
+    telemetry_sample_ratio: float = Field(
+        default=1.0,
+        description="Trace sampling ratio between 0.0 and 1.0.",
+    )
+    log_json: bool = Field(
+        default=True,
+        description="Render logs as JSON. Disable only for local console debugging.",
+    )
+
     @field_validator("host")
     @classmethod
     def host_must_not_be_empty(cls, value: str) -> str:
@@ -241,6 +271,23 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return value.upper()
         return value
+
+    @field_validator("telemetry_sample_ratio")
+    @classmethod
+    def sample_ratio_in_range(cls, value: float) -> float:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"telemetry_sample_ratio must be between 0.0 and 1.0, got {value}")
+        return value
+
+    @model_validator(mode="after")
+    def telemetry_endpoint_required_when_enabled(self) -> Settings:
+        """An explicitly enabled exporter without an endpoint is a config error."""
+        if self.telemetry_enabled and not (self.telemetry_endpoint or "").strip():
+            raise ValueError(
+                "telemetry_enabled is true but telemetry_endpoint is empty. "
+                "Supply WAXPREP_TELEMETRY_ENDPOINT or disable telemetry."
+            )
+        return self
 
     @model_validator(mode="after")
     def enforce_production_explicit_settings(self) -> Settings:

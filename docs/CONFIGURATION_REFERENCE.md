@@ -152,3 +152,32 @@ uv run python -m waxprep.main
 Invoking `uvicorn waxprep.main:get_app` directly is supported for debugging and
 auto-reload, but Uvicorn's own `--host`/`--port` defaults apply unless you pass
 them explicitly. Use the entrypoint above for deployments.
+
+---
+
+## Stages 12–14 settings
+
+Canonical catalogue. `ENVIRONMENT_SETUP.md` links here rather than repeating it.
+
+| Variable | Type | Default | Required | Secret | Notes |
+|---|---|---|---|---|---|
+| `WAXPREP_TELEMETRY_ENABLED` | bool | `false` | no | no | Master switch for OpenTelemetry export |
+| `WAXPREP_TELEMETRY_ENDPOINT` | str | — | **yes when enabled** | no | OTLP/HTTP endpoint |
+| `WAXPREP_TELEMETRY_SAMPLE_RATIO` | float | `1.0` | no | no | 0.0–1.0; out of range fails startup |
+| `WAXPREP_TELEMETRY_AUTH_TOKEN` | secret | — | conditional | **yes** | `SecretStr`; never logged/serialized |
+| `WAXPREP_LOG_JSON` | bool | `true` | no | no | `false` = console output for local dev |
+
+### Validation rules added in these stages
+
+- `telemetry_sample_ratio` outside `0.0–1.0` → validation error naming the field.
+- `telemetry_enabled=true` with an empty endpoint → startup refused with a clear
+  message. An explicitly enabled exporter without a destination is a
+  configuration mistake, not something to ignore silently.
+- A **missing SDK** while telemetry is enabled is *not* a startup failure: it
+  degrades to `sdk_unavailable` and logs the reason. Packaging state must not
+  block boot.
+
+### What is deliberately *not* configurable
+
+There is no setting to disable redaction, to log request bodies, or to raise
+metric cardinality. Those are safety properties, not operator preferences.
