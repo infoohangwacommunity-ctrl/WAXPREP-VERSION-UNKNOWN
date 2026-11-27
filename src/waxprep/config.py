@@ -239,7 +239,14 @@ class Settings(BaseSettings):
     )
     telemetry_endpoint: str | None = Field(
         default=None,
-        description="OTLP HTTP/protobuf endpoint. Required when telemetry is enabled.",
+        description="OTLP HTTP/protobuf trace endpoint. Required when telemetry is enabled.",
+    )
+    telemetry_metrics_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "Optional OTLP HTTP/protobuf metrics endpoint. Defaults to the trace "
+            "endpoint with its /v1/traces suffix swapped for /v1/metrics."
+        ),
     )
     telemetry_sample_ratio: float = Field(
         default=1.0,

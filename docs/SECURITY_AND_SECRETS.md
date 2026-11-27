@@ -74,7 +74,7 @@ new credential.
 
 | Name | Purpose | Owner | Environments | Status | Rotation | Revocation | Notes |
 |---|---|---|---|---|---|---|---|
-| `WAXPREP_TELEMETRY_AUTH_TOKEN` | OTLP exporter credential | Platform/SRE | staging, production (only if the collector requires auth) | **Reserved** — not required by any active feature | Rotate with the collector's credential; prefer short-lived tokens | Remove from platform variable store, restart service, confirm exports fail closed | Optional. Absence is not an error. |
+| `WAXPREP_TELEMETRY_AUTH_TOKEN` | OTLP exporter credential | Platform/SRE | staging, production (only if the collector requires auth) | **Active** — wired into both OTLP exporters as `Authorization: Bearer <token>` | Rotate with the collector's credential; prefer short-lived tokens | Remove from platform variable store, restart service, confirm exports fail closed | Optional. Absence is not an error; no header is sent. Value is never logged or serialized, including `repr()`. |
 | *(future)* DB password | Persistence | — | — | Not implemented | — | — | Do not create until a database exists. |
 | *(future)* channel webhook secret | Inbound verification | — | — | Not implemented | — | — | Do not create until a channel integration exists. |
 

@@ -11,6 +11,12 @@ adds permissions. Nothing in the pipeline pushes, comments, creates releases or
 writes to the repository. Artifact upload/download is handled by the runner's
 own token and needs no extra scope.
 
+The separate `Dependency Review` workflow needs to read the pull request's
+dependency diff. Its least-privilege permission set is therefore
+`contents: read` **plus** `pull-requests: read`. Without the latter, the action
+fails with `HTTP 403 Forbidden`. It still does not write to the repository, and
+it runs on `pull_request` with no secrets.
+
 `pull_request` (not `pull_request_target`) is used, so a fork's code never runs
 with a privileged token or with repository secrets. No secrets are referenced by
 the CI workflow at all.

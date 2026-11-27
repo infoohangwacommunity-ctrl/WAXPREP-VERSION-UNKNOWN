@@ -63,3 +63,9 @@ class TestTelemetrySettings:
         monkeypatch.setenv("WAXPREP_TELEMETRY_ENDPOINT", "http://collector:4318/v1/traces")
         settings = Settings(_env_file=None)
         assert settings.telemetry_enabled is True
+
+    def test_metrics_endpoint_is_optional_and_can_be_overridden(self, monkeypatch):
+        assert Settings(_env_file=None).telemetry_metrics_endpoint is None
+        monkeypatch.setenv("WAXPREP_TELEMETRY_METRICS_ENDPOINT", "http://collector:4318/v1/metrics")
+        settings = Settings(_env_file=None)
+        assert settings.telemetry_metrics_endpoint == "http://collector:4318/v1/metrics"

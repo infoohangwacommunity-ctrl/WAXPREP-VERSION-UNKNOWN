@@ -26,12 +26,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from waxprep.config import settings
 from waxprep.errors.http import public_body, status_for
-from waxprep.errors.taxonomy import WaxPrepError
+from waxprep.errors.taxonomy import ErrorCategory, ProgrammingDefectError, WaxPrepError
 from waxprep.middleware.observability import ObservabilityMiddleware
 from waxprep.middleware.request_id import RequestIdMiddleware
 from waxprep.observability.logging import configure_logging
 from waxprep.observability.metrics import metrics
-from waxprep.observability.telemetry import TelemetryConfig, telemetry
+from waxprep.observability.telemetry import TelemetryConfig, route_template, telemetry
 from waxprep.registries.channel import ChannelRegistry
 from waxprep.registries.model import ModelRegistry
 from waxprep.registries.tool import ToolRegistry
@@ -46,6 +46,47 @@ configure_logging(
     environment=settings.environment.value,
 )
 logger = structlog.get_logger()
+
+# Bounded readiness reasons. Named constants keep the vocabulary in one place
+# and avoid a stray literal becoming a new response value.
+READINESS_CONFIGURATION_NOT_LOADED = "configuration_not_loaded"
+READINESS_REGISTRIES_NOT_INITIALIZED = "registries_not_initialized"
+READINESS_CHANNEL_NOT_INITIALIZED = "channel_registry_not_initialized"
+READINESS_MODEL_NOT_INITIALIZED = "model_registry_not_initialized"
+READINESS_TOOL_NOT_INITIALIZED = "tool_registry_not_initialized"
+
+
+def _route_label(request: Request) -> str:
+    """Return a log-safe route label: the matched template or ``unmatched``.
+
+    Raw paths can embed identifiers (phone numbers, conversation IDs). Logs use
+    the route template the application actually matched, never the raw path.
+    """
+    matched = request.scope.get("route")
+    matched_path = getattr(matched, "path", None)
+    return route_template(request.url.path, matched_path)
+
+
+def _telemetry_auth_token() -> str | None:
+    """Reveal the configured exporter credential at its single point of use."""
+    token = settings.telemetry_auth_token
+    return token.get_secret_value() if token is not None else None
+
+
+def _record_error_metric(category: str, code: str) -> None:
+    """Record one bounded error metric; observability never breaks a response."""
+    try:
+        metrics.record_error(category=category, code=code)
+    except Exception:  # noqa: BLE001 - a metrics outage must not mask the error
+        logger.warning("observability_metric_failed", exc_info=True)
+
+
+def _record_readiness_metric(*, ready: bool) -> None:
+    """Record one readiness outcome; observability never breaks a probe."""
+    try:
+        metrics.record_readiness(ready=ready)
+    except Exception:  # noqa: BLE001 - a metrics outage must not mask readiness
+        logger.warning("observability_metric_failed", exc_info=True)
 
 
 # Application state container - isolates lifecycle state per app instance
@@ -148,15 +189,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
         TelemetryConfig(
             enabled=settings.telemetry_enabled,
             endpoint=settings.telemetry_endpoint,
+            metrics_endpoint=settings.telemetry_metrics_endpoint,
             service_version="0.1.0",
             environment=settings.environment.value,
             sample_ratio=settings.telemetry_sample_ratio,
+            auth_token=_telemetry_auth_token(),
         )
     )
-    if telemetry_state.active:
-        metrics.configure()
+    metrics_active = False
+    if telemetry_state.active and telemetry_state.metrics_active:
+        # Only bind instruments when a real exporting meter provider exists;
+        # otherwise they would attach to a no-op/global provider and lie.
+        metrics_active = metrics.configure(meter_provider=telemetry_state.meter_provider)
     logger.info(
-        "telemetry_configured", active=telemetry_state.active, reason=telemetry_state.reason
+        "telemetry_configured",
+        active=telemetry_state.active,
+        reason=telemetry_state.reason,
+        metrics_active=metrics_active,
+        metrics_reason=telemetry_state.metrics_reason,
     )
 
     logger.info("Registries initialized")
@@ -192,12 +242,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
     logger.info("Shutdown complete")
 
 
-# Create FastAPI app
+# Create FastAPI app.
+# FastAPI ships its own OpenTelemetry integration that activates automatically
+# once a global provider is configured. WaxPrep owns its request span and metric
+# catalogue (see ObservabilityMiddleware), so the native integration is disabled:
+# otherwise every request would produce two spans and a second metric stream
+# named ``http.server.request.duration`` with a different unit.
 _app = FastAPI(
     title="WaxPrep Foundation",
     description="WaxPrep Foundation - ASGI application with health endpoints, registries, and structured logging",
     version="0.1.0",
     lifespan=lifespan,
+    telemetry={
+        "tracing": False,
+        "metrics": False,
+        "logs": False,
+        "operation_spans": False,
+    },
 )
 
 # Add request correlation ID middleware
@@ -217,7 +278,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     logger.warning(
         "HTTP exception",
         status_code=exc.status_code,
-        path=request.url.path,
+        route=_route_label(request),
     )
     return JSONResponse(
         status_code=exc.status_code,
@@ -240,7 +301,7 @@ async def validation_exception_handler(  # noqa: RUF029
     """
     logger.warning(
         "Validation error",
-        path=request.url.path,
+        route=_route_label(request),
         error_count=len(exc.errors()),
     )
     return JSONResponse(
@@ -260,10 +321,14 @@ async def waxprep_error_handler(request: Request, exc: WaxPrepError) -> JSONResp
     it logs once, records one bounded metric, and never leaks internals.
     """
     status_code = status_for(exc.category)
+    route = _route_label(request)
     if status_code >= 500:
-        logger.error("request_failed", path=request.url.path, **exc.to_fields())
+        logger.error("request_failed", route=route, **exc.to_fields())
     else:
-        logger.warning("request_rejected", path=request.url.path, **exc.to_fields())
+        logger.warning("request_rejected", route=route, **exc.to_fields())
+    # Deliberate cancellation is expected during shutdown and is not a failure.
+    if exc.category is not ErrorCategory.CANCELLATION:
+        _record_error_metric(str(exc.category), exc.code)
     return JSONResponse(status_code=status_code, content=public_body(exc))
 
 
@@ -272,8 +337,12 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     """Handle unexpected exceptions - log full details, return sanitized response."""
     logger.exception(
         "Unhandled exception",
-        path=request.url.path,
+        route=_route_label(request),
         exc_type=type(exc).__name__,
+    )
+    _record_error_metric(
+        str(ProgrammingDefectError.category),
+        ProgrammingDefectError.code,
     )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -294,6 +363,42 @@ async def liveness() -> JSONResponse:  # noqa: RUF029
     )
 
 
+def _readiness_failure_reason() -> str | None:
+    """Return the first failed readiness precondition, or None when ready.
+
+    Kept separate from the endpoint so the metric records exactly one outcome
+    per probe with the same decision that produced the HTTP response.
+    """
+    # Accumulate into one variable rather than returning literals: a single
+    # exit point keeps the metric and the HTTP response using the same decision.
+    reason: str | None = None
+
+    # Check configuration exists and has a recognised environment
+    try:
+        env_value = settings.environment.value
+    except AttributeError:
+        env_value = None
+
+    if not env_value:
+        reason = READINESS_CONFIGURATION_NOT_LOADED
+    elif not _app_state.registries_ready:
+        # Check registries are initialized via app state
+        reason = READINESS_REGISTRIES_NOT_INITIALIZED
+    elif _app_state.channel_registry is None or not _app_state.channel_registry.is_registered(
+        "fake"
+    ):
+        # Verify default adapters registered using stored instances
+        reason = READINESS_CHANNEL_NOT_INITIALIZED
+    elif _app_state.model_registry is None or not _app_state.model_registry.is_registered("fake"):
+        reason = READINESS_MODEL_NOT_INITIALIZED
+    elif _app_state.tool_registry is None or not _app_state.tool_registry.is_registered(
+        "fake_tool"
+    ):
+        reason = READINESS_TOOL_NOT_INITIALIZED
+
+    return reason
+
+
 @_app.get("/health/readiness")
 async def readiness() -> JSONResponse:
     """Readiness endpoint - Is the application ready?
@@ -305,44 +410,15 @@ async def readiness() -> JSONResponse:
 
     Liveness != Readiness. This proves the distinction.
     """
-    # Check configuration exists and has a recognised environment
-    try:
-        env_value = settings.environment.value
-    except AttributeError:
-        env_value = None
-
-    if not env_value:
+    failure = _readiness_failure_reason()
+    if failure is not None:
+        _record_readiness_metric(ready=False)
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "not_ready", "reason": "configuration_not_loaded"},
+            content={"status": "not_ready", "reason": failure},
         )
 
-    # Check registries are initialized via app state
-    if not _app_state.registries_ready:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "not_ready", "reason": "registries_not_initialized"},
-        )
-
-    # Verify default adapters registered using stored instances
-    if _app_state.channel_registry is None or not _app_state.channel_registry.is_registered("fake"):
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "not_ready", "reason": "channel_registry_not_initialized"},
-        )
-
-    if _app_state.model_registry is None or not _app_state.model_registry.is_registered("fake"):
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "not_ready", "reason": "model_registry_not_initialized"},
-        )
-
-    if _app_state.tool_registry is None or not _app_state.tool_registry.is_registered("fake_tool"):
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "not_ready", "reason": "tool_registry_not_initialized"},
-        )
-
+    _record_readiness_metric(ready=True)
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={

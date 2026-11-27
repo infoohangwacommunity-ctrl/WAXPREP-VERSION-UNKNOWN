@@ -108,9 +108,14 @@ Requirements enforced by `RetryPolicy` and `run_with_retry`:
 
 - Only `TRANSIENT` categories are retried. Invalid input, invalid credentials,
   permission denial and programming defects are never retried.
-- Hard attempt ceiling **and** a total wall-clock budget.
+- Hard attempt ceiling **and** a total monotonic wall-clock budget. The budget
+  covers the operation itself, every retry delay and every subsequent attempt:
+  each operation runs under the remaining time, and an operation that outlives
+  the deadline is cancelled and surfaced as `DependencyTimeoutError` rather than
+  hanging past the promised budget.
 - Exponential backoff with jitter (parallel callers do not synchronise).
-- Cancellation always propagates.
+- Cancellation always propagates; it is never converted into a retry or a
+  timeout.
 - The final failure is re-raised unchanged, so the owning boundary reports it.
 
 Not yet applicable: no retryable operation exists in the current foundation

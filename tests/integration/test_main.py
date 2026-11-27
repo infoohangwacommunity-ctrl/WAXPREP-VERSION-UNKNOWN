@@ -114,7 +114,10 @@ class TestValidationExceptionHandler:
             assert response.status_code == 422
             mock_logger.warning.assert_called_once()
             kwargs = mock_logger.warning.call_args.kwargs
-            assert kwargs["path"] == "/_test-validation"
+            # The log carries the matched route template (or a fixed safe
+            # label), never a raw request path.
+            assert "path" not in kwargs
+            assert kwargs["route"] in {"/_test-validation", "unmatched"}
             assert kwargs["error_count"] >= 1
 
 
@@ -158,7 +161,10 @@ class TestGeneralExceptionHandler:
             assert response.status_code == 500
             mock_logger.exception.assert_called_once()
             kwargs = mock_logger.exception.call_args.kwargs
-            assert kwargs["path"] == "/_test-error"
+            # No matched route in this synthetic scope: the safe fallback is
+            # used instead of the raw path.
+            assert "path" not in kwargs
+            assert kwargs["route"] == "unmatched"
             assert kwargs["exc_type"] == "ZeroDivisionError"
 
 

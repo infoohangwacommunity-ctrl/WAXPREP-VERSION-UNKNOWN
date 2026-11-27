@@ -239,3 +239,54 @@ class TestRunWithRetry:
 
         with pytest.raises(CancellationError):
             await run_with_retry(operation, sleep=no_sleep)
+
+    async def test_operation_that_outlives_the_budget_is_stopped(self):
+        """The deadline must cover the operation, not only the sleep between tries."""
+        import asyncio
+        import time
+
+        async def hangs():
+            await asyncio.sleep(30)
+
+        started = time.monotonic()
+        with pytest.raises(DependencyTimeoutError):
+            await run_with_retry(
+                hangs,
+                policy=RetryPolicy(max_attempts=3, total_budget=0.05, base_delay=0.0),
+            )
+        assert time.monotonic() - started < 2.0
+
+    async def test_overshooting_sleep_surfaces_the_original_failure(self):
+        """If a delay overruns the deadline, the real failure is re-raised."""
+
+        async def operation():  # noqa: RUF029
+            raise RateLimitedError()
+
+        clock_values = iter([0.0, 0.0, 0.0, 100.0])
+
+        async def overrunning_sleep(_seconds):  # noqa: RUF029
+            return None
+
+        with pytest.raises(RateLimitedError):
+            await run_with_retry(
+                operation,
+                policy=RetryPolicy(max_attempts=5, base_delay=1.0, total_budget=10.0),
+                sleep=overrunning_sleep,
+                clock=lambda: next(clock_values, 100.0),
+            )
+
+    async def test_external_cancellation_propagates(self):
+        """Cancelling the caller must stop the attempt, not be retried or wrapped."""
+        import asyncio
+
+        started = asyncio.Event()
+
+        async def operation():
+            started.set()
+            await asyncio.sleep(30)
+
+        task = asyncio.create_task(run_with_retry(operation, policy=RetryPolicy(total_budget=10.0)))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task

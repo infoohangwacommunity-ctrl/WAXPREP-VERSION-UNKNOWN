@@ -6,6 +6,9 @@ on:
 
 permissions:
   contents: read
+  # The dependency-review action reads the pull request's dependency diff via
+  # the pull-request API; without this it fails with HTTP 403 Forbidden.
+  pull-requests: read
 
 jobs:
   dependency-review:

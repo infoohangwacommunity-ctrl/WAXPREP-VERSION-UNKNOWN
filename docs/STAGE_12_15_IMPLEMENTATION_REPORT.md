@@ -228,14 +228,31 @@ tests/integration/test_exception_handlers.py — corrected stale docstring
 
 ---
 
-## 9. Rollback
+## 9. Correction pass (post-review)
+
+An independent review of the merged implementation found eight gaps between the
+documented behaviour and the code: metrics instruments were never attached to an
+exporting meter provider, request tracing had a provider but no request span,
+error/readiness metrics had no production call sites, exception logs used raw
+request paths, the retry budget did not cover the operation itself, the telemetry
+auth token was not connected to the exporter, Dependency Review lacked
+`pull-requests: read`, and `requires-python = ">=3.14"` implied untested 3.15
+support.
+
+All eight are corrected. The detailed findings, file changes, tests and gate
+results are in `docs/STAGE_12_15_CORRECTION_REPORT.md`. The local suite is now
+**918 passed, 1 skipped, 9 xfailed** with **100% coverage (3,480 statements)**.
+
+The public error contract is unchanged. No architecture was rewritten.
+
+## 10. Rollback
 
 All work is additive and isolated to four new packages plus wiring in
 `config.py` / `main.py`. To roll back: revert the merge commit and
 `uv sync --frozen`. No migration, no data change, no schema change. Telemetry is
 off by default, so reverting removes observability without affecting behaviour.
 
-## 10. First hosted deployment
+## 11. First hosted deployment
 
 1. Keep telemetry **disabled**; confirm structured logs and health endpoints.
 2. Verify correlation: send a request, take `X-Request-ID`, find it in logs.

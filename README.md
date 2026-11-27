@@ -9,12 +9,12 @@ Stage 12–15 add the operational layer, implemented in dependency order (12 →
 - **Stage 12 — Secrets:** `SecretStr` configuration, provider-neutral secret boundary, a metadata-only inventory, and defence-in-depth redaction covering key names, bearer tokens, URL credentials, PEM blocks and provider token shapes.
 - **Stage 13 — Logging:** one logging contract (`configure_logging`) with a fixed UTC/JSON schema, documented severity policy, request/trace correlation and redaction applied *before* output.
 - **Stage 15 — Errors:** a typed taxonomy with stable codes and bounded categories, category→HTTP mapping that preserves the existing public contract, single-owner reporting, and a bounded, jittered, cancellation-aware retry policy.
-- **Stage 14 — Observability:** vendor-neutral OpenTelemetry behind an **optional extra**, low-cardinality metrics using route *templates*, and a fail-open exporter policy so a collector outage never breaks a request.
+- **Stage 14 — Observability:** vendor-neutral OpenTelemetry behind an **optional extra**, a real OTLP metrics pipeline (meter provider + periodic reader) and one request span per HTTP request, low-cardinality labels using route *templates*, and a fail-open exporter policy so a collector outage never breaks a request.
 
 **Stage 10 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
 ## Stage 01: Programming Language
-- Python 3.14+ (tested on 3.14; compatibility with later versions not proven)
+- Python 3.14 (`requires-python = ">=3.14,<3.15"`; 3.15+ is not supported until dependencies resolve and CI tests it)
 - uv for dependency management
 - Pydantic v2 for data validation
 - Static type checking (mypy/pyright)

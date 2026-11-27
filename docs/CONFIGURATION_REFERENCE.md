@@ -162,9 +162,10 @@ Canonical catalogue. `ENVIRONMENT_SETUP.md` links here rather than repeating it.
 | Variable | Type | Default | Required | Secret | Notes |
 |---|---|---|---|---|---|
 | `WAXPREP_TELEMETRY_ENABLED` | bool | `false` | no | no | Master switch for OpenTelemetry export |
-| `WAXPREP_TELEMETRY_ENDPOINT` | str | — | **yes when enabled** | no | OTLP/HTTP endpoint |
+| `WAXPREP_TELEMETRY_ENDPOINT` | str | — | **yes when enabled** | no | OTLP/HTTP trace endpoint |
+| `WAXPREP_TELEMETRY_METRICS_ENDPOINT` | str | — | no | no | OTLP/HTTP metrics endpoint; defaults to the trace endpoint with `/v1/traces` → `/v1/metrics` |
 | `WAXPREP_TELEMETRY_SAMPLE_RATIO` | float | `1.0` | no | no | 0.0–1.0; out of range fails startup |
-| `WAXPREP_TELEMETRY_AUTH_TOKEN` | secret | — | conditional | **yes** | `SecretStr`; never logged/serialized |
+| `WAXPREP_TELEMETRY_AUTH_TOKEN` | secret | — | conditional | **yes** | `SecretStr`; sent as a `Bearer` header on both OTLP exporters, never logged/serialized |
 | `WAXPREP_LOG_JSON` | bool | `true` | no | no | `false` = console output for local dev |
 
 ### Validation rules added in these stages
@@ -176,6 +177,24 @@ Canonical catalogue. `ENVIRONMENT_SETUP.md` links here rather than repeating it.
 - A **missing SDK** while telemetry is enabled is *not* a startup failure: it
   degrades to `sdk_unavailable` and logs the reason. Packaging state must not
   block boot.
+
+### Metrics endpoint and authentication behaviour
+
+When enabled, telemetry builds real OTLP trace **and** metrics pipelines. If
+`WAXPREP_TELEMETRY_METRICS_ENDPOINT` is omitted, the metrics exporter reuses
+`WAXPREP_TELEMETRY_ENDPOINT`: a full `/v1/traces` URL becomes `/v1/metrics`, and a
+bare base URL is passed through so the exporter appends the signal path itself.
+A non-empty `WAXPREP_TELEMETRY_AUTH_TOKEN` is sent as
+`Authorization: Bearer <token>` on both exporters; the value is never logged,
+serialized, or included in `repr()`.
+
+### Python support range
+
+`pyproject.toml` declares `requires-python = ">=3.14,<3.15"`. Only Python 3.14 is
+supported and tested. The previous open-ended `>=3.14` declaration implied 3.15
+compatibility that dependency resolution (notably Semgrep's OpenTelemetry
+constraint) does not provide, which broke Dependabot. Widen the range only after
+the toolchain resolves and CI tests the new version.
 
 ### What is deliberately *not* configurable
 

@@ -492,7 +492,9 @@ def test_get_raises_key_error_for_missing():
 acceptance from recorded evidence. When changing anything that CI runs:
 
 1. Keep every action reference pinned to a full 40-character commit SHA.
-2. Keep the top-level `permissions: contents: read`; add no broader scope.
+2. Keep the top-level `permissions: contents: read` on the quality gate; add
+   no broader scope. The only exception is `dependency-review.yml`, which
+   also needs `pull-requests: read` to read the PR dependency diff.
 3. Any new blocking job needs a positive `timeout-minutes`, an evidence step
    (`--job <id> --class blocking`), an evidence upload (`ci-evidence-<id>` from
    `ci-evidence/`), an entry in `REQUIRED_JOBS` and a place in

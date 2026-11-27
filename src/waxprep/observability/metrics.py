@@ -44,8 +44,13 @@ class Metrics:
     def active(self) -> bool:
         return self._active
 
-    def configure(self, *, service_name: str = "waxprep") -> bool:
-        """Resolve instruments from the global meter provider.
+    def configure(self, *, service_name: str = "waxprep", meter_provider: Any = None) -> bool:
+        """Resolve instruments from an exporting meter provider.
+
+        ``meter_provider`` is the provider built by ``Telemetry.configure()``.
+        Passing it explicitly guarantees the instruments are attached to the
+        reader that will actually export them; the global meter provider is only
+        a fallback for callers that built their own pipeline.
 
         Returns False (and stays no-op) when the SDK is not installed.
         """
@@ -55,7 +60,11 @@ class Metrics:
             self._active = False
             return False
 
-        meter = otel_metrics.get_meter(service_name)
+        meter = (
+            meter_provider.get_meter(service_name)
+            if meter_provider is not None
+            else otel_metrics.get_meter(service_name)
+        )
         self.request_count = meter.create_counter(
             name="http.server.request.count",
             description="Number of HTTP requests handled",

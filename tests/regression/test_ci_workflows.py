@@ -85,6 +85,13 @@ def test_repository_workflows_are_clean() -> None:
     assert audit_workflows(PROJECT_ROOT) == ()
 
 
+def test_dependency_review_grants_the_required_pull_request_read_permission() -> None:
+    """The action reads the PR dependency diff; without this it fails 403."""
+    path = PROJECT_ROOT / ".github" / "workflows" / "dependency-review.yml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert document["permissions"] == {"contents": "read", "pull-requests": "read"}
+
+
 def test_parsed_and_redumped_workflow_passes(tmp_path: Path) -> None:
     write_document(tmp_path, workflow_document())
 

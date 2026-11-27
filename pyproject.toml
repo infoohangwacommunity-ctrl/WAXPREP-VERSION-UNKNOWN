@@ -5,9 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "waxprep"
 version = "0.1.0"
-description = "WaxPrep Foundation - Stages 01-11 (engineering foundation, quality gate, static analysis, hardcoding detector, supply-chain security, continuous integration, application configuration)"
+description = "WaxPrep Foundation - Stages 01-15 (engineering foundation, quality gate, supply-chain security, CI acceptance, secrets, logging, typed errors, and OpenTelemetry observability)"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.14,<3.15"
 license = "MIT"
 authors = [{ name = "WaxPrep Team" }]
 

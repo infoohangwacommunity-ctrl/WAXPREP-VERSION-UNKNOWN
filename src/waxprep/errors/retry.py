@@ -23,7 +23,7 @@ import random
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from waxprep.errors.taxonomy import Retryability, WaxPrepError
+from waxprep.errors.taxonomy import DependencyTimeoutError, Retryability, WaxPrepError
 
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_BASE_DELAY = 0.1
@@ -106,18 +106,31 @@ async def run_with_retry[T](
     do_sleep = sleep or asyncio.sleep
     now = clock or asyncio.get_running_loop().time
 
-    started = now()
+    deadline = now() + active.total_budget
     attempt = 0
+    last_error: BaseException | None = None
     while True:
+        # The budget covers the operation itself and every retry delay. A
+        # remaining time of zero means the deadline has passed: surface the
+        # real failure rather than starting another attempt.
+        remaining = deadline - now()
+        if remaining <= 0.0:
+            assert last_error is not None  # only reached after a failed attempt
+            raise last_error
+
         attempt += 1
         try:
-            return await operation()
+            return await asyncio.wait_for(operation(), timeout=remaining)
+        except TimeoutError as error:
+            # The operation itself outlived the wall-clock budget. Waiting for
+            # it to return, however long it hangs, would violate the contract.
+            raise DependencyTimeoutError() from error
         except Exception as error:
+            last_error = error
             if not active.should_retry(error, attempt):
                 raise
             delay = active.delay_for(attempt, rng=rng)
-            elapsed = now() - started
-            if elapsed + delay >= active.total_budget:
+            if delay >= deadline - now():
                 # Budget exhausted: surface the real failure, do not retry.
                 raise
             await do_sleep(delay)

@@ -51,8 +51,21 @@ names the offending variable but never prints its value.
 
 ### Requests are slow
 Read p95 from the `http.server.request.duration` histogram in the metrics backend,
-then find the slow operation in traces by `trace_id`. If telemetry is off,
-re-enable it to get traces — logs alone will not show where time went.
+then find the slow operation in traces by `trace_id`. Metrics and request spans
+are exported by the application when telemetry is enabled; if it is off, re-enable
+it (`WAXPREP_TELEMETRY_ENABLED=true`, trace endpoint, optional metrics endpoint
+and Bearer token) — logs alone will not show where time went.
+
+### Metrics or traces are missing while the app is healthy
+Check the `telemetry_configured` startup event: `active`, `reason`,
+`metrics_active` and `metrics_reason`. `active=false` with
+`sdk_unavailable`/`exporter_unavailable` means the optional extra is not
+installed or the exporter could not be built. `metrics_active=false` with
+`metrics_exporter_unavailable` means traces still export while metrics do not.
+A collector outage never fails readiness; fix the collector or endpoint, then
+restart. Confirm the configured endpoint paths: traces `/v1/traces`, metrics
+`/v1/metrics`, and that the collector accepts the `Bearer` header if a token is
+set.
 
 ### Error rate spiked
 Filter logs to `"level":"error"` and group by `error.category`. A single category

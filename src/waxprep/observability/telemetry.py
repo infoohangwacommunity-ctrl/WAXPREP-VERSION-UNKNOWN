@@ -17,7 +17,7 @@ Two hard rules:
 from __future__ import annotations
 
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -76,11 +76,16 @@ class TelemetryConfig:
 
     enabled: bool = False
     endpoint: str | None = None
+    metrics_endpoint: str | None = None
     service_name: str = "waxprep"
     service_version: str = "0.1.0"
     environment: str = "development"
     sample_ratio: float = 1.0
     export_timeout_ms: int = 5000
+    # An exporter credential is never rendered in repr()/logs. ``field(repr=False)``
+    # keeps a misdirected debug print from leaking it; the raw value is only used
+    # to build the OTLP Authorization header.
+    auth_token: str | None = field(default=None, repr=False)
     extra: dict[str, Any] = field(default_factory=dict)
 
     def validate(self) -> None:
@@ -92,6 +97,28 @@ class TelemetryConfig:
         if self.enabled and not self.endpoint:
             raise ValueError("telemetry is enabled but no OTLP endpoint is configured")
 
+    def resolved_metrics_endpoint(self) -> str | None:
+        """Return the OTLP/HTTP metrics endpoint for this configuration.
+
+        An explicit metrics endpoint always wins. Otherwise the trace endpoint is
+        reused: if it is a full ``/v1/traces`` URL the signal suffix is swapped,
+        and a bare base URL is passed through so the exporter appends
+        ``/v1/metrics`` itself.
+        """
+        if self.metrics_endpoint:
+            return self.metrics_endpoint
+        if self.endpoint:
+            cleaned = self.endpoint.rstrip("/")
+            if cleaned.endswith("/v1/traces"):
+                return f"{cleaned.removesuffix('/v1/traces')}/v1/metrics"
+        return self.endpoint
+
+    def exporter_headers(self) -> dict[str, str] | None:
+        """Build OTLP authentication headers, or None when no token is set."""
+        if not self.auth_token:
+            return None
+        return {"Authorization": f"Bearer {self.auth_token}"}
+
 
 @dataclass(slots=True)
 class TelemetryState:
@@ -101,6 +128,8 @@ class TelemetryState:
     reason: str = "disabled"
     tracer_provider: Any = None
     meter_provider: Any = None
+    metrics_active: bool = False
+    metrics_reason: str = "disabled"
 
     @property
     def enabled(self) -> bool:
@@ -158,50 +187,130 @@ class Telemetry:
             "service.version": config.service_version,
             "deployment.environment": config.environment,
         })
+
+        try:
+            span_exporter = OTLPSpanExporter(
+                endpoint=config.endpoint,
+                timeout=config.export_timeout_ms / 1000,
+                headers=config.exporter_headers(),
+            )
+        except Exception:  # noqa: BLE001 - exporter construction must fail open
+            logger.warning("Telemetry enabled but the span exporter could not be created")
+            self._state = TelemetryState(active=False, reason="exporter_unavailable")
+            return self._state
+
         provider = TracerProvider(
             resource=resource,
             sampler=ParentBased(TraceIdRatioBased(config.sample_ratio)),
         )
-        provider.add_span_processor(
-            BatchSpanProcessor(
-                OTLPSpanExporter(
-                    endpoint=config.endpoint,
-                    timeout=config.export_timeout_ms / 1000,
-                )
-            )
-        )
+        provider.add_span_processor(BatchSpanProcessor(span_exporter))
         trace.set_tracer_provider(provider)
-        self._state = TelemetryState(active=True, reason="enabled", tracer_provider=provider)
+
+        meter_provider, metrics_reason = self._configure_metrics(config, resource)
+        self._state = TelemetryState(
+            active=True,
+            reason="enabled",
+            tracer_provider=provider,
+            meter_provider=meter_provider,
+            metrics_active=meter_provider is not None,
+            metrics_reason=metrics_reason,
+        )
         return self._state
 
-    def shutdown(self) -> None:
-        """Flush and stop exporters.
+    @staticmethod
+    def _configure_metrics(config: TelemetryConfig, resource: Any) -> tuple[Any | None, str]:
+        """Build the OTLP metrics pipeline, degrading independently of traces.
 
-        The wait is bounded by the export timeout configured on the
-        ``BatchSpanProcessor`` (``TelemetryConfig.export_timeout_ms``), so a hung
-        collector cannot stall process exit. Exporter errors are logged and
-        swallowed: shutdown must never raise.
+        A missing metrics exporter package or an exporter that refuses to
+        construct must not disable tracing or block startup. The returned reason
+        is logged and exposed on ``TelemetryState`` so "metrics are active" is
+        only claimed when a real reader is attached.
         """
-        provider = self._state.tracer_provider
-        if provider is None:
-            return
         try:
-            provider.shutdown()
-        except Exception:  # noqa: BLE001 - shutdown must never raise
-            logger.warning("Telemetry shutdown failed; continuing")
-        finally:
-            self._state = TelemetryState(active=False, reason="shutdown")
+            from opentelemetry import metrics as metrics_api
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+                OTLPMetricExporter,
+            )
+            from opentelemetry.sdk.metrics import MeterProvider
+            from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        except ImportError:
+            logger.warning("Telemetry enabled but the OTLP metrics SDK is unavailable")
+            return None, "metrics_sdk_unavailable"
+
+        try:
+            exporter = OTLPMetricExporter(
+                endpoint=config.resolved_metrics_endpoint(),
+                timeout=config.export_timeout_ms / 1000,
+                headers=config.exporter_headers(),
+            )
+            reader = PeriodicExportingMetricReader(
+                exporter,
+                export_timeout_millis=config.export_timeout_ms,
+            )
+            meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+        except Exception:  # noqa: BLE001 - a metrics failure must not block startup
+            logger.warning("Telemetry enabled but the metrics exporter could not be created")
+            return None, "metrics_exporter_unavailable"
+
+        metrics_api.set_meter_provider(meter_provider)
+        return meter_provider, "enabled"
+
+    def shutdown(self) -> None:
+        """Flush and stop every exporter.
+
+        The wait is bounded by the export timeout configured on each exporter
+        (``TelemetryConfig.export_timeout_ms``), so a hung collector cannot stall
+        process exit. Exporter errors are logged and swallowed: shutdown must
+        never raise.
+        """
+        providers = (self._state.tracer_provider, self._state.meter_provider)
+        for provider in providers:
+            if provider is None:
+                continue
+            try:
+                provider.shutdown()
+            except Exception:  # noqa: BLE001 - shutdown must never raise
+                logger.warning("Telemetry shutdown failed; continuing")
+        self._state = TelemetryState(active=False, reason="shutdown")
+
+    @staticmethod
+    def extract_context(carrier: Mapping[str, str]) -> Any:
+        """Extract W3C trace context from inbound headers, or None without the SDK.
+
+        Propagation is best-effort: a malformed or absent ``traceparent`` simply
+        produces a new root trace, and a missing OpenTelemetry install must not
+        affect the request.
+        """
+        try:
+            from opentelemetry import propagate
+        except ImportError:
+            return None
+        return propagate.extract(carrier)
 
     @contextmanager
-    def span(self, name: str, attributes: dict[str, Any] | None = None) -> Generator[Any]:
-        """Start a span if telemetry is active, otherwise yield None."""
-        if not self._state.active:
+    def span(
+        self,
+        name: str,
+        attributes: dict[str, Any] | None = None,
+        *,
+        parent: Any = None,
+    ) -> Generator[Any]:
+        """Start a span if telemetry is active, otherwise yield None.
+
+        The provider is read from ``TelemetryState`` rather than the process-wide
+        global. OpenTelemetry only allows the global tracer provider to be set
+        once, which makes repeated ``configure()`` calls (tests, app factories,
+        autoreload) silently attach to a stale provider. Using the instance we
+        just built keeps spans on the provider whose exporter and shutdown
+        lifecycle we own.
+        """
+        provider = self._state.tracer_provider
+        if not self._state.active or provider is None:
             yield None
             return
-        from opentelemetry import trace
 
-        tracer = trace.get_tracer("waxprep")
-        with tracer.start_as_current_span(name) as current:
+        tracer = provider.get_tracer("waxprep")
+        with tracer.start_as_current_span(name, context=parent) as current:
             for key, value in (attributes or {}).items():
                 current.set_attribute(key, value)
             yield current

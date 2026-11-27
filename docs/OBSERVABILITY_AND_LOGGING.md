@@ -107,9 +107,10 @@ dependency.
 | Setting | Default | Notes |
 |---|---|---|
 | `WAXPREP_TELEMETRY_ENABLED` | `false` | Master switch |
-| `WAXPREP_TELEMETRY_ENDPOINT` | — | OTLP/HTTP endpoint. **Required when enabled** |
+| `WAXPREP_TELEMETRY_ENDPOINT` | — | OTLP/HTTP **trace** endpoint. **Required when enabled** |
+| `WAXPREP_TELEMETRY_METRICS_ENDPOINT` | — | Optional OTLP/HTTP metrics endpoint. Defaults to the trace endpoint with `/v1/traces` swapped for `/v1/metrics` |
 | `WAXPREP_TELEMETRY_SAMPLE_RATIO` | `1.0` | 0.0–1.0 |
-| `WAXPREP_TELEMETRY_AUTH_TOKEN` | — | `SecretStr`; never logged |
+| `WAXPREP_TELEMETRY_AUTH_TOKEN` | — | `SecretStr`; sent as `Authorization: Bearer <token>` on both OTLP exporters, never logged |
 
 Validation is split deliberately:
 
@@ -125,6 +126,69 @@ queue and export timeout are bounded; shutdown flushes with a bounded wait;
 exporter errors are logged and swallowed. A collector outage degrades
 observability, never availability. Metrics recording is wrapped so a metrics
 backend failure cannot surface as a 500.
+
+### Export pipeline (implemented, not just configured)
+
+`Telemetry.configure()` builds two independent OTLP/HTTP pipelines:
+
+- **Traces** — `TracerProvider` + `BatchSpanProcessor` + `OTLPSpanExporter`,
+  registered globally and owned by `TelemetryState`.
+- **Metrics** — `MeterProvider` + `PeriodicExportingMetricReader` +
+  `OTLPMetricExporter`, registered globally, stored on `TelemetryState`, and
+  shut down with the tracer provider.
+
+`Metrics.configure(meter_provider=...)` binds the four instruments to that
+exporting provider. Creating instruments against a no-op global provider was the
+previous defect: counters existed but no measurement ever left the process.
+
+Fail-open is preserved: a missing metrics SDK, or a metrics exporter that refuses
+to construct, degrades **only** metrics (`metrics_reason` on `TelemetryState`).
+Traces continue. Shutdown flushes both providers with the bounded export timeout
+and never raises.
+
+### Request tracing (implemented)
+
+`ObservabilityMiddleware` opens one `http.server.request` span per request,
+outside routing, so it covers the handler and response. It uses the provider
+owned by `TelemetryState` (not the one-shot OpenTelemetry global) so repeated
+`configure()` calls — tests, app factories, autoreload — cannot silently attach
+to a stale provider.
+
+Span attributes are bounded and safe:
+
+- `http.request.method` (normalised fixed set)
+- `http.route` (matched route template, or `unmatched`)
+- `http.response.status_class` (`1xx`–`5xx`)
+
+FastAPI's own native telemetry is explicitly disabled on the app
+(`telemetry={"tracing": False, "metrics": False, "logs": False,
+"operation_spans": False}`). Without that, configuring a global provider makes
+FastAPI emit a second request span and a second
+`http.server.request.duration` metric stream (in seconds) alongside ours (in
+milliseconds). WaxPrep owns exactly one request-span boundary and one metric
+catalogue.
+
+Inbound W3C `traceparent` is extracted before the span is started, so an upstream
+trace continues correctly and the request span becomes its child; absent or
+malformed context produces a new root trace. A missing OpenTelemetry install
+degrades extraction to `None` without affecting the request.
+
+Request ID, trace ID and span ID remain distinct. Logs emitted while the span is
+active carry `trace_id`/`span_id` from the OpenTelemetry context, so a log line
+can be joined to a trace without either identifier replacing the other. Sensitive
+headers, bodies, prompts, messages and credentials are never attached to spans.
+
+### Error and readiness metrics (wired)
+
+- The typed `WaxPrepError` handler records exactly one `waxprep.error.count`
+  metric with the bounded `error.category` and stable `error.code`.
+  `cancellation` is deliberately **not** counted as a failure.
+- The catch-all exception handler records one `programming_defect` /
+  `WAX-3002` metric; it does not record a second metric for the same failure.
+- `/health/readiness` records one `waxprep.readiness.count` with
+  `outcome=ready|not_ready` on every probe.
+- Metric emission is wrapped: a metrics backend failure is logged and never
+  changes the HTTP response.
 
 ### Metric catalogue
 
@@ -187,8 +251,22 @@ UTC timestamps, severity mapping and filtering, console fallback, no duplicate
 events on repeated configure, log redaction (field, embedded, nested, traceback),
 request-ID binding and clearing.
 
-`tests/observability/test_telemetry.py` (52) proves: bounded label normalisers,
+`tests/observability/test_telemetry.py` proves: bounded label normalisers,
 config validation, disabled-by-default inertness, graceful degradation when the
 SDK/exporter is missing, shutdown swallowing exporter errors, real exporter path
 offline, no-op span behaviour, and that `/items/SECRET-IDENTIFIER-42` labels as
-`/items/{item_id}` — never the identifier.
+`/items/{item_id}` — never the identifier. The correction pass adds proof that
+real measurements reach an `InMemoryMetricReader`, that the configured
+`Bearer` header reaches both OTLP exporters without appearing in logs or
+`repr()`, that metrics can degrade independently of traces, and that a broken
+span/metric never breaks a request.
+
+`tests/integration/test_stage12_15_integration.py` proves a real HTTP request
+produces exactly one exported `http.server.request` span whose trace/span IDs
+match the structured log line, that typed errors/readiness outcomes record one
+bounded metric each, that cancellation is not counted as a failure, and that a
+sentinel identifier in a dynamic URL never appears in any error log.
+
+**Dashboard status:** the dashboard and alert requirements remain a
+specification, not a build. The signals now actually export, but no monitoring
+backend, dashboard or alert rule is provisioned by this repository.
