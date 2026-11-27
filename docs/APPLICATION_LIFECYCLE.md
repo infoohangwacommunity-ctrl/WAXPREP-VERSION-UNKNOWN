@@ -145,7 +145,9 @@ Each release attempt records one bounded `OperationOutcome`:
 
 A cleanup failure does not stop unrelated cleanup. The final lifecycle state is
 `FAILED` when any cleanup failed or was interrupted, even though every remaining
-resource was still attempted.
+resource was still attempted. The leaked-task path is the one exception: when a
+task remains alive, resource release is deliberately skipped (`cleanup_skipped`)
+and shutdown is `FAILED`.
 
 ## 6. Cancellation policy
 
@@ -168,10 +170,12 @@ resource was still attempted.
 | `startup_seconds` | 30s | whole mandatory initialization sequence |
 | `component_seconds` | 10s | one initialize or one release callback |
 | `background_stop_seconds` | 10s | owned background-task termination |
-| `observability_seconds` | 10s | telemetry flush/exporters |
+| `observability_seconds` | 10s | the final telemetry flush/exporter cleanup (separate from `component_seconds`) |
 
 Every value must be positive and finite. Per-component bounds mean total cleanup
-is finite even when many components must be attempted.
+is finite even when many components must be attempted. The observability
+cleanup uses `observability_seconds`, not the ordinary component timeout, so a
+slow collector flush can be tuned independently.
 
 ## 8. Background task ownership
 
@@ -181,6 +185,30 @@ outcome and optional error callback. Independent services are supervised
 individually; `TaskGroup` is reserved for tightly coupled work inside one
 supervised task because it is fail-fast. No production background service is
 started today; the mechanism is ready for the first real one.
+
+### Leaked-task shutdown policy
+
+A task that ignores cancellation is reported as `timed_out` and remains visible
+in `active_tasks`. The manager does **not** pretend it stopped:
+
+- the leaked task names are recorded in `LifecycleReport.leaked_tasks`;
+- `cleanup_skipped` is set;
+- application resources and observability are **not** released, because a
+  still-running task may be using them (releasing would risk use-after-close);
+- shutdown is marked `FAILED`; the process/supervisor must terminate the worker.
+
+This is the only safe policy without per-resource dependency metadata. Skipping
+release is an explicit exceptional path, not a silent success: the leak, skipped
+cleanup and failed state are all logged and reported.
+
+```mermaid
+stateDiagram-v2
+    [*] --> READY
+    READY --> DRAINING
+    DRAINING --> STOPPING
+    STOPPING --> FAILED: Leaked task skips release
+    STOPPING --> STOPPED: All tasks stopped
+```
 
 ## 9. Application-instance vs process-wide state
 

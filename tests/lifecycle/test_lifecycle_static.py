@@ -24,17 +24,35 @@ ALLOWED_STATE_OWNERS = {
 TASK_APIS = {"create_task", "ensure_future"}
 
 
+def _task_aliases(tree: ast.AST) -> set[str]:
+    """Return names bound to asyncio task-creation APIs, including aliases."""
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.module:
+            continue
+        if node.module != "asyncio" and not node.module.startswith("asyncio."):
+            continue
+        for imported in node.names:
+            if imported.name == "*":
+                aliases.update(TASK_APIS)
+            elif imported.name in TASK_APIS:
+                aliases.add(imported.asname or imported.name)
+    return aliases
+
+
 def _unmanaged_task_lines(path: Path, source: str) -> list[int]:
     tree = ast.parse(source, filename=str(path))
     allowed = path.resolve() == ALLOWED_TASK_OWNER.resolve()
+    aliases = _task_aliases(tree)
     lines: list[int] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         function = node.func
-        if not isinstance(function, ast.Attribute) or function.attr not in TASK_APIS:
-            continue
-        if not allowed:
+        is_task_call = (isinstance(function, ast.Attribute) and function.attr in TASK_APIS) or (
+            isinstance(function, ast.Name) and function.id in aliases
+        )
+        if is_task_call and not allowed:
             lines.append(node.lineno)
     return lines
 
@@ -88,3 +106,25 @@ def test_lifecycle_state_is_mutated_only_by_its_owner() -> None:
 def test_state_ownership_check_detects_a_synthetic_violation() -> None:
     synthetic = "def rogue(lifecycle):\n    lifecycle.transition_to(target)\n"
     assert _transition_lines(Path("rogue.py"), synthetic) == [2]
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "import asyncio\nasync def rogue():\n    asyncio.create_task(work())\n",
+        "import asyncio\nasync def rogue():\n    asyncio.ensure_future(work())\n",
+        "from asyncio import create_task\nasync def rogue():\n    create_task(work())\n",
+        "from asyncio import ensure_future as spawn\nasync def rogue():\n    spawn(work())\n",
+        "from asyncio.tasks import create_task as spawn\nasync def rogue():\n    spawn(work())\n",
+        "from asyncio import *\nasync def rogue():\n    create_task(work())\n",
+        "async def rogue(loop):\n    loop.create_task(work())\n",
+        "async def rogue(loop):\n    loop.ensure_future(work())\n",
+    ],
+)
+def test_structural_check_catches_direct_and_alias_forms(snippet: str) -> None:
+    assert _unmanaged_task_lines(Path("rogue.py"), snippet)
+
+
+def test_structural_check_does_not_flag_a_local_function_with_the_same_name() -> None:
+    snippet = "def create_task(value):\n    return value\n\nasync def safe():\n    create_task(1)\n"
+    assert _unmanaged_task_lines(Path("safe.py"), snippet) == []

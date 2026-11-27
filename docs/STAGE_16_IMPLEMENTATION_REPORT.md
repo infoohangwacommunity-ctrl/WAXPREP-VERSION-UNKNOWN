@@ -192,7 +192,7 @@ pyproject.toml (description only)
 | Workflow audit | PASSED |
 | `uv lock --check` | PASS |
 | `pytest` | **1011 passed, 1 skipped, 9 xfailed** |
-| Coverage | **100.00%** (3,986 statements, 0 missed) |
+| Coverage | **100.00%** (4,000 statements, 0 missed) |
 
 
 ## 8. Remaining limitations and deferred work
@@ -229,3 +229,73 @@ not claim that future component lifecycles exist.
 The acceptance rule is unchanged: only evidence bound to the exact commit
 counts. Local green results and this report are supporting evidence, not a
 substitute for the runs above.
+
+
+## 11. Correction pass (post-review)
+
+The independent review accepted the architecture and required three focused
+corrections. None changed the state model or resource-ownership design.
+
+### 11.1 Observability timeout is now wired
+
+`ApplicationLifecycle` previously routed telemetry cleanup through
+`_release_named()` with `component_seconds`. The observability cleanup now passes
+`timeout_seconds=self._timeouts.observability_seconds`, so the dedicated setting
+is enforced independently.
+
+Tests:
+
+- a telemetry flush longer than `component_seconds` but shorter than
+  `observability_seconds` completes;
+- a telemetry flush longer than a tight `observability_seconds` is recorded as
+  `timed_out` and fails shutdown.
+
+### 11.2 Leaked background task policy
+
+`BackgroundTaskSupervisor.stop()` already reported `timed_out` tasks. The
+manager now treats a non-cooperative task as a failed, unsafe shutdown:
+
+- `LifecycleReport.leaked_tasks` records the names;
+- `cleanup_skipped` is set;
+- application resources and observability cleanup are **not** released, because
+  a live task may still be using them (use-after-close avoidance);
+- final state is `FAILED`, `cleanup_status` is `failed`, `successful` is false;
+- repeated shutdown returns the same report without releasing anything;
+- the process supervisor must terminate the worker, which is the final resource
+  reclamation boundary.
+
+The adversarial test uses a real task that ignores cancellation, asserts that
+the resource release was skipped and the leak remained visible, then releases the
+task and proves the supervisor returns to zero active tasks.
+
+### 11.3 Static detection covers imports and aliases
+
+The AST checker now tracks `from asyncio import create_task`,
+`from asyncio import ensure_future as spawn`, `from asyncio.tasks import ...` and
+wildcard imports, in addition to qualified attribute calls. Adversarial tests
+prove every form is detected while a local function with the same name is not
+falsely flagged. Semgrep has matching rules for qualified calls, direct imports,
+aliases and wildcard imports outside the supervisor.
+
+### 11.4 Correction files
+
+```
+src/waxprep/lifecycle/manager.py       observability timeout + leaked-task policy
+src/waxprep/lifecycle/report.py        leaked_tasks, cleanup_skipped, status
+tests/lifecycle/test_lifecycle.py      timeout, leaked-task and report tests
+tests/lifecycle/test_lifecycle_static.py  import/alias adversarial checks
+.semgrep/config.yml                    direct/aliased/wildcard task rules
+docs/APPLICATION_LIFECYCLE.md          policy and timeout documentation
+docs/LIFECYCLE_OPERATIONS.md           shutdown/leak runbook
+docs/LIFECYCLE_TESTING.md              correction test strategy
+docs/STAGE_16_IMPLEMENTATION_REPORT.md this report
+```
+
+### 11.5 Correction results
+
+Local suite: **1025 passed, 1 skipped, 9 xfailed**, **100% coverage (4,000
+statements)**. Full `make check` passes (ruff, format, mypy, import-linter,
+Semgrep with the expanded rules, detector, supply chain, workflow audit,
+lockfile, tests, coverage).
+
+Commit-bound CI evidence is recorded below after the correction commit.

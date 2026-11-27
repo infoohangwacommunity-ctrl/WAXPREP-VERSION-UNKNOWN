@@ -65,6 +65,8 @@ class LifecycleReport:
     background: tuple[TaskResult, ...] = ()
     startup_error_type: str | None = None
     cleanup_cancelled: bool = False
+    cleanup_skipped: bool = False
+    leaked_tasks: tuple[str, ...] = ()
     degraded: tuple[str, ...] = ()
 
     @property
@@ -81,6 +83,8 @@ class LifecycleReport:
     def cleanup_status(self) -> CleanupStatus:
         if self.cleanup_cancelled:
             return CleanupStatus.INTERRUPTED
+        if self.cleanup_skipped:
+            return CleanupStatus.FAILED
         if not self.cleanup:
             return CleanupStatus.SUCCESS
         failures = self.cleanup_failures
@@ -96,4 +100,5 @@ class LifecycleReport:
             self.startup_error_type is None
             and self.final_state is LifecycleState.STOPPED
             and self.cleanup_status is CleanupStatus.SUCCESS
+            and not self.leaked_tasks
         )

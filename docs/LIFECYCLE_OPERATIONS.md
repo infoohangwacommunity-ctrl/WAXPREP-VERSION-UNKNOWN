@@ -54,9 +54,16 @@ On lifespan shutdown:
 3. Owned background tasks are cancelled and awaited within
    `background_stop_seconds`.
 4. `DRAINING -> STOPPING`; resources release in reverse acquisition order.
-5. Telemetry flushes and exporters shut down; metrics instruments are reset.
+5. Telemetry flushes and exporters shut down using the dedicated
+   `observability_seconds` timeout; metrics instruments are reset.
 6. Final state is `STOPPED` (clean) or `FAILED` (cleanup failure/interruption).
 7. `app_state` references are cleared.
+
+If a supervised task ignores cancellation and is reported `timed_out`, the
+manager records it in `leaked_tasks`, sets `cleanup_skipped`, marks shutdown
+`FAILED`, and does **not** release application resources or observability. This
+avoids closing resources a live task may still use. The worker process must be
+terminated by its supervisor; that is the final resource-reclamation boundary.
 
 Repeated shutdown is safe and idempotent; resources are not released twice.
 
@@ -83,7 +90,9 @@ No production background services exist yet. When one is added:
 - verify `active_tasks` is empty after shutdown.
 
 A task that ignores cancellation appears as `timed_out` and remains in
-`active_tasks`; that is a leak signal, not a silent success.
+`active_tasks`; that is a leak signal, not a silent success. Resource cleanup is
+skipped for that shutdown (see the policy above), the final state is `FAILED`,
+and the process supervisor must terminate the worker.
 
 ## 6. Timeout tuning
 
@@ -107,6 +116,7 @@ tests, not as a substitute for process supervision.
 | Ready is 503 `lifecycle_not_ready` | Lifespan not started, draining or failed | Inspect lifecycle logs/state |
 | Ready 503 `registries_not_initialized` | Registry component did not complete | Check startup logs; restart |
 | Shutdown hangs | A release ignores cancellation or exceeds timeout | Inspect `lifecycle_cleanup_failed`/`timed_out`; fix component |
+| Shutdown reports leaked tasks | A background task ignored cancellation | Inspect `lifecycle_background_tasks_leaked`; fix the task's cancellation handling; terminate/restart the worker |
 | Telemetry missing but app ready | Optional telemetry degraded | Check `telemetry_configured` and `metrics_reason` |
 | Cleanup failure after a startup failure | One release failed | Original startup exception is still the cause; fix release separately |
 

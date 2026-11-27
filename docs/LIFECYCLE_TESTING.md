@@ -28,6 +28,7 @@ unchanged.
 | Cleanup failure | One failing release does not prevent the others; status is partial/failed |
 | Cancellation | Startup cancellation rolls back; shutdown cancellation continues cleanup then propagates |
 | Background tasks | Completion, failure, cancellation, timeout, duplicate rejection, leak visibility |
+| Leaked-task policy | A task that ignores cancellation skips resource release, reports the leak and fails shutdown |
 | Health | Readiness is 200 only in `READY`; `lifecycle_not_ready` otherwise |
 | Concurrency | Concurrent starts: one wins; concurrent shutdowns: one cleanup |
 | Isolation | Two `create_app()` instances have independent state and lifecycle |
@@ -90,9 +91,16 @@ uv run pytest tests/lifecycle -v -m architecture
 make check
 ```
 
-Semgrep rule `waxprep-unmanaged-asyncio-task` rejects `asyncio.create_task` /
-`ensure_future` outside `src/waxprep/lifecycle/background.py`. The AST check
+Semgrep rules reject qualified `asyncio.create_task`/`ensure_future`, direct
+imports, aliases and wildcard imports outside
+`src/waxprep/lifecycle/background.py`. The AST check covers the same forms and
 also rejects `transition_to()` calls outside the lifecycle owner modules.
+Adversarial tests prove each form is detected while a local function with the
+same name is not falsely flagged.
+
+The observability timeout is tested independently from the component timeout:
+one test uses a long telemetry flush with a tiny component timeout, and another
+proves a tight observability timeout is enforced.
 
 ## 7. What 100% coverage does not prove
 

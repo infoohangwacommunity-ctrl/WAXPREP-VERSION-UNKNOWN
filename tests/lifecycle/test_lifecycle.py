@@ -217,6 +217,11 @@ class TestReport:
         report = LifecycleReport(cleanup=[ComponentResult("a", OperationOutcome.FAILED, 1.0)])
         assert report.cleanup_status is CleanupStatus.FAILED
 
+    def test_cleanup_status_skipped_is_failed(self):
+        report = LifecycleReport(cleanup_skipped=True, leaked_tasks=("worker",))
+        assert report.cleanup_status is CleanupStatus.FAILED
+        assert report.successful is False
+
     def test_cleanup_status_interrupted_wins(self):
         report = LifecycleReport(
             cleanup=[ComponentResult("a", OperationOutcome.COMPLETED, 1.0)],
@@ -643,6 +648,45 @@ class TestLifecycleStartup:
 
         run(scenario())
 
+    def test_observability_uses_its_dedicated_timeout(self):
+        lifecycle = ApplicationLifecycle(
+            timeouts=LifecycleTimeouts(component_seconds=0.001, observability_seconds=1.0)
+        )
+        released = []
+
+        async def observability() -> None:
+            await asyncio.sleep(0.02)
+            released.append(1)
+
+        lifecycle.set_observability_cleanup(observability)
+
+        async def scenario():
+            await lifecycle.start()
+            report = await lifecycle.shutdown()
+            assert report.cleanup[-1].outcome is OperationOutcome.COMPLETED
+            assert lifecycle.state is LifecycleState.STOPPED
+
+        run(scenario())
+        assert released == [1]
+
+    def test_observability_timeout_is_enforced_independently(self):
+        lifecycle = ApplicationLifecycle(
+            timeouts=LifecycleTimeouts(component_seconds=1.0, observability_seconds=0.01)
+        )
+
+        async def observability() -> None:
+            await asyncio.sleep(1.0)
+
+        lifecycle.set_observability_cleanup(observability)
+
+        async def scenario():
+            await lifecycle.start()
+            report = await lifecycle.shutdown()
+            assert report.cleanup[-1].outcome is OperationOutcome.TIMED_OUT
+            assert lifecycle.state is LifecycleState.FAILED
+
+        run(scenario())
+
     def test_new_application_shutdown_is_clean(self):
         lifecycle = ApplicationLifecycle()
         called = []
@@ -903,6 +947,70 @@ class TestManagerBackground:
             assert report.background == (TaskResult("worker", TaskOutcome.COMPLETED),)
 
         run(scenario())
+
+
+class TestLeakedBackgroundTaskPolicy:
+    def test_non_cooperative_task_skips_resource_release_and_fails_shutdown(self):
+        recorder = Recorder()
+        supervisor = BackgroundTaskSupervisor()
+        lifecycle = ApplicationLifecycle(
+            timeouts=LifecycleTimeouts(component_seconds=1.0, background_stop_seconds=0.01),
+            background=supervisor,
+        )
+        lifecycle.register(recorder.component("a"))
+        release = asyncio.Event()
+
+        async def stubborn() -> None:
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                await release.wait()
+
+        async def scenario():
+            await lifecycle.start()
+            task = supervisor.start("stubborn", stubborn())
+            await asyncio.sleep(0)
+
+            report = await lifecycle.shutdown()
+            assert report.background[0].outcome is TaskOutcome.TIMED_OUT
+            assert report.leaked_tasks == ("stubborn",)
+            assert report.cleanup_skipped is True
+            assert report.cleanup == []
+            assert report.cleanup_status is CleanupStatus.FAILED
+            assert report.successful is False
+            assert lifecycle.state is LifecycleState.FAILED
+            assert "release:a" not in recorder.events
+            assert supervisor.active_tasks == ("stubborn",)
+
+            second = await lifecycle.shutdown()
+            assert second is report
+            assert "release:a" not in recorder.events
+
+            release.set()
+            await task
+            await asyncio.sleep(0)
+            assert supervisor.active_tasks == ()
+
+        run(scenario())
+
+    def test_cooperative_background_stop_does_not_skip_cleanup(self):
+        recorder = Recorder()
+        supervisor = BackgroundTaskSupervisor()
+        lifecycle = ApplicationLifecycle(background=supervisor)
+        lifecycle.register(recorder.component("a"))
+
+        async def scenario():
+            await lifecycle.start()
+            supervisor.start("work", asyncio.sleep(30))
+            await asyncio.sleep(0)
+            report = await lifecycle.shutdown()
+            assert report.background[0].outcome is TaskOutcome.CANCELLED
+            assert report.cleanup_skipped is False
+            assert report.leaked_tasks == ()
+            assert lifecycle.state is LifecycleState.STOPPED
+
+        run(scenario())
+        assert "release:a" in recorder.events
 
 
 # ── Adversarial sequences ───────────────────────────────────────────────────

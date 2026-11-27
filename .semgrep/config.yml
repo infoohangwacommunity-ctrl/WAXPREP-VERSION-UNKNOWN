@@ -187,8 +187,9 @@ rules:
 
   # ── Stage 16: lifecycle ownership ──────────────────────────────────────────
   # Long-running tasks must be owned by BackgroundTaskSupervisor so shutdown
-  # can cancel, await and report them. The supervisor is the single allowed
-  # creator (see tests/lifecycle/test_lifecycle_static.py for the AST check).
+  # can cancel, await and report them. These rules cover qualified calls,
+  # direct imports, aliases and star imports; the AST test covers the same
+  # forms and is the adversarial companion.
   - id: waxprep-unmanaged-asyncio-task
     patterns:
       - pattern-either:
@@ -201,6 +202,81 @@ rules:
       Unmanaged asyncio task creation detected. Start the coroutine through
       BackgroundTaskSupervisor.start() so it has an owner, a termination path
       and a recorded outcome.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: correctness
+      technology: [python]
+      subcategory: lifecycle
+      confidence: HIGH
+
+  - id: waxprep-unmanaged-asyncio-task-import
+    patterns:
+      - pattern-inside: |
+          from $MOD import $FUNC
+          ...
+      - pattern: $FUNC(...)
+      - metavariable-regex:
+          metavariable: $MOD
+          regex: ^asyncio(\..*)?$
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: ^(create_task|ensure_future)$
+    paths:
+      exclude:
+        - src/waxprep/lifecycle/background.py
+    message: |
+      A directly imported asyncio task-creation function is used outside the
+      lifecycle supervisor. Use BackgroundTaskSupervisor.start().
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: correctness
+      technology: [python]
+      subcategory: lifecycle
+      confidence: HIGH
+
+  - id: waxprep-unmanaged-asyncio-task-alias
+    patterns:
+      - pattern-inside: |
+          from $MOD import $FUNC as $ALIAS
+          ...
+      - pattern: $ALIAS(...)
+      - metavariable-regex:
+          metavariable: $MOD
+          regex: ^asyncio(\..*)?$
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: ^(create_task|ensure_future)$
+    paths:
+      exclude:
+        - src/waxprep/lifecycle/background.py
+    message: |
+      An aliased asyncio task-creation function is used outside the lifecycle
+      supervisor. Use BackgroundTaskSupervisor.start().
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: correctness
+      technology: [python]
+      subcategory: lifecycle
+      confidence: HIGH
+
+  - id: waxprep-unmanaged-asyncio-task-star-import
+    patterns:
+      - pattern-inside: |
+          from $MOD import *
+          ...
+      - pattern: create_task(...)
+      - metavariable-regex:
+          metavariable: $MOD
+          regex: ^asyncio(\..*)?$
+    paths:
+      exclude:
+        - src/waxprep/lifecycle/background.py
+    message: |
+      create_task() from a wildcard asyncio import is used outside the
+      lifecycle supervisor. Use BackgroundTaskSupervisor.start().
     severity: ERROR
     languages: [python]
     metadata:

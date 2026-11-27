@@ -35,7 +35,7 @@ from typing import Any
 
 import structlog
 
-from waxprep.lifecycle.background import BackgroundTaskSupervisor, TaskResult
+from waxprep.lifecycle.background import BackgroundTaskSupervisor, TaskOutcome, TaskResult
 from waxprep.lifecycle.components import LifecycleComponent
 from waxprep.lifecycle.errors import (
     LifecycleError,
@@ -268,7 +268,7 @@ class ApplicationLifecycle:
             cancelled = await self._cleanup()
             final = (
                 LifecycleState.FAILED
-                if cancelled or self._report.cleanup_failures
+                if cancelled or self._report.cleanup_failures or self._report.leaked_tasks
                 else LifecycleState.STOPPED
             )
             self._state_machine.transition_to(final)
@@ -302,13 +302,30 @@ class ApplicationLifecycle:
 
         await self._stop_background()
 
+        if self._report.leaked_tasks:
+            # A supervised task may still be using application resources. Closing
+            # them now would risk use-after-close. The safe policy is to stop
+            # releasing, record the leak and fail shutdown; process termination
+            # (or a supervisor restart) is the final backstop.
+            self._cleanup_completed = True
+            self._report.cleanup_cancelled = self._cleanup_cancelled
+            logger.error(
+                "lifecycle_cleanup_skipped_due_to_leaked_tasks",
+                tasks=list(self._report.leaked_tasks),
+            )
+            return self._cleanup_cancelled
+
         stack = self._stack
         self._stack = None
         if stack is not None:
             await stack.aclose()
 
         if self._observability_cleanup is not None:
-            await self._release_named("observability", self._observability_cleanup)
+            await self._release_named(
+                "observability",
+                self._observability_cleanup,
+                timeout_seconds=self._timeouts.observability_seconds,
+            )
 
         self._cleanup_completed = True
         self._report.cleanup_cancelled = self._cleanup_cancelled
@@ -331,6 +348,11 @@ class ApplicationLifecycle:
             logger.warning("lifecycle_background_stop_cancelled")
             return
         self._report.background = results
+        leaked = tuple(result.name for result in results if result.outcome is TaskOutcome.TIMED_OUT)
+        if leaked:
+            self._report.leaked_tasks = leaked
+            self._report.cleanup_skipped = True
+            logger.error("lifecycle_background_tasks_leaked", tasks=list(leaked))
 
     async def _release_component(self, component: LifecycleComponent) -> None:
         assert component.release is not None  # only registered after success
@@ -341,9 +363,13 @@ class ApplicationLifecycle:
         name: str,
         release: ResourceCallable,
         mandatory: bool = True,
+        *,
+        timeout_seconds: float | None = None,
     ) -> None:
         started = time.perf_counter()
-        timeout = asyncio.timeout(self._timeouts.component_seconds)
+        timeout = asyncio.timeout(
+            self._timeouts.component_seconds if timeout_seconds is None else timeout_seconds
+        )
         try:
             async with timeout:
                 result = release()
