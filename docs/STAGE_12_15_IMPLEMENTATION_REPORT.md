@@ -148,7 +148,10 @@ Baseline was 751 tests; **+137 tests** added across
 | Dedicated secret manager (Vault/AWS/GCP/Azure) | Platform protected variables suffice at this scale | Multi-service creds, rotation automation, or audit requirements |
 | Encryption infrastructure | No application data is encrypted today | First real encryption use case |
 | Secret scanning in CI (Gitleaks/TruffleHog) | Existing semgrep + Stage 08 detector + GitHub scanning cover the current diff; adding a scanner needs version pinning + FP policy | Repo plan gains push protection, or a near-miss occurs |
-| Dashboards and alerts | Need baseline data before thresholds are meaningful | First hosted deployment with real traffic |
+
+**Out of scope by product decision, not deferred:** any in-app operational UI.
+The product surface is the API; operators read exported logs, metrics and traces
+from their own backend.
 
 **None of these are claimed as implemented.** Each is recorded with the condition
 that will make it necessary.
@@ -238,5 +241,4 @@ off by default, so reverting removes observability without affecting behaviour.
 2. Verify correlation: send a request, take `X-Request-ID`, find it in logs.
 3. Set `WAXPREP_TELEMETRY_ENABLED=true` + endpoint + (if needed) auth token in the
    platform's protected variables.
-4. Confirm traces arrive; add dashboards only after baseline data exists.
-5. Record baseline latency/error rate **before** setting any alert threshold.
+4. Confirm spans and metric data arrive at the configured backend.
