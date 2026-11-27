@@ -194,7 +194,6 @@ pyproject.toml (description only)
 | `pytest` | **1011 passed, 1 skipped, 9 xfailed** |
 | Coverage | **100.00%** (3,986 statements, 0 missed) |
 
-CI evidence for the final commit is recorded in GitHub Actions after the push.
 
 ## 8. Remaining limitations and deferred work
 
@@ -217,3 +216,16 @@ The implementation was reviewed against the actual source and the full local
 gate; the acceptance rule remains: green tests are evidence of behaviour, not a
 substitute for the remote GitHub Actions run. The final report intentionally does
 not claim that future component lifecycles exist.
+
+## 10. CI evidence
+
+**Correction commit:** `ae5df06` (`main`, "feat(lifecycle): implement Stage 16 application lifecycle management").
+
+| Workflow | Result | Run |
+|---|---|---|
+| CI — Quality Gate | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46079501263 |
+| Dependency Security | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46079501350 |
+
+The acceptance rule is unchanged: only evidence bound to the exact commit
+counts. Local green results and this report are supporting evidence, not a
+substitute for the runs above.
