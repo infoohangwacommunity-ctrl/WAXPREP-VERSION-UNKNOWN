@@ -487,6 +487,31 @@ Before pushing:
 
 ---
 
+## 11. Stage 16: Application Lifecycle
+
+- One authoritative lifecycle state per application instance; do not introduce
+  independent booleans that decide readiness or cleanup.
+- Resources must have a named owner, an `initialize` callable, an optional
+  `release` callable and explicit `depends_on` entries.
+- Register cleanup through the lifecycle manager; never release a resource from
+  two places.
+- Mandatory startup failure must roll back every acquired resource and re-raise
+  the original exception. Cleanup failure must not replace it.
+- Cleanup is failure-isolated: one failed release must not prevent the rest.
+- Cancellation is recorded, cleanup still runs, and `CancelledError` propagates.
+- Background tasks must be started through `BackgroundTaskSupervisor`; direct
+  `asyncio.create_task`/`ensure_future` in `src/` is rejected by Semgrep and the
+  AST ownership test.
+- Readiness returns 200 only in `READY`; optional degradation must not block a
+  mandatory app.
+- New timeouts belong in `LifecycleTimeouts`; do not scatter literals.
+- Importing a module or calling `create_app()` must not acquire resources or
+  start tasks.
+- Add rollback, cleanup-failure and cancellation tests for every new resource
+  owner.
+
+---
+
 ## PR Review Checklist
 
 See [PR_REVIEW_CHECKLIST.md](PR_REVIEW_CHECKLIST.md) for the concise, actionable checklist.

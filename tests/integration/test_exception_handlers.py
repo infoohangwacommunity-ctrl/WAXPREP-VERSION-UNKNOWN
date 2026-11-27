@@ -151,8 +151,7 @@ class TestGeneralExceptionHandler:
         async def raise_type_route() -> JSONResponse:  # noqa: RUF029
             raise RuntimeError("different error type")
 
-        with TestClient(app, raise_server_exceptions=False) as test_client:
-            response = test_client.get("/test-raise-type")
-            assert response.status_code == 500
-            data = response.json()
-            assert data["detail"] == "Internal server error"
+        response = client.get("/test-raise-type")
+        assert response.status_code == 500
+        data = response.json()
+        assert data["detail"] == "Internal server error"

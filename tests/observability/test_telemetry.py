@@ -9,7 +9,7 @@ from typing import ClassVar
 import pytest
 from opentelemetry.sdk.metrics.export import MetricExporter, MetricExportResult
 
-from waxprep.observability.metrics import Metrics
+from waxprep.observability.metrics import Metrics, null_instrument
 from waxprep.observability.metrics import metrics as metrics_singleton
 from waxprep.observability.telemetry import (
     Telemetry,
@@ -238,6 +238,24 @@ class TestMetrics:
     def test_global_metrics_instance_starts_inactive(self):
         """The process-wide handle must not silently be active before startup."""
         assert metrics_singleton.active is False
+
+    def test_reset_drops_instruments_after_provider_shutdown(self):
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+        reader = InMemoryMetricReader()
+        provider = MeterProvider(metric_readers=[reader])
+        instance = Metrics()
+        instance.configure(meter_provider=provider)
+        assert instance.active is True
+
+        instance.reset()
+        assert instance.active is False
+        assert instance.request_count is null_instrument
+        assert instance.request_duration is null_instrument
+        assert instance.error_count is null_instrument
+        assert instance.readiness_checks is null_instrument
+        instance.record_request(method="GET", route="/", status_code=200, duration_ms=1.0)
 
     def test_package_does_not_shadow_submodule(self):
         """A module and an instance sharing a name would hide the module."""

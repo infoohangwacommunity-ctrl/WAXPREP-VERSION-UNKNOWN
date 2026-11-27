@@ -1,6 +1,6 @@
 # WaxPrep Foundation
 
-**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 15).**
+**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 16).**
 
 Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Stage 09 adds dependency and supply-chain security to the same gate: pip-audit without blanket ignores, a scoped expiring exception register, lockfile hashes, dependency source restrictions, license policy, OSV malicious-package intelligence, a CycloneDX SBOM and Dependabot proposals. Stage 10 turns that collection into an acceptance system: every job records machine-readable evidence, the workflow audits its own definition, and acceptance is decided only from evidence bound to the exact commit being assessed.
 
@@ -10,6 +10,7 @@ Stage 12–15 add the operational layer, implemented in dependency order (12 →
 - **Stage 13 — Logging:** one logging contract (`configure_logging`) with a fixed UTC/JSON schema, documented severity policy, request/trace correlation and redaction applied *before* output.
 - **Stage 15 — Errors:** a typed taxonomy with stable codes and bounded categories, category→HTTP mapping that preserves the existing public contract, single-owner reporting, and a bounded, jittered, cancellation-aware retry policy.
 - **Stage 14 — Observability:** vendor-neutral OpenTelemetry behind an **optional extra**, a real OTLP metrics pipeline (meter provider + periodic reader) and one request span per HTTP request, low-cardinality labels using route *templates*, and a fail-open exporter policy so a collector outage never breaks a request.
+- **Stage 16 — Application lifecycle:** one explicit state machine per application instance, dependency-ordered initialization, `AsyncExitStack` reverse-order rollback, failure-isolated cleanup that preserves the original exception, cancellation-aware shutdown, owned background-task supervision, lifecycle-aware readiness and centrally validated timeouts.
 
 **Stage 10 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
@@ -24,7 +25,7 @@ Stage 12–15 add the operational layer, implemented in dependency order (12 →
 - Registry pattern with fake adapters (proves architecture)
 - Explicit registry registration (no import-time side effects)
 - Graceful shutdown (ASGI server-managed via lifespan; no custom signal handler)
-- Application state managed via AppState container (single-instance module-level state for ASGI deployment)
+- Application state owned per FastAPI instance (`app.state.app_state`); `create_app()` builds isolated instances (Stage 16)
 - Health endpoints (liveness ≠ readiness, readiness checks registry state)
 - Structured logging with correlation IDs (middleware-bound, context properly restored)
 - Request ID validation (incoming IDs validated before trust)
@@ -410,6 +411,10 @@ All project documentation is organized in the `docs/` folder:
 - `docs/OBSERVABILITY_AND_LOGGING.md` — Log schema, severity policy, correlation, telemetry, metric catalogue and cardinality (Stages 13–14)
 - `docs/ERROR_HANDLING.md` — Error taxonomy, boundaries, public HTTP contract and retry policy (Stage 15)
 - `docs/OPERATIONS_RUNBOOK.md` — On-call triage, category table, scenarios, deploy and rollback
+- `docs/APPLICATION_LIFECYCLE.md` — Lifecycle states, resource ownership, initialization order, cleanup and re-entry (Stage 16)
+- `docs/LIFECYCLE_OPERATIONS.md` — Startup failure, cancellation, shutdown and lifecycle diagnosis (Stage 16)
+- `docs/LIFECYCLE_TESTING.md` — Lifecycle invariants, failure injection and adversarial testing (Stage 16)
+- `docs/STAGE_16_IMPLEMENTATION_REPORT.md` — Stage 16 decisions, evidence and limitations
 
 ### Archive (Historical/Superseded)
 - `docs/archive/` — Contains superseded documents:
@@ -579,7 +584,7 @@ For production, supply all values via the hosting environment.
 Unknown `WAXPREP_` variables (typos, unsupported settings) produce warnings to stderr
 without preventing startup. Known misspellings are detected and mapped to their correct names.
 
-Note: `WAXPREP_SHUTDOWN_GRACE_PERIOD` has been removed. Graceful shutdown is managed by the ASGI server (uvicorn) lifecycle.
+Note: `WAXPREP_SHUTDOWN_GRACE_PERIOD` has been removed. Graceful request draining is managed by the ASGI server (uvicorn) lifecycle; WaxPrep adds explicit resource shutdown, rollback and bounded cleanup timeouts (Stage 16).
 
 For the full configuration reference including validation rules, precedence, production policy,
 unknown-variable detection, and error handling, see `docs/CONFIGURATION_REFERENCE.md`.

@@ -45,37 +45,26 @@ def pytest_configure(config: pytest.Config) -> None:
 # Global state isolation (Stage 07 — test reliability)
 # ---------------------------------------------------------------------------
 
-# waxprep.main holds module-level state via AppState (_app_state) that lifecycle
-# and integration tests mutate. This autouse fixture resets the app state before
-# each test to ensure clean slate, eliminating test-order coupling and
-# parallel-execution flakiness through shared module state.
+# Stage 16: application state and lifecycle are per FastAPI instance. Tests get
+# a fresh default application instance so no lifecycle state, registry instance
+# or telemetry instrument can leak between tests or execution orders.
 
 
 @pytest.fixture(autouse=True)
 def _reset_main_globals():
-    """Reset waxprep.main module state to clean defaults before each test.
-
-    Guarantees test isolation: lifecycle/integration tests cannot poison each
-    other through shared module state. State is reset BEFORE the test, not
-    just restored after.
-    """
+    """Replace the default app and reset process-wide observability state."""
     import waxprep.main as main
+    from waxprep.observability.metrics import metrics
+    from waxprep.observability.telemetry import telemetry
 
-    # Reset to clean defaults BEFORE test
-    main._app_state.shutting_down = False
-    main._app_state.registries_ready = False
-    main._app_state.channel_registry = None
-    main._app_state.model_registry = None
-    main._app_state.tool_registry = None
+    def reset() -> None:
+        telemetry.shutdown()
+        metrics.reset()
+        main._reset_default_app()
 
+    reset()
     yield
-
-    # Reset again after test to ensure clean state for next test
-    main._app_state.shutting_down = False
-    main._app_state.registries_ready = False
-    main._app_state.channel_registry = None
-    main._app_state.model_registry = None
-    main._app_state.tool_registry = None
+    reset()
 
 
 # ---------------------------------------------------------------------------

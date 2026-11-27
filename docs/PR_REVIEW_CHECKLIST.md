@@ -205,6 +205,15 @@ When changing secrets, logging, telemetry or error handling (Stages 12–15):
 - [ ] No PII, secrets or raw identifiers as labels
 - [ ] A collector outage cannot fail a request
 
+**Lifecycle (Stage 16)**
+- [ ] New resources are registered as components with an owner, init, release and dependencies
+- [ ] Cleanup is reverse-order and failure-isolated; original startup errors are preserved
+- [ ] Cancellation is not swallowed or recorded as an ordinary failure
+- [ ] Background tasks use `BackgroundTaskSupervisor` (no raw `create_task`)
+- [ ] Readiness is 200 only in `READY`; optional degradation is distinguished
+- [ ] Timeouts come from `LifecycleTimeouts`, not new literals
+- [ ] Rollback, cleanup-failure and cancellation tests cover the change
+
 **Documentation**
 - [ ] `CONFIGURATION_REFERENCE.md` updated for every new setting
 - [ ] `.env.example` placeholders only

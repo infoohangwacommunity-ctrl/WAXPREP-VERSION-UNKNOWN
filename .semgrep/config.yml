@@ -184,3 +184,27 @@ rules:
       subcategory: audit
       whd_rule: WHD-008
       confidence: MEDIUM
+
+  # ── Stage 16: lifecycle ownership ──────────────────────────────────────────
+  # Long-running tasks must be owned by BackgroundTaskSupervisor so shutdown
+  # can cancel, await and report them. The supervisor is the single allowed
+  # creator (see tests/lifecycle/test_lifecycle_static.py for the AST check).
+  - id: waxprep-unmanaged-asyncio-task
+    patterns:
+      - pattern-either:
+          - pattern: asyncio.create_task(...)
+          - pattern: asyncio.ensure_future(...)
+    paths:
+      exclude:
+        - src/waxprep/lifecycle/background.py
+    message: |
+      Unmanaged asyncio task creation detected. Start the coroutine through
+      BackgroundTaskSupervisor.start() so it has an owner, a termination path
+      and a recorded outcome.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: correctness
+      technology: [python]
+      subcategory: lifecycle
+      confidence: HIGH

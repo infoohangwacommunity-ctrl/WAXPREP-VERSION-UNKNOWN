@@ -1,18 +1,25 @@
 """
-Main Application - Stages 01-08
-ASGI application with ordered startup, graceful shutdown, health endpoints.
+Main Application - Stages 01-16
+ASGI application with an explicit, failure-safe application lifecycle.
 
 Includes:
+- One authoritative lifecycle state per application instance
+- Ordered, dependency-aware component initialization
+- Reverse-order cleanup with failure isolation and cancellation safety
+- Owned background-task supervision
 - Request correlation ID middleware
 - Global exception handlers
-- Meaningful readiness checks
+- Lifecycle-aware health endpoints
 - Structured logging with structlog
-- Composition root for Stage 03 services (when added)
 
-Application state is held in module-level singletons (_app_state, _app)
-for the single-process ASGI deployment model. The AppState class itself
-is not a module-global — it is instantiated once and referenced by name.
+Application-instance state lives on ``app.state`` (``app_state``, ``lifecycle``,
+``supervisor``). ``get_app()`` returns the default process instance used by
+Uvicorn; ``create_app()`` builds independent instances for tests and embedding.
+``_app_state`` is a compatibility alias to the default instance's state only; it
+does not decide request handling, readiness or cleanup.
 """
+
+from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -27,6 +34,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from waxprep.config import settings
 from waxprep.errors.http import public_body, status_for
 from waxprep.errors.taxonomy import ErrorCategory, ProgrammingDefectError, WaxPrepError
+from waxprep.lifecycle import (
+    ApplicationLifecycle,
+    BackgroundTaskSupervisor,
+    LifecycleComponent,
+    LifecycleState,
+)
 from waxprep.middleware.observability import ObservabilityMiddleware
 from waxprep.middleware.request_id import RequestIdMiddleware
 from waxprep.observability.logging import configure_logging
@@ -38,7 +51,7 @@ from waxprep.registries.tool import ToolRegistry
 
 # Logging is configured once from validated settings (Stage 13). This is an
 # explicit call rather than an import side effect so CLI entry points, tests
-# and future workers share one contract.
+# and future workers share one contract. It creates no lifecycle resources.
 configure_logging(
     level=settings.log_level.value,
     json_output=settings.log_json,
@@ -49,6 +62,7 @@ logger = structlog.get_logger()
 
 # Bounded readiness reasons. Named constants keep the vocabulary in one place
 # and avoid a stray literal becoming a new response value.
+READINESS_LIFECYCLE_NOT_READY = "lifecycle_not_ready"
 READINESS_CONFIGURATION_NOT_LOADED = "configuration_not_loaded"
 READINESS_REGISTRIES_NOT_INITIALIZED = "registries_not_initialized"
 READINESS_CHANNEL_NOT_INITIALIZED = "channel_registry_not_initialized"
@@ -89,9 +103,12 @@ def _record_readiness_metric(*, ready: bool) -> None:
         logger.warning("observability_metric_failed", exc_info=True)
 
 
-# Application state container - isolates lifecycle state per app instance
 class AppState:
-    """Application lifecycle state - not module-global."""
+    """Application-instance data owned by one ``FastAPI`` instance.
+
+    This is not a module-global. The default application exposes a compatibility
+    alias for older tests/tools, but request handling reads ``app.state``.
+    """
 
     def __init__(self) -> None:
         self._shutting_down: bool = False
@@ -140,25 +157,19 @@ class AppState:
     def tool_registry(self, value: ToolRegistry | None) -> None:
         self._tool_registry = value
 
+    def reset(self) -> None:
+        """Drop every reference owned by a finished lifecycle execution."""
+        self._shutting_down = False
+        self._registries_ready = False
+        self._channel_registry = None
+        self._model_registry = None
+        self._tool_registry = None
 
-# Single application instance state
-_app_state = AppState()
-_app: FastAPI | None = None
+
+# ── Default lifecycle components ─────────────────────────────────────────────
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
-    """
-    Ordered startup sequence - Stages 01-04
-    1. Load configuration
-    2. Initialize registries (explicit registration)
-    3. Initialize external clients (none in foundation stage)
-    4. Start background services (none in foundation stage)
-    5. Log startup
-    """
-    _app_state.shutting_down = False
-
-    # 1. Load configuration (already done via settings singleton)
+def _initialize_configuration() -> None:
     logger.info(
         "Configuration loaded",
         environment=settings.environment.value,
@@ -167,24 +178,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
         log_level=settings.log_level.value,
     )
 
-    # 2. Initialize registries with explicit registration
+
+def _initialize_registries(app_state: AppState) -> None:
     from waxprep.registries.channel import get_channel_registry
     from waxprep.registries.model import get_model_registry
     from waxprep.registries.tool import get_tool_registry
 
-    _app_state.channel_registry = get_channel_registry()
-    _app_state.model_registry = get_model_registry()
-    _app_state.tool_registry = get_tool_registry()
+    app_state.channel_registry = get_channel_registry()
+    app_state.model_registry = get_model_registry()
+    app_state.tool_registry = get_tool_registry()
+    app_state.channel_registry.register_defaults()
+    app_state.model_registry.register_defaults()
+    app_state.tool_registry.register_defaults()
+    app_state.registries_ready = True
+    logger.info(
+        "registries_initialized",
+        channels=app_state.channel_registry.list_all(),
+        models=app_state.model_registry.list_all(),
+        tools=app_state.tool_registry.list_all(),
+    )
 
-    # Explicit registration - proves no import-time side effects
-    _app_state.channel_registry.register_defaults()
-    _app_state.model_registry.register_defaults()
-    _app_state.tool_registry.register_defaults()
 
-    _app_state.registries_ready = True
+def _release_registries(app_state: AppState) -> None:
+    app_state.registries_ready = False
+    app_state.channel_registry = None
+    app_state.model_registry = None
+    app_state.tool_registry = None
+    logger.info("registries_released")
 
-    # Stage 14: telemetry is optional and must never block startup. A disabled
-    # or unconfigured exporter degrades to a no-op with a logged reason.
+
+def _initialize_telemetry() -> None:
+    # Clear any instruments left over from a previous lifecycle before building
+    # a new provider. Telemetry is optional: failures are recorded by the
+    # lifecycle as degradation and never block the application.
+    metrics.reset()
     telemetry_state = telemetry.configure(
         TelemetryConfig(
             enabled=settings.telemetry_enabled,
@@ -198,8 +225,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
     )
     metrics_active = False
     if telemetry_state.active and telemetry_state.metrics_active:
-        # Only bind instruments when a real exporting meter provider exists;
-        # otherwise they would attach to a no-op/global provider and lie.
         metrics_active = metrics.configure(meter_provider=telemetry_state.meter_provider)
     logger.info(
         "telemetry_configured",
@@ -209,72 +234,101 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:  # noqa: V107
         metrics_reason=telemetry_state.metrics_reason,
     )
 
-    logger.info("Registries initialized")
-    logger.info(f"  Channels: {_app_state.channel_registry.list_all()}")
-    logger.info(f"  Models: {_app_state.model_registry.list_all()}")
-    logger.info(f"  Tools: {_app_state.tool_registry.list_all()}")
 
-    # 3. External clients - none in foundation stage
-    logger.info("No external clients (foundation stage)")
-
-    # 4. Background services - none in foundation stage
-    logger.info("No background services (foundation stage)")
-
-    # 5. Log startup (without exposing secrets)
-    logger.info(
-        "Startup complete",
-        environment=settings.environment.value,
-        host=settings.host,
-        port=settings.port,
-        log_level=settings.log_level.value,
-    )
-
-    yield
-
-    # Shutdown sequence
-    _app_state.shutting_down = True
-    _app_state.registries_ready = False
-    _app_state.channel_registry = None
-    _app_state.model_registry = None
-    _app_state.tool_registry = None
-    logger.info("Shutdown started")
+async def _shutdown_observability() -> None:  # noqa: RUF029
+    """Final flush after application resources, then reset instruments."""
     telemetry.shutdown()
-    logger.info("Shutdown complete")
+    metrics.reset()
+    logger.info("observability_shutdown_complete")
 
 
-# Create FastAPI app.
-# FastAPI ships its own OpenTelemetry integration that activates automatically
-# once a global provider is configured. WaxPrep owns its request span and metric
-# catalogue (see ObservabilityMiddleware), so the native integration is disabled:
-# otherwise every request would produce two spans and a second metric stream
-# named ``http.server.request.duration`` with a different unit.
-_app = FastAPI(
-    title="WaxPrep Foundation",
-    description="WaxPrep Foundation - ASGI application with health endpoints, registries, and structured logging",
-    version="0.1.0",
-    lifespan=lifespan,
-    telemetry={
-        "tracing": False,
-        "metrics": False,
-        "logs": False,
-        "operation_spans": False,
-    },
-)
+def _register_default_components(
+    lifecycle: ApplicationLifecycle,
+    app_state: AppState,
+) -> None:
+    lifecycle.register(
+        LifecycleComponent(
+            name="configuration",
+            initialize=_initialize_configuration,
+            description="Validated settings already loaded; logs non-secret identity",
+        )
+    )
+    lifecycle.register(
+        LifecycleComponent(
+            name="registries",
+            initialize=lambda: _initialize_registries(app_state),
+            release=lambda: _release_registries(app_state),
+            depends_on=("configuration",),
+            description="Channel, model and tool registries with explicit defaults",
+        )
+    )
+    lifecycle.register(
+        LifecycleComponent(
+            name="telemetry",
+            initialize=_initialize_telemetry,
+            mandatory=False,
+            depends_on=("configuration",),
+            description="Optional OpenTelemetry export; degradation never blocks startup",
+        )
+    )
+    lifecycle.set_observability_cleanup(_shutdown_observability)
 
-# Add request correlation ID middleware
-_app.add_middleware(RequestIdMiddleware)
-# Observability runs outermost so it times the full request
-_app.add_middleware(ObservabilityMiddleware)
 
+def _ensure_app_resources(app: FastAPI) -> tuple[AppState, ApplicationLifecycle]:
+    """Attach per-instance lifecycle resources to a FastAPI app.
 
-# Exception handlers
-@_app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:  # noqa: RUF029
-    """Handle HTTP exceptions with sanitized output.
-
-    Returns safe error responses. Does not expose internal exception details
-    that may originate from services, providers, or databases.
+    ``create_app()`` attaches them up front. A manually constructed
+    ``FastAPI(lifespan=lifespan)`` (tests, embedding) gets the same defaults here,
+    proving the lifespan owns its state instead of relying on module globals.
     """
+    app_state = cast(AppState | None, getattr(app.state, "app_state", None))
+    if app_state is None:
+        app_state = AppState()
+        app.state.app_state = app_state
+
+    supervisor = cast(BackgroundTaskSupervisor | None, getattr(app.state, "supervisor", None))
+    if supervisor is None:
+        supervisor = BackgroundTaskSupervisor()
+        app.state.supervisor = supervisor
+
+    lifecycle = cast(ApplicationLifecycle | None, getattr(app.state, "lifecycle", None))
+    if lifecycle is None:
+        lifecycle = ApplicationLifecycle(background=supervisor)
+        app.state.lifecycle = lifecycle
+        _register_default_components(lifecycle, app_state)
+    else:
+        lifecycle.attach_background(supervisor)
+
+    return app_state, lifecycle
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """ASGI lifespan: explicit startup, then failure-safe termination."""
+    app_state, lifecycle = _ensure_app_resources(app)
+    app_state.reset()
+    try:
+        await lifecycle.start()
+    except BaseException:
+        app_state.shutting_down = True
+        app_state.reset()
+        raise
+
+    try:
+        yield
+    finally:
+        app_state.shutting_down = True
+        try:
+            await lifecycle.shutdown()
+        finally:
+            app_state.reset()
+
+
+# ── Exception handlers ───────────────────────────────────────────────────────
+
+
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:  # noqa: RUF029
+    """Handle HTTP exceptions with sanitized output."""
     logger.warning(
         "HTTP exception",
         status_code=exc.status_code,
@@ -289,16 +343,10 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     )
 
 
-@_app.exception_handler(RequestValidationError)
 async def validation_exception_handler(  # noqa: RUF029
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """Handle validation errors with sanitized output.
-
-    Uses 422 (Unprocessable Content) per RFC 9110 — signals semantic/
-    validation failure rather than generic bad request (400). This is the
-    standard status for Pydantic/FastAPI validation errors.
-    """
+    """Handle validation errors with sanitized output (422 per RFC 9110)."""
     logger.warning(
         "Validation error",
         route=_route_label(request),
@@ -313,13 +361,8 @@ async def validation_exception_handler(  # noqa: RUF029
     )
 
 
-@_app.exception_handler(WaxPrepError)
 async def waxprep_error_handler(request: Request, exc: WaxPrepError) -> JSONResponse:  # noqa: RUF029
-    """Translate a typed WaxPrep error into a safe public response.
-
-    This is the single authoritative reporting point for application failures:
-    it logs once, records one bounded metric, and never leaks internals.
-    """
+    """Single authoritative reporting point for typed application failures."""
     status_code = status_for(exc.category)
     route = _route_label(request)
     if status_code >= 500:
@@ -332,7 +375,6 @@ async def waxprep_error_handler(request: Request, exc: WaxPrepError) -> JSONResp
     return JSONResponse(status_code=status_code, content=public_body(exc))
 
 
-@_app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:  # noqa: RUF029
     """Handle unexpected exceptions - log full details, return sanitized response."""
     logger.exception(
@@ -353,8 +395,9 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     )
 
 
-# Health endpoints
-@_app.get("/health/liveness")
+# ── Health endpoints ─────────────────────────────────────────────────────────
+
+
 async def liveness() -> JSONResponse:  # noqa: RUF029
     """Liveness endpoint - Is the process alive?"""
     return JSONResponse(
@@ -363,54 +406,46 @@ async def liveness() -> JSONResponse:  # noqa: RUF029
     )
 
 
-def _readiness_failure_reason() -> str | None:
-    """Return the first failed readiness precondition, or None when ready.
-
-    Kept separate from the endpoint so the metric records exactly one outcome
-    per probe with the same decision that produced the HTTP response.
-    """
-    # Accumulate into one variable rather than returning literals: a single
-    # exit point keeps the metric and the HTTP response using the same decision.
+def _readiness_failure_reason(
+    app_state: AppState | None,
+    lifecycle: ApplicationLifecycle | None,
+) -> str | None:
+    """Return the first failed readiness precondition, or None when ready."""
     reason: str | None = None
 
-    # Check configuration exists and has a recognised environment
-    try:
-        env_value = settings.environment.value
-    except AttributeError:
-        env_value = None
-
-    if not env_value:
-        reason = READINESS_CONFIGURATION_NOT_LOADED
-    elif not _app_state.registries_ready:
-        # Check registries are initialized via app state
+    if lifecycle is None or lifecycle.state is not LifecycleState.READY:
+        reason = READINESS_LIFECYCLE_NOT_READY
+    elif app_state is None:
         reason = READINESS_REGISTRIES_NOT_INITIALIZED
-    elif _app_state.channel_registry is None or not _app_state.channel_registry.is_registered(
-        "fake"
-    ):
-        # Verify default adapters registered using stored instances
-        reason = READINESS_CHANNEL_NOT_INITIALIZED
-    elif _app_state.model_registry is None or not _app_state.model_registry.is_registered("fake"):
-        reason = READINESS_MODEL_NOT_INITIALIZED
-    elif _app_state.tool_registry is None or not _app_state.tool_registry.is_registered(
-        "fake_tool"
-    ):
-        reason = READINESS_TOOL_NOT_INITIALIZED
+    else:
+        try:
+            env_value = settings.environment.value
+        except AttributeError:
+            env_value = None
+
+        if not env_value:
+            reason = READINESS_CONFIGURATION_NOT_LOADED
+        elif not app_state.registries_ready:
+            reason = READINESS_REGISTRIES_NOT_INITIALIZED
+        elif app_state.channel_registry is None or not app_state.channel_registry.is_registered(
+            "fake"
+        ):
+            reason = READINESS_CHANNEL_NOT_INITIALIZED
+        elif app_state.model_registry is None or not app_state.model_registry.is_registered("fake"):
+            reason = READINESS_MODEL_NOT_INITIALIZED
+        elif app_state.tool_registry is None or not app_state.tool_registry.is_registered(
+            "fake_tool"
+        ):
+            reason = READINESS_TOOL_NOT_INITIALIZED
 
     return reason
 
 
-@_app.get("/health/readiness")
-async def readiness() -> JSONResponse:
-    """Readiness endpoint - Is the application ready?
-
-    Checks:
-    - Configuration is loaded
-    - Registries are initialized
-    - Default adapters are registered
-
-    Liveness != Readiness. This proves the distinction.
-    """
-    failure = _readiness_failure_reason()
+async def readiness(request: Request) -> JSONResponse:  # noqa: RUF029
+    """Readiness endpoint - mandatory initialization done and accepting work?"""
+    app_state = cast(AppState | None, getattr(request.app.state, "app_state", None))
+    lifecycle = cast(ApplicationLifecycle | None, getattr(request.app.state, "lifecycle", None))
+    failure = _readiness_failure_reason(app_state, lifecycle)
     if failure is not None:
         _record_readiness_metric(ready=False)
         return JSONResponse(
@@ -433,8 +468,6 @@ async def readiness() -> JSONResponse:
     )
 
 
-# Root endpoint
-@_app.get("/")
 async def root() -> JSONResponse:  # noqa: RUF029
     """Root endpoint - proves the app is running."""
     return JSONResponse(
@@ -447,14 +480,68 @@ async def root() -> JSONResponse:  # noqa: RUF029
     )
 
 
-# Get the app (for uvicorn)
-def get_app() -> FastAPI:
-    """ASGI entry point for uvicorn.
+# ── Application factory ──────────────────────────────────────────────────────
 
-    Uvicorn imports this as "waxprep.main:get_app" — a string reference
-    that expects a callable returning the FastAPI app instance.
-    """
-    return cast(FastAPI, _app)
+
+def create_app() -> FastAPI:
+    """Build an independent application instance with its own lifecycle."""
+    app_state = AppState()
+    supervisor = BackgroundTaskSupervisor()
+    lifecycle = ApplicationLifecycle(background=supervisor)
+    _register_default_components(lifecycle, app_state)
+
+    app = FastAPI(
+        title="WaxPrep Foundation",
+        description=(
+            "WaxPrep Foundation - ASGI application with health endpoints, "
+            "registries, explicit lifecycle and structured logging"
+        ),
+        version="0.1.0",
+        lifespan=lifespan,
+        # FastAPI's native telemetry would add a second request span and a
+        # duplicate http.server.request.duration stream once a global provider
+        # is configured. WaxPrep owns exactly one boundary and one catalogue.
+        telemetry={
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "operation_spans": False,
+        },
+    )
+    app.state.app_state = app_state
+    app.state.supervisor = supervisor
+    app.state.lifecycle = lifecycle
+
+    app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(ObservabilityMiddleware)
+
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(WaxPrepError, waxprep_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, general_exception_handler)
+
+    app.add_api_route("/health/liveness", liveness, methods=["GET"])
+    app.add_api_route("/health/readiness", readiness, methods=["GET"])
+    app.add_api_route("/", root, methods=["GET"])
+    return app
+
+
+# Default process instance (Uvicorn) and a compatibility alias for tests/tools.
+_app: FastAPI = create_app()
+_app_state: AppState = cast(AppState, _app.state.app_state)
+
+
+def _reset_default_app() -> FastAPI:  # pyright: ignore[reportUnusedFunction]
+    """Replace the default app instance; used by isolated test fixtures."""
+    global _app, _app_state
+    _app = create_app()
+    _app_state = cast(AppState, _app.state.app_state)
+    return _app
+
+
+def get_app() -> FastAPI:
+    """ASGI entry point for Uvicorn; returns the default application instance."""
+    return _app
 
 
 def run() -> None:

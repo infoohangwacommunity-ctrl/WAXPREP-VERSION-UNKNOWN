@@ -44,6 +44,20 @@ class Metrics:
     def active(self) -> bool:
         return self._active
 
+    def reset(self) -> None:
+        """Drop instrument handles after their provider has shut down.
+
+        OpenTelemetry instruments are bound to a provider. Keeping references to
+        a shut-down provider after lifecycle shutdown would make later recording
+        silently fail (or, worse, look active while exporting nowhere). Resetting
+        restores the documented no-op state until the next successful configure.
+        """
+        self.request_count = null_instrument
+        self.request_duration = null_instrument
+        self.error_count = null_instrument
+        self.readiness_checks = null_instrument
+        self._active = False
+
     def configure(self, *, service_name: str = "waxprep", meter_provider: Any = None) -> bool:
         """Resolve instruments from an exporting meter provider.
 
