@@ -105,4 +105,14 @@ import-linter, Semgrep, architecture/standards/checklist/tests docs, README.
 
 ## 7. CI evidence
 
-Recorded after the final push.
+**Pull request:** https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/pull/11
+
+| Workflow | Result | Run |
+|---|---|---|
+| CI — Quality Gate | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46137923583 |
+| Dependency Review | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46137923584 |
+
+These checks ran on the correction branch before merge. Dependency Review also
+confirmed the MIT-0 licence of the test-only ZeroMQ transport (`pyzmq`/`cffi`)
+against the explicit allow-list. Post-merge `main` runs are recorded in the
+Actions tab for the merge commit.
