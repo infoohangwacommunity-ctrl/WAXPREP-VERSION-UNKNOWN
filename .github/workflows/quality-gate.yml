@@ -192,7 +192,7 @@ jobs:
           uv run python -m waxprep.contracts.cli enforce \
             --baseline contracts/baseline \
             --decisions contracts/compatibility-decisions.toml \
-            --report ci-evidence/contract-compatibility.json
+            --report artifacts/contract-compatibility.json
           echo "==> semgrep (security + Stage 08 custom rules)"
           # Exclude detector directory - the Python AST detector handles it
           uv run semgrep --config .semgrep --error --exclude src/waxprep/detector src/
@@ -207,6 +207,15 @@ jobs:
           # active docs, README, tests/README and pyproject.toml. Not a blind
           # whole-repository scan, so dependency trees are never inspected.
           uv run python -m waxprep.detector.cli --format summary
+
+      - name: Upload contract compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: contract-compatibility-${{ github.sha }}
+          path: artifacts/contract-compatibility.json
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: Record CI evidence
         if: always()

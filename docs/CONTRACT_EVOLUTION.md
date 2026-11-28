@@ -96,7 +96,7 @@ The quality gate runs `waxprep.contracts.cli enforce` and fails when:
 - the baseline manifest/schema set is missing or malformed.
 
 New contracts are compatible additions. The command writes a machine-readable
-report (`ci-evidence/contract-compatibility.json` in CI).
+report (`artifacts/contract-compatibility.json` in CI).
 
 ## 8. CLI
 
@@ -111,7 +111,7 @@ uv run python -m waxprep.contracts.cli check --schemas contracts/schemas
 uv run python -m waxprep.contracts.cli enforce \
   --baseline contracts/baseline \
   --decisions contracts/compatibility-decisions.toml \
-  --report ci-evidence/contract-compatibility.json
+  --report artifacts/contract-compatibility.json
 
 # Compare an old and a new schema manually
 uv run python -m waxprep.contracts.cli compat \
