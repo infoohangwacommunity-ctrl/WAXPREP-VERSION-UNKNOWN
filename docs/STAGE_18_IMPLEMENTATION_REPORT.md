@@ -138,4 +138,13 @@ tests/README.md, pyproject.toml
 
 ## 7. CI evidence
 
-Recorded after the final push (exact commit-bound runs).
+**Implementation commit:** `06e43af027674a423a2e95b29e29e64238e5ad99`.
+
+| Workflow | Result | Run |
+|---|---|---|
+| CI — Quality Gate | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46120103931 |
+| Dependency Security | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46120103898 |
+
+The quality-gate run includes the Stage 17 contract drift/compatibility checks,
+Stage 18 architecture boundaries, Semgrep concrete-adapter rule, and the full
+test/coverage suite. These are commit-bound results, not local claims.
