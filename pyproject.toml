@@ -69,6 +69,8 @@ dev = [
     # Stage 19 — install the background extra in CI so the real Taskiq adapter
     # is exercised, not only the unavailable/degraded path.
     "taskiq>=0.13.0",
+    # Test-only broker transport for the producer/independent-worker test.
+    "pyzmq>=26",
 ]
 
 # ── Vulture: dead code detection ─────────────────────────────────────────────

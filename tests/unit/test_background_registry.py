@@ -203,7 +203,7 @@ class TestJobRegistry:
         assert result.error is not None
         assert result.error.code == "WAX-1005"
 
-    def test_unexpected_handler_error_is_execution_error(self):
+    def test_unexpected_handler_error_propagates_for_framework_policy(self):
         async def exploding(_envelope):  # noqa: RUF029
             raise RuntimeError("boom")
 
@@ -215,7 +215,7 @@ class TestJobRegistry:
                 handler=exploding,
             )
         )
-        with pytest.raises(JobExecutionError, match="unexpectedly"):
+        with pytest.raises(RuntimeError, match="boom"):
             asyncio.run(registry.execute(envelope().model_dump(mode="json")))
 
     def test_handler_must_return_operation_result(self):

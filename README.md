@@ -13,7 +13,7 @@ Stage 12–15 add the operational layer, implemented in dependency order (12 →
 - **Stage 16 — Application lifecycle:** one explicit state machine per application instance, dependency-ordered initialization, `AsyncExitStack` reverse-order rollback, failure-isolated cleanup that preserves the original exception, cancellation-aware shutdown, owned background-task supervision, lifecycle-aware readiness and centrally validated timeouts.
 - **Stage 17 — Internal communication contracts:** strict immutable Pydantic DTOs, discriminated operation results, a versioned message envelope, bounded JSON validation/serialization, semantic contract identity and compatibility policy, deterministic JSON Schema publication with CI drift and baseline-compatibility enforcement, and contract failures integrated with the Stage 15 taxonomy.
 - **Stage 18 — Dependency injection and composition:** one authoritative composition root, a typed dependency graph with missing/cycle/lifetime validation, typed application bundles, constructor/factory injection, explicit test overrides, registry implementation selection moved to composition, and integration with the Stage 16 lifecycle. No third-party container or global service locator.
-- **Stage 19 — Background execution:** an open-world typed job registry, an application-facing submission boundary, Taskiq integration behind an optional extra (in-memory broker by default), reuse of Stage 17 envelopes and Stage 15 errors, a worker-specific composition bundle, and an independent worker entrypoint that uses the Stage 16 lifecycle without FastAPI. No product jobs, custom queue, scheduler, retry engine or broker.
+- **Stage 19 — Background execution:** an open-world typed job registry, an application-facing submission boundary, Taskiq integration behind an optional extra (in-memory broker by default), reuse of Stage 17 envelopes and Stage 15 errors, a worker-specific composition bundle, and an independent worker entrypoint that consumes jobs through Taskiq's receiver and the Stage 16 lifecycle without FastAPI. No product jobs, custom queue, scheduler, retry engine or broker.
 
 **Stage 10 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
@@ -429,6 +429,8 @@ All project documentation is organized in the `docs/` folder:
 - `docs/DEPENDENCY_INJECTION_AND_COMPOSITION.md` — Composition root, typed graph, lifetimes and lifecycle integration (Stage 18)
 - `docs/COMPOSITION_TESTING.md` — Composition invariants, overrides, failure injection and static enforcement (Stage 18)
 - `docs/STAGE_18_IMPLEMENTATION_REPORT.md` — Stage 18 decisions, evidence and limitations
+- `docs/BACKGROUND_EXECUTION.md` — Background boundary, broker policy, worker lifecycle and registration (Stage 19)
+- `docs/STAGE_19_IMPLEMENTATION_REPORT.md` — Stage 19 decisions, evidence and limitations
 
 ### Archive (Historical/Superseded)
 - `docs/archive/` — Contains superseded documents:

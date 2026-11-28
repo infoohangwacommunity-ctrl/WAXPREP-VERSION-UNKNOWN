@@ -7,6 +7,7 @@ the framework integration; the composition root selects it.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Protocol
 
 from waxprep.background.errors import BackgroundUnavailableError
@@ -28,6 +29,12 @@ class BackgroundRuntime(Protocol):
         ...
 
 
+class WorkerBackgroundRuntime(BackgroundRuntime, Protocol):
+    """Worker-side capability: consume pending jobs until shutdown."""
+
+    async def consume(self, stop_event: asyncio.Event) -> None: ...
+
+
 class UnavailableBackgroundRuntime:
     """Fail-open stand-in used when the optional Taskiq extra is absent."""
 
@@ -43,6 +50,12 @@ class UnavailableBackgroundRuntime:
 
     async def submit(self, envelope: MessageEnvelope[Any]) -> str:  # noqa: RUF029
         del envelope
+        raise BackgroundUnavailableError(
+            "Background execution is unavailable; install the background extra"
+        )
+
+    async def consume(self, stop_event: asyncio.Event) -> None:  # noqa: RUF029
+        del stop_event
         raise BackgroundUnavailableError(
             "Background execution is unavailable; install the background extra"
         )

@@ -19,18 +19,25 @@ from waxprep.background.errors import (
     JobSubmissionError,
     JobValidationError,
 )
+from waxprep.background.registration import JobContributor
 from waxprep.background.registry import JobHandler, JobRegistry
-from waxprep.background.runtime import BackgroundRuntime, UnavailableBackgroundRuntime
+from waxprep.background.runtime import (
+    BackgroundRuntime,
+    UnavailableBackgroundRuntime,
+    WorkerBackgroundRuntime,
+)
 
 __all__ = [
     "BackgroundError",
     "BackgroundRuntime",
     "BackgroundUnavailableError",
     "JobExecutionError",
+    "JobContributor",
     "JobHandler",
     "JobRegistrationError",
     "JobRegistry",
     "JobSubmissionError",
     "JobValidationError",
     "UnavailableBackgroundRuntime",
+    "WorkerBackgroundRuntime",
 ]
