@@ -23,6 +23,10 @@
 Tests assert:
 
 - duplicate provider types and names are rejected;
+- factory signature mismatches (too few/many positional arguments, required
+  keyword-only arguments) are rejected at registration;
+- an application-scope build rejects unrelated request providers, while a
+  future request-scope build can include application values;
 - missing providers are rejected with the requiring provider;
 - self-cycles and multi-node cycles are rejected;
 - a process provider cannot depend on application/request;
@@ -42,6 +46,9 @@ Tests assert:
 - Two `create_app()` instances own separate dependency bundles and registries.
 - Composition failure rolls back startup and leaves no dependencies in state.
 - `AppState.reset()` clears registries, readiness and dependencies.
+- `ApplicationDependencies` is shallowly immutable: fields cannot be replaced,
+  but contained registries/lifecycle/supervisor remain application-owned and
+  mutable under their own rules.
 - Component registration is the single four-component application graph:
   configuration → composition → registries → telemetry (optional).
 

@@ -1,11 +1,17 @@
 """
-Main Application - Stages 01-16
-ASGI application with an explicit, failure-safe application lifecycle.
+Main Application - Stages 01-18
+Thin ASGI entrypoint for a typed, failure-safe application.
+
+Assembly is delegated to the Stage 18 composition root; the Stage 16 lifecycle
+owns initialization, rollback and reverse-order cleanup. This module owns the
+HTTP boundary: routes, middleware, exception handlers, health checks and the
+application factory.
 
 Includes:
 - One authoritative lifecycle state per application instance
 - Ordered, dependency-aware component initialization
 - Reverse-order cleanup with failure isolation and cancellation safety
+- Composition-root assembly via Stage 18
 - Owned background-task supervision
 - Request correlation ID middleware
 - Global exception handlers
@@ -13,8 +19,9 @@ Includes:
 - Structured logging with structlog
 
 Application-instance state lives on ``app.state`` (``app_state``, ``lifecycle``,
-``supervisor``). ``get_app()`` returns the default process instance used by
-Uvicorn; ``create_app()`` builds independent instances for tests and embedding.
+``supervisor``, ``composition_root``). ``get_app()`` returns the default process
+instance used by Uvicorn; ``create_app()`` builds independent instances for
+tests and embedding.
 ``_app_state`` is a compatibility alias to the default instance's state only; it
 does not decide request handling, readiness or cleanup.
 """

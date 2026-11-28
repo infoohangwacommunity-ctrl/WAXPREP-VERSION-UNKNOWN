@@ -99,6 +99,17 @@ class TestCompositionRoot:
         assert app.state.app_state.dependencies is None
         assert app.state.app_state.registries_ready is False
 
+    def test_application_bundle_is_shallowly_immutable(self):
+        from dataclasses import FrozenInstanceError
+
+        dependencies = build_dependencies()
+        with pytest.raises(FrozenInstanceError):
+            dependencies.channel_registry = ChannelRegistry()  # type: ignore[misc]
+        # Contained application-owned objects remain usable/mutable under their
+        # own ownership rules.
+        dependencies.channel_registry.register("probe", FakeChannelAdapter())
+        assert dependencies.channel_registry.is_registered("probe")
+
     def test_registry_initialization_requires_composition(self):
         with pytest.raises(CompositionError, match="without composed"):
             _initialize_registries(AppState())

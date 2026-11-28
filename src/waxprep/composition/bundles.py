@@ -42,7 +42,13 @@ class AdapterSelection:
 
 @dataclass(frozen=True, slots=True)
 class ApplicationDependencies:
-    """Application-scope dependencies assembled once per lifecycle execution."""
+    """Application-scope dependencies assembled once per lifecycle execution.
+
+    Immutability is shallow: frozen prevents replacing a field, but contained
+    objects (registries, lifecycle, supervisor, adapters) are application-owned
+    and retain their own mutability/lifetime rules. The bundle is a reference
+    list, not a deep copy or a second ownership system.
+    """
 
     settings: Settings
     channel_registry: ChannelRegistry

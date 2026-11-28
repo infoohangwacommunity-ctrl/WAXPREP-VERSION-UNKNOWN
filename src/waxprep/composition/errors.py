@@ -42,3 +42,10 @@ class LifetimeViolationError(CompositionError):
 class ScopeError(CompositionError):
     code: ClassVar[str] = "WAX-6005"
     default_message: ClassVar[str] = "A dependency cannot be resolved in this scope"
+
+
+class ProviderSignatureError(CompositionError):
+    """A provider factory cannot accept its declared dependencies."""
+
+    code: ClassVar[str] = "WAX-6006"
+    default_message: ClassVar[str] = "A provider factory signature does not match its dependencies"

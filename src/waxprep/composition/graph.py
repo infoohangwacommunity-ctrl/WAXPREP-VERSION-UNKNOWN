@@ -20,8 +20,10 @@ release remain Stage 16's responsibility.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from inspect import Parameter
 from typing import Any
 
 from waxprep.composition.errors import (
@@ -29,9 +31,66 @@ from waxprep.composition.errors import (
     DuplicateProviderError,
     LifetimeViolationError,
     MissingDependencyError,
+    ProviderSignatureError,
     ScopeError,
 )
 from waxprep.composition.lifetimes import Lifetime, is_compatible
+
+
+def _validate_factory_signature(provider: ProviderSpec) -> None:
+    """Reject a factory that cannot accept the declared dependency count.
+
+    A factory is called positionally with one value per declared dependency.
+    Required positional/keyword-only parameters that cannot be supplied, and
+    extra declared dependencies that cannot be accepted, fail at registration
+    instead of during application startup.
+    """
+    try:
+        signature = inspect.signature(provider.factory)
+    except TypeError, ValueError:
+        # Some builtins/callables do not expose a signature. Construction still
+        # fails loudly if they cannot accept the declared arguments.
+        return
+    parameters = list(signature.parameters.values())
+    required_keyword_only = [
+        parameter
+        for parameter in parameters
+        if parameter.kind is Parameter.KEYWORD_ONLY and parameter.default is Parameter.empty
+    ]
+    if required_keyword_only:
+        names = ", ".join(parameter.name for parameter in required_keyword_only)
+        raise ProviderSignatureError(
+            "A provider factory requires unsupported keyword-only arguments",
+            context={"provider": provider.label, "parameters": names},
+        )
+    positional = [
+        parameter
+        for parameter in parameters
+        if parameter.kind in (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+    has_varargs = any(parameter.kind is Parameter.VAR_POSITIONAL for parameter in parameters)
+    required_positional = [
+        parameter for parameter in positional if parameter.default is Parameter.empty
+    ]
+    provided = len(provider.dependencies)
+    if provided < len(required_positional):
+        raise ProviderSignatureError(
+            "A provider factory requires more positional arguments than declared dependencies",
+            context={
+                "provider": provider.label,
+                "required": str(len(required_positional)),
+                "declared": str(provided),
+            },
+        )
+    if not has_varargs and provided > len(positional):
+        raise ProviderSignatureError(
+            "A provider factory accepts fewer positional arguments than declared dependencies",
+            context={
+                "provider": provider.label,
+                "accepted": str(len(positional)),
+                "declared": str(provided),
+            },
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +112,7 @@ class ProviderSpec:
             raise ValueError("Provider dependencies must be unique")
         if self.name is not None and not self.name.strip():
             raise ValueError("Provider name must be non-empty when supplied")
+        _validate_factory_signature(self)
 
     @property
     def label(self) -> str:

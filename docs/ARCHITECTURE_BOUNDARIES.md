@@ -1,8 +1,8 @@
-# WaxPrep Foundation - Boundary Rules (Stage 03)
+# WaxPrep Foundation - Boundary Rules (Stages 03, 16-18)
 
-**Version:** 0.1.0  
+**Version:** 1.2
 **Python Requirement:** >=3.14,<3.15
-**Last updated:** 2026-11-25 — accuracy review (Stage 03 boundaries, verified against the current source tree)
+**Last updated:** 2026-11-28 — Stage 18 composition and registry-selection correction
 
 ---
 
@@ -12,6 +12,10 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│  OUTER: Composition Root (Stage 18)                             │
+│  └── Selects implementations, assembles the typed graph         │
+│      (Only production place that imports concrete adapters)      │
+├─────────────────────────────────────────────────────────────────┤
 │  OUTER: Messaging/Conversation                                  │
 │  └── Talks to Core + Registries ONLY                           │
 │      (Never imports concrete WhatsApp/Telegram/model code)     │
@@ -110,9 +114,10 @@ class BadTutor:
 |------|-------------|
 | ✅ May define protocols | Registries define what adapters must implement |
 | ✅ May import protocols | Uses Protocol types for type hints |
-| ❌ NO imports from `waxprep.adapters` (except `register_defaults`) | Registries don't know about concrete adapters |
+| ✅ Production path: `register(name, instance)` | Composition selects and supplies the implementation |
+| ⚠️ Legacy only: `register_defaults()` | Historical convenience for foundation tests/embedding; not a production selection mechanism |
+| ❌ NO implementation selection in new code | The composition root decides which concrete adapter is used |
 | ❌ NO channel/model/SDK specific code | Registries are generic |
-| ✅ `register_defaults()` is the ONLY exception | Explicitly documented bridge from registries to adapters |
 
 ### Dependency Pattern
 
@@ -146,10 +151,42 @@ class ChannelRegistry(BaseRegistry[ChannelAdapter]):
         self._items[name] = adapter
     
     def register_defaults(self) -> None:
-        # ONLY place where registry imports from adapters
+        # LEGACY convenience only. Production composition selects the adapter.
+        # Kept for foundation tests/old embedding; not the production path.
         from waxprep.adapters.fake_channel import FakeChannelAdapter
         self.register("fake", FakeChannelAdapter())
 ```
+
+### Production selection (Stage 18)
+
+`waxprep.composition.CompositionRoot` selects the concrete adapters. The
+`registries` lifecycle component receives them and calls `register(name,
+instance)`. Registries keep registration/lookup/validation; they no longer own
+implementation selection in production.
+
+---
+
+## Boundary Rule 2.5: Composition Root
+
+**Location:** `src/waxprep/composition/`
+**Current scope:** Explicit typed assembly, dependency graph, lifetimes, typed
+bundles and Stage 16 integration.
+
+### Rules
+
+| Rule | Description |
+|------|-------------|
+| ✅ Selects concrete implementations | Only production boundary that imports adapters |
+| ✅ Builds the typed dependency graph | Providers, dependencies, lifetimes, cycles |
+| ✅ Returns typed bundles | No global container or string-keyed lookup |
+| ✅ Runs inside the Stage 16 lifecycle | Lifecycle remains the only initialization/cleanup owner |
+| ❌ NO business logic | Assembly only; no message processing or tutor behaviour |
+| ❌ NO global service locator | Components receive values; they never resolve from composition |
+| ❌ Inner packages must not import composition | Enforced by import-linter/architecture tests |
+
+`main.py` (the ASGI entrypoint) may import composition. No other inner package
+may. Future workers may call the composition root from their own outer
+entrypoint; they must not import it from business/domain code.
 
 ---
 
@@ -342,10 +379,10 @@ class StudentContext:
 | Package | Can Import From | Cannot Import From |
 |---------|-----------------|---------------------|
 | `waxprep.registries.base` | standard lib, typing | Everything else |
-| `waxprep.registries.channel` | `waxprep.registries.base`, typing, `waxprep.adapters` (only in `register_defaults`) | Concrete channel code, FastAPI |
-| `waxprep.registries.model` | `waxprep.registries.base`, typing, `waxprep.adapters` (only in `register_defaults`) | Concrete model code, FastAPI |
-| `waxprep.registries.tool` | `waxprep.registries.base`, typing, `waxprep.adapters` (only in `register_defaults`) | Concrete tool code, FastAPI |
-| **Direction:** | Defines → Implemented by | Does not import adapters except `register_defaults` |
+| `waxprep.registries.channel` | `waxprep.registries.base`, typing, `waxprep.adapters` (legacy `register_defaults` only) | Concrete channel code, FastAPI, composition |
+| `waxprep.registries.model` | `waxprep.registries.base`, typing, `waxprep.adapters` (legacy `register_defaults` only) | Concrete model code, FastAPI, composition |
+| `waxprep.registries.tool` | `waxprep.registries.base`, typing, `waxprep.adapters` (legacy `register_defaults` only) | Concrete tool code, FastAPI, composition |
+| **Direction:** | Defines → Implemented by | Production selection is composition; legacy defaults are not the production path |
 
 ### `src/waxprep/adapters/`
 
@@ -369,12 +406,19 @@ class StudentContext:
 | `waxprep.context` | standard lib, typing | Nothing internal (optional dependency) |
 | **Direction:** | Available to messaging/core | Not forced on anyone |
 
+### `src/waxprep/composition/`
+
+| Package | Can Import From | Cannot Import From |
+|---------|-----------------|---------------------|
+| `waxprep.composition` | config, registries, adapters, lifecycle, observability, contracts, standard lib | `waxprep.main` (cycle) |
+| **Direction:** | Outermost assembly | Inner packages never import it |
+
 ### `src/waxprep/main.py` (FastAPI app)
 
 | Package | Can Import From | Cannot Import From |
 |---------|-----------------|---------------------|
-| `waxprep.main` | FastAPI, uvicorn, `waxprep.config`, `waxprep.registries`, `waxprep.middleware`, `waxprep.adapters` | `waxprep.core` (core is framework-agnostic) |
-| **Direction:** | Wires everything together | Kept separate from core logic |
+| `waxprep.main` | FastAPI, uvicorn, `waxprep.config`, `waxprep.composition`, `waxprep.lifecycle`, `waxprep.middleware` | `waxprep.core` (framework-agnostic), concrete adapters (composition selects) |
+| **Direction:** | Thin ASGI entrypoint | Assembly delegated to composition |
 
 ---
 
@@ -432,7 +476,10 @@ When reviewing PRs, ask:
 - [ ] Does core import anything from `adapters/`? → REJECT
 - [ ] Does core import FastAPI? → REJECT
 - [ ] Does core import external SDKs? → REJECT
-- [ ] Do registries import adapters outside `register_defaults()`? → REJECT
+- [ ] Do registries import adapters outside legacy `register_defaults()`? → REJECT
+- [ ] Does production code call `register_defaults()` or select adapters outside composition? → REJECT
+- [ ] Does an inner package import `waxprep.composition`? → REJECT
+- [ ] Did a component bypass the composition root with a global service locator? → REJECT
 - [ ] Does messaging import concrete adapters directly? → REJECT
 - [ ] Does messaging bypass registries to get adapters? → REJECT
 
@@ -445,7 +492,8 @@ The packages exist; most of them are intentionally empty land.
 1. **Core** (`src/waxprep/core/`) — generic pure utilities (`normalize_text`, `extract_keywords`, `build_response`, `compose_handlers`) and capability protocols. It contains no tutor behavior, no student model and no conversational rules.
 2. **Messaging layer** (`src/waxprep/messaging/`) — package boundary and statement of intent. No message orchestration is implemented.
 3. **Context** (`src/waxprep/context/`) — package boundary only. No student state is implemented.
-4. **Services** (`src/waxprep/services/`) — package boundary only. No composition root is implemented.
+4. **Services** (`src/waxprep/services/`) — package boundary only. No product services.
+5. **Composition** (`src/waxprep/composition/`) — Stage 18 composition root, typed graph, lifetimes and bundles. This is implemented; it is not a product service.
 
 `extract_keywords()` is a generic lexical utility. It is not, and must not
 become, the tutor's student-understanding mechanism.
@@ -463,15 +511,16 @@ These boundaries ensure:
 
 | File Location | Can Import `adapters`? | Can Import `core`? | Can Import FastAPI? | Can Import SDKs? |
 |---------------|------------------------|--------------------|---------------------|------------------|
-| `registries/` | Only in `register_defaults()` | No | No | No |
+| `registries/` | Legacy `register_defaults()` only | No | No | No |
 | `adapters/` | No | No | No | Yes (for that adapter) |
 | `core/` | **NO** | — | **NO** | **NO** |
 | `messaging/` | No (use registries) | Yes | No | No (use registries/adapters) |
 | `context/` | No | Optional | No | No |
-| `main.py` | Yes | No | Yes | No (use adapters) |
+| `composition/` | Yes (selection boundary) | No | No | Yes (selects adapters) |
+| `main.py` | No (composition selects) | No | Yes | No |
 | `middleware/` | No | No | Yes (Starlette) | No |
 
 ---
 
-*Document version: 1.1*  
-*Last updated: 2026-11-25 — accuracy review*
+*Document version: 1.2*
+*Last updated: 2026-11-28 — Stage 18 composition and registry correction*

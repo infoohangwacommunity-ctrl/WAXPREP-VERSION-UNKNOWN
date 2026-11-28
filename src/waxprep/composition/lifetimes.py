@@ -11,6 +11,14 @@ provider with the same or a longer lifetime, never a shorter one:
 This prevents an application singleton from retaining a request-scoped object.
 Request/operation scopes are policy + validation today; no request-scoped
 product component exists yet.
+
+Future extension rule: use a separate graph (or composition entrypoint) per
+scope. An application graph must not register request/operation providers; the
+current ``DependencyGraph.build`` rejects any provider longer than the requested
+scope even when unrelated. A future request graph may include application-scoped
+values as already-built overrides or providers. Do not add a second DI mechanism;
+extend this graph with explicit scope entrypoints when the first real
+request-scoped component exists.
 """
 
 from __future__ import annotations

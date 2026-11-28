@@ -68,6 +68,9 @@ The graph provides:
 - duplicate provider/name detection;
 - missing-provider detection with the requiring provider;
 - cycle detection with the path;
+- factory signature validation (declared dependency count vs accepted
+  positional/required keyword-only parameters) at registration, so a mismatch
+  fails before startup;
 - dependency-first topological construction;
 - lifetime validation;
 - one instance per provider per build;
@@ -93,6 +96,11 @@ There is no `dict[str, Any]` container and no enormous universal
 purpose-specific bundle; request-specific bundles can be added when a real
 request component exists.
 
+**Immutability is shallow.** `frozen=True` prevents replacing bundle fields. The
+contained registries, lifecycle manager, supervisor and adapters are
+application-owned objects with their own mutability/lifetime rules. The bundle
+is a reference list, not a deep copy or a second ownership system.
+
 ## 5. Lifetimes
 
 `src/waxprep/composition/lifetimes.py`:
@@ -111,6 +119,14 @@ rejected during graph validation.
 Request/operation scopes are validated policy, not implemented product scopes.
 No request-scoped component exists yet; inventing one just to demonstrate a
 scope would violate the Stage 18 boundary.
+
+**Future extension rule:** use a separate graph or composition entrypoint per
+scope. An application graph must not register request/operation providers; the
+current graph rejects any provider longer than the requested scope, even if
+unrelated. A future request graph may include application-scoped values as
+already-built overrides or providers. Extend this graph with explicit scope
+entrypoints when the first real request-scoped component arrives; do not add a
+second DI mechanism. Regression tests pin this policy now.
 
 ## 6. Lifecycle integration (Stage 16 remains authoritative)
 

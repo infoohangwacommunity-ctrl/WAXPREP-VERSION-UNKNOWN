@@ -119,8 +119,8 @@ tests/README.md, pyproject.toml
 | hardcoding detector | 0 blocking |
 | supply chain | PASSED |
 | workflow audit | PASSED |
-| pytest | **1342 passed, 1 skipped, 9 xfailed** |
-| coverage | **100.00%** (5,120 statements, 0 missed) |
+| pytest | **1352 passed, 1 skipped, 9 xfailed** |
+| coverage | **100.00%** (5,144 statements, 0 missed) |
 
 ## 6. Limitations / deferred
 
@@ -148,3 +148,60 @@ tests/README.md, pyproject.toml
 The quality-gate run includes the Stage 17 contract drift/compatibility checks,
 Stage 18 architecture boundaries, Semgrep concrete-adapter rule, and the full
 test/coverage suite. These are commit-bound results, not local claims.
+
+
+## 8. Correction pass (post-review)
+
+The independent review accepted the architecture and required five focused
+corrections.
+
+### 8.1 Architecture boundaries document
+
+`docs/ARCHITECTURE_BOUNDARIES.md` now documents the composition root as the
+authoritative production implementation-selection boundary, adds the composition
+package and import rules, and marks `register_defaults()` as legacy-only while
+preserving its historical explanation.
+
+### 8.2 Entrypoint description
+
+`src/waxprep/main.py` now describes Stages 01–18, the thin ASGI boundary and the
+Stage 16/18 assembly/lifecycle split.
+
+### 8.3 Factory/dependency signature validation
+
+`ProviderSpec` validates the factory signature at registration:
+
+- required positional parameters cannot exceed declared dependencies;
+- declared dependencies cannot exceed accepted positional parameters unless the
+  factory accepts `*args`;
+- required keyword-only parameters are rejected because dependencies are supplied
+  positionally;
+- uninspectable builtins/callables are not rejected early, but construction
+  still fails loudly if arguments are incompatible.
+
+`ProviderSignatureError` (WAX-6006) reports the provider and counts.
+
+### 8.4 Future lifetime-scope rule
+
+The selected policy is a separate graph/composition entrypoint per scope. An
+application graph rejects any request/operation provider, even an unrelated one.
+A future request graph may include application-scoped values. Regression tests
+pin both behaviours, and `lifetimes.py`, the architecture docs and testing docs
+state the rule.
+
+### 8.5 Shallow bundle immutability
+
+`ApplicationDependencies` documents and tests shallow immutability: fields cannot
+be replaced; contained registries/lifecycle/supervisor stay application-owned
+and mutable under their own rules.
+
+### 8.6 Correction tests
+
+Signature mismatch branches, varargs/defaults, uninspectable callables,
+application/request scope policy, shallow bundle immutability, and the stale
+entrypoint/architecture documentation are covered by tests. The final local
+suite is 1,352 passed, 1 skipped, 9 xfailed, 100% coverage (5,144 statements).
+
+### 8.7 Correction CI evidence
+
+Recorded after the correction push.
