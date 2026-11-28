@@ -25,6 +25,7 @@ forbidden_modules =
     waxprep.context
     waxprep.services
     waxprep.id
+    waxprep.contracts
 
 # Contract 2: Outer-to-Inner directionality
 # REMOVED: type = allowed is not supported by this import-linter version.
@@ -74,4 +75,29 @@ forbidden_modules =
     waxprep.context
     waxprep.services
     waxprep.registries
+    waxprep.id
+
+# Contract 6: Contract isolation
+# The contract package is an inner boundary. It may use the error taxonomy and
+# Pydantic, but not concrete adapters, registries, middleware, configuration,
+# lifecycle or the application composition root.
+[importlinter:contract:6]
+name = "Contract isolation: contracts/ must not import outer layers"
+type = forbidden
+
+source_modules =
+    waxprep.contracts
+
+forbidden_modules =
+    waxprep.core
+    waxprep.registries
+    waxprep.adapters
+    waxprep.middleware
+    waxprep.main
+    waxprep.config
+    waxprep.messaging
+    waxprep.context
+    waxprep.services
+    waxprep.lifecycle
+    waxprep.observability
     waxprep.id

@@ -8,7 +8,7 @@ default: check
 # ── Static Analysis ──────────────────────────────────────────────────────────
 
 # Run all static analysis tools (blocking tools only — matches CI quality-gate)
-check: lint format type import-linter semgrep lockfile-check supply-chain ci-audit test coverage
+check: lint format type import-linter contracts semgrep lockfile-check supply-chain ci-audit test coverage
 
 # Run ruff linting (expanded rules)
 lint:
@@ -25,6 +25,10 @@ type:
 # Run import linter (architecture contracts)
 import-linter:
 	uv run import-linter lint
+
+# Verify published contract schemas (Stage 17)
+contracts:
+	uv run python -m waxprep.contracts.cli check --schemas contracts/schemas
 
 # Run semgrep security scan
 semgrep:

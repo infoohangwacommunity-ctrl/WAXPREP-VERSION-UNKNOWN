@@ -8,7 +8,7 @@ Hermetic, isolated, deterministic tests.
 |----------|--------|-----------|---------|
 | **Unit** | `@pytest.mark.unit` | `tests/unit/` | Pure-function tests — no I/O, no app, no state. Fast, isolated, the foundation. |
 | **Integration** | `@pytest.mark.integration` | `tests/integration/` | App + real dependencies. Tests exception handlers, registries, and the main FastAPI app end-to-end through the TestClient. |
-| **Contract** | `@pytest.mark.contract` | `tests/contract/` | Interface compliance — protocols and type contracts that modules must satisfy. |
+| **Contract** | `@pytest.mark.contract` | `tests/contract/` | Stage 17 typed DTOs, envelopes, validation, versioning/compatibility, schema drift, CLI, protocols, properties and adversarial inputs. |
 | **Lifecycle** | `@pytest.mark.lifecycle` | `tests/lifecycle/` | Stage 16 state transitions, rollback, reverse cleanup, cancellation, background-task ownership, isolation and ASGI lifespan behaviour. `test_lifecycle_static.py` also runs under the architecture marker. |
 | **Architecture** | `@pytest.mark.architecture` | `tests/architecture/` | Boundary and dependency checks — ensures modules don't import across forbidden boundaries. |
 | **Configuration** | `@pytest.mark.configuration` | `tests/configuration/` | Settings and environment variable handling: config load, env precedence, defaults, and validation. |

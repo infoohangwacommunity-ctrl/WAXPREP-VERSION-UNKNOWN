@@ -2,7 +2,7 @@
 # `make check` runs the full local equivalent of the CI blocking gate.
 # One command. Deterministic. No paid APIs. Usable by humans and AI agents.
 
-.PHONY: check lint format type import-linter semgrep lockfile-check supply-chain pip-audit sbom trust ci-audit test coverage vulture pyright help
+.PHONY: check lint format type import-linter contracts semgrep lockfile-check supply-chain pip-audit sbom trust ci-audit test coverage vulture pyright help
 
 # Default target
 default: check
@@ -11,7 +11,7 @@ default: check
 # Blocking gate — `make check` runs all of these (matches CI quality-gate)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-check: lint format type import-linter semgrep lockfile-check supply-chain ci-audit test coverage
+check: lint format type import-linter contracts semgrep lockfile-check supply-chain ci-audit test coverage
 
 lint: ## Run ruff linting
 	uv run ruff check src/ tests/
@@ -24,6 +24,9 @@ type: ## Run mypy strict type checker
 
 import-linter: ## Run import-linter architecture contracts
 	uv run import-linter lint
+
+contracts: ## Verify published JSON Schemas match the models (Stage 17)
+	uv run python -m waxprep.contracts.cli check --schemas contracts/schemas
 
 semgrep: ## Run semgrep security scan
 	uv run semgrep --config .semgrep --error --exclude src/waxprep/detector src/

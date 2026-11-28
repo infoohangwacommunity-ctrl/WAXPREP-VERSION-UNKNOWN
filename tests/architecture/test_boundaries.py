@@ -16,6 +16,8 @@ STAGE_03_ARCHITECTURE.md, ARCHITECTURE_BOUNDARIES.md):
 | registries/ | registries/base, typing | messaging, context, services, adapters |
 | adapters/ | registry protocols, SDKs | core, other adapters, messaging, context, services, registries, id |
 | middleware/ | standard library, typing | core |
+| lifecycle/ | standard library, asyncio, errors/ | FastAPI, registries, adapters, middleware, config, main |
+| contracts/ | standard library, Pydantic, errors/ | core, registries, adapters, middleware, config, lifecycle, observability, main |
 | main.py | FastAPI, config, registries, middleware, adapters | core |
 
 All checks inspect both `import X` and `from X import Y` forms,
@@ -96,6 +98,7 @@ BOUNDARY_RULES: dict[str, tuple[list[str], list[str]]] = {
             "waxprep.context",
             "waxprep.services",
             "waxprep.id",
+            "waxprep.contracts",
             "fastapi",
         ],
     ),
@@ -151,6 +154,23 @@ BOUNDARY_RULES: dict[str, tuple[list[str], list[str]]] = {
     "middleware": (
         [],
         ["waxprep.core"],
+    ),
+    "contracts": (
+        ["waxprep.errors"],
+        [
+            "waxprep.core",
+            "waxprep.registries",
+            "waxprep.adapters",
+            "waxprep.middleware",
+            "waxprep.main",
+            "waxprep.config",
+            "waxprep.messaging",
+            "waxprep.context",
+            "waxprep.services",
+            "waxprep.lifecycle",
+            "waxprep.observability",
+            "waxprep.id",
+        ],
     ),
 }
 
@@ -289,6 +309,21 @@ class TestMiddlewareBoundaries:
                 assert not any(module.startswith(f) for f in forbidden), (
                     f"middleware/{path.name} imports forbidden module '{module}'; "
                     "middleware/ must not import core/."
+                )
+
+
+class TestContractsBoundaries:
+    """contracts/ may import errors only, not outer layers."""
+
+    @pytest.mark.architecture
+    def test_contracts_forbidden_imports(self):
+        contracts_dir = WAXPREP_ROOT / "contracts"
+        forbidden = BOUNDARY_RULES["contracts"][1]
+        for path in python_files_in_package(contracts_dir):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not any(module.startswith(f) for f in forbidden), (
+                    f"contracts/{path.name} imports forbidden module '{module}'; "
+                    "contracts/ must stay at the inner boundary."
                 )
 
 

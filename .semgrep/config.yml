@@ -284,3 +284,23 @@ rules:
       technology: [python]
       subcategory: lifecycle
       confidence: HIGH
+
+  # ── Stage 17: contract bypass prevention ───────────────────────────────────
+  # Pydantic validation is the contract boundary. Constructing or copying a
+  # model without validation silently bypasses it.
+  - id: waxprep-contract-bypass-model-construction
+    patterns:
+      - pattern-either:
+          - pattern: $MODEL.model_construct(...)
+          - pattern: $MODEL.construct(...)
+          - pattern: $MODEL.model_copy(update=...)
+    message: |
+      Pydantic model construction/copy that bypasses validation detected.
+      Use normal construction or model_validate so the contract is enforced.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: correctness
+      technology: [python]
+      subcategory: contracts
+      confidence: HIGH

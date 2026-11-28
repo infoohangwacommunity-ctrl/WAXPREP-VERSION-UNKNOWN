@@ -1,0 +1,50 @@
+{
+  "$defs": {
+    "ErrorCategory": {
+      "description": "Bounded failure categories. Safe for metric labels and log fields.",
+      "enum": [
+        "validation",
+        "configuration",
+        "authentication",
+        "authorization",
+        "not_found",
+        "conflict",
+        "dependency_unavailable",
+        "dependency_timeout",
+        "rate_limited",
+        "provider_rejected",
+        "internal_invariant",
+        "programming_defect",
+        "cancellation",
+        "unknown"
+      ],
+      "title": "ErrorCategory",
+      "type": "string"
+    }
+  },
+  "$id": "urn:waxprep:contract:waxprep.error.detail:1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Safe, bounded failure identity shared across components.",
+  "properties": {
+    "category": {
+      "$ref": "#/$defs/ErrorCategory"
+    },
+    "code": {
+      "pattern": "^WAX-[0-9]{4}$",
+      "title": "Code",
+      "type": "string"
+    },
+    "retryable": {
+      "title": "Retryable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "code",
+    "category",
+    "retryable"
+  ],
+  "title": "ErrorDetail",
+  "type": "object"
+}

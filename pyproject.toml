@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "waxprep"
 version = "0.1.0"
-description = "WaxPrep Foundation - Stages 01-15 (engineering foundation, quality gate, supply-chain security, CI acceptance, secrets, logging, typed errors, OpenTelemetry observability, and application lifecycle management)"
+description = "WaxPrep Foundation - Stages 01-15 (engineering foundation, quality gate, supply-chain security, CI acceptance, secrets, logging, typed errors, OpenTelemetry observability, application lifecycle management, and internal communication contracts)"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 license = "MIT"
@@ -90,6 +90,7 @@ ignore_names = [
     "HeaderSanitizationMiddleware",
     "MessageHandler",
     "ContextProvider",
+    "event",
 ]
 ignore_decorators = []
 

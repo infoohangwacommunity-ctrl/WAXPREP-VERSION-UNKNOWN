@@ -186,6 +186,8 @@ jobs:
           uv run mypy src/
           echo "==> import-linter (architecture contracts)"
           uv run import-linter lint --no-logo
+          echo "==> communication contract schemas (Stage 17)"
+          uv run python -m waxprep.contracts.cli check --schemas contracts/schemas
           echo "==> semgrep (security + Stage 08 custom rules)"
           # Exclude detector directory - the Python AST detector handles it
           uv run semgrep --config .semgrep --error --exclude src/waxprep/detector src/

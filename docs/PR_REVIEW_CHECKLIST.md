@@ -214,6 +214,17 @@ When changing secrets, logging, telemetry or error handling (Stages 12–15):
 - [ ] Timeouts come from `LifecycleTimeouts`, not new literals
 - [ ] Rollback, cleanup-failure and cancellation tests cover the change
 
+**Communication contracts (Stage 17)**
+- [ ] New DTOs derive from `ContractModel` (strict, frozen, extra=forbid) or a documented RootModel union
+- [ ] No arbitrary dict is passed across a defined contract boundary
+- [ ] Existing core/registry protocols were not duplicated
+- [ ] Envelope used only where identity/version/correlation are needed
+- [ ] Untrusted payloads use bounded `validate_contract` and safe error details
+- [ ] Contract failures map to Stage 15 codes/categories
+- [ ] Schemas regenerated and compatibility classified; historical schemas preserved
+- [ ] Contract tests include invalid, adversarial, property and serialization cases
+- [ ] No transport or external protocol dependency added without justification
+
 **Documentation**
 - [ ] `CONFIGURATION_REFERENCE.md` updated for every new setting
 - [ ] `.env.example` placeholders only
