@@ -12,14 +12,19 @@ order, rollback and reverse cleanup.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 
 from waxprep.adapters.fake_channel import FakeChannelAdapter
 from waxprep.adapters.fake_model import FakeModelAdapter
 from waxprep.adapters.fake_tool import FakeTool
+from waxprep.background.registration import JobContributor
 from waxprep.background.registry import JobRegistry
-from waxprep.background.runtime import BackgroundRuntime, UnavailableBackgroundRuntime
+from waxprep.background.runtime import (
+    BackgroundRuntime,
+    UnavailableBackgroundRuntime,
+    WorkerBackgroundRuntime,
+)
 from waxprep.composition.bundles import (
     AdapterSelection,
     ApplicationDependencies,
@@ -43,10 +48,16 @@ class CompositionRoot:
         *,
         adapters: AdapterSelection | None = None,
         overrides: Mapping[type[Any], Any] | None = None,
+        job_contributors: Sequence[JobContributor] = (),
+        background_middlewares: Sequence[Any] = (),
+        background_factory: Callable[[JobRegistry, bool], WorkerBackgroundRuntime] | None = None,
     ) -> None:
         self._settings = app_settings
         self._adapters = adapters
         self._overrides = dict(overrides or {})
+        self._job_contributors = tuple(job_contributors)
+        self._background_middlewares = tuple(background_middlewares)
+        self._background_factory = background_factory
 
     @property
     def settings(self) -> Settings:
@@ -84,7 +95,7 @@ class CompositionRoot:
         graph.register(
             ProviderSpec(
                 JobRegistry,
-                JobRegistry,
+                self._new_job_registry,
                 lifetime=Lifetime.APPLICATION,
                 name="job-registry",
             )
@@ -141,17 +152,19 @@ class CompositionRoot:
         lifecycle: ApplicationLifecycle,
         supervisor: BackgroundTaskSupervisor,
         registry: JobRegistry | None = None,
-        background: BackgroundRuntime | None = None,
+        background: WorkerBackgroundRuntime | None = None,
     ) -> WorkerDependencies:
         """Assemble a worker bundle without FastAPI or HTTP dependencies."""
-        job_registry = registry or JobRegistry()
+        job_registry = registry or self._new_job_registry()
         graph = DependencyGraph()
         graph.register(ProviderSpec(Settings, lambda: self._settings, lifetime=Lifetime.PROCESS))
         graph.register(ProviderSpec(JobRegistry, lambda: job_registry))
         graph.register(
             ProviderSpec(
-                BackgroundRuntime,
-                lambda _job_registry: background or self._default_background(job_registry),
+                WorkerBackgroundRuntime,
+                lambda _job_registry: (
+                    background or self._default_background(job_registry, worker_process=True)
+                ),
                 dependencies=(JobRegistry,),
                 name="background-runtime",
             )
@@ -171,7 +184,7 @@ class CompositionRoot:
                 dependencies=(
                     Settings,
                     JobRegistry,
-                    BackgroundRuntime,
+                    WorkerBackgroundRuntime,
                     ApplicationLifecycle,
                     BackgroundTaskSupervisor,
                 ),
@@ -182,15 +195,33 @@ class CompositionRoot:
         return cast(WorkerDependencies, resolved[WorkerDependencies])
 
     def _select_background(self, registry: JobRegistry) -> BackgroundRuntime:
-        return self._default_background(registry)
+        return self._default_background(registry, worker_process=False)
 
-    @staticmethod
-    def _default_background(registry: JobRegistry) -> BackgroundRuntime:
+    def _default_background(
+        self,
+        registry: JobRegistry,
+        *,
+        worker_process: bool,
+    ) -> WorkerBackgroundRuntime:
+        if self._background_factory is not None:
+            return self._background_factory(registry, worker_process)
+        if self._settings.environment.value not in {"development", "test"}:
+            return UnavailableBackgroundRuntime()
         try:
             from waxprep.background.taskiq import TaskiqBackgroundRuntime
         except ImportError:
             return UnavailableBackgroundRuntime()
-        return TaskiqBackgroundRuntime(registry)
+        return TaskiqBackgroundRuntime(
+            registry,
+            middlewares=self._background_middlewares,
+            worker_process=worker_process,
+        )
+
+    def _new_job_registry(self) -> JobRegistry:
+        registry = JobRegistry()
+        for contributor in self._job_contributors:
+            contributor.register_jobs(registry)
+        return registry
 
     def _select_adapters(self) -> AdapterSelection:
         return self._adapters or AdapterSelection(

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import multiprocessing
+import socket
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -24,7 +28,70 @@ from waxprep.worker import BackgroundWorker
 pytestmark = pytest.mark.integration
 
 
-def envelope(task_name: str = "waxprep.test.job") -> MessageEnvelope[OperationSuccess]:
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _worker_process(port: int, marker: str, stop_mp: Any) -> None:
+    from taskiq import ZeroMQBroker
+
+    from waxprep.background.registry import JobHandler, JobRegistry
+    from waxprep.background.runtime import WorkerBackgroundRuntime
+    from waxprep.background.taskiq import TaskiqBackgroundRuntime
+    from waxprep.composition import CompositionRoot
+    from waxprep.config import settings
+    from waxprep.contracts.models.result import (
+        OperationResult,
+        OperationStatus,
+        OperationSuccess,
+    )
+    from waxprep.worker import BackgroundWorker
+
+    async def main() -> None:
+        async def handle(envelope: MessageEnvelope[OperationSuccess]) -> OperationResult:  # noqa: RUF029
+            Path(marker).write_text(envelope.payload.detail or "", encoding="utf-8")
+            return OperationResult(OperationSuccess(status=OperationStatus.SUCCESS))
+
+        registry = JobRegistry()
+        registry.register(
+            JobHandler(
+                task_name="waxprep.test.workerjob",
+                payload_type=OperationSuccess,
+                handler=handle,
+            )
+        )
+        broker = ZeroMQBroker(
+            zmq_pub_host=f"tcp://127.0.0.1:{port}",
+            zmq_sub_host=f"tcp://127.0.0.1:{port}",
+        )
+        runtime = TaskiqBackgroundRuntime(registry, broker=broker, worker_process=True)
+        root = CompositionRoot(
+            settings,
+            overrides={WorkerBackgroundRuntime: runtime},
+        )
+        stop_event = asyncio.Event()
+
+        async def watch() -> None:
+            while not stop_mp.is_set():
+                await asyncio.sleep(0.02)
+            stop_event.set()
+
+        watcher = asyncio.create_task(watch())
+        try:
+            await BackgroundWorker(composition_root=root, registry=registry).run(stop_event)
+        finally:
+            watcher.cancel()
+            broker.socket.close(linger=0)
+            broker.context.term()
+
+    asyncio.run(main())
+
+
+def envelope(
+    task_name: str = "waxprep.test.job", detail: str = "payload"
+) -> MessageEnvelope[OperationSuccess]:
     return MessageEnvelope[OperationSuccess](
         message_id=uuid4(),
         message_kind=MessageKind.EVENT,
@@ -33,7 +100,7 @@ def envelope(task_name: str = "waxprep.test.job") -> MessageEnvelope[OperationSu
         correlation_id=uuid4(),
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         producer="waxprep.test",
-        payload=OperationSuccess(status=OperationStatus.SUCCESS, detail="payload"),
+        payload=OperationSuccess(status=OperationStatus.SUCCESS, detail=detail),
     )
 
 
@@ -60,6 +127,8 @@ class TestUnavailableRuntime:
         asyncio.run(runtime.start())
         with pytest.raises(BackgroundUnavailableError):
             asyncio.run(runtime.submit(envelope()))
+        with pytest.raises(BackgroundUnavailableError):
+            asyncio.run(runtime.consume(asyncio.Event()))
         asyncio.run(runtime.stop())
         assert runtime.active is False
 
@@ -83,6 +152,131 @@ class TestTaskiqRuntime:
             await runtime.stop()
             await runtime.stop()  # idempotent
             assert runtime.active is False
+
+        asyncio.run(scenario())
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="fork-based cross-process test")
+    def test_producer_and_independent_worker_communicate(self, tmp_path: Path):
+        port = _free_port()
+        marker = tmp_path / "executed.txt"
+        context = multiprocessing.get_context("fork")
+        stop_mp = context.Event()
+        process = context.Process(
+            target=_worker_process,
+            args=(port, str(marker), stop_mp),
+        )
+        process.start()
+        try:
+            asyncio.run(asyncio.sleep(0.4))
+            from taskiq import ZeroMQBroker
+
+            from waxprep.background.runtime import WorkerBackgroundRuntime
+            from waxprep.background.taskiq import TaskiqBackgroundRuntime
+            from waxprep.composition import CompositionRoot
+
+            async def producer() -> None:
+                broker = ZeroMQBroker(
+                    zmq_pub_host=f"tcp://127.0.0.1:{port}",
+                    zmq_sub_host=f"tcp://127.0.0.1:{port}",
+                )
+                runtime = TaskiqBackgroundRuntime(JobRegistry(), broker=broker)
+                root = CompositionRoot(
+                    settings,
+                    overrides={WorkerBackgroundRuntime: runtime},
+                )
+                dependencies = root.build_worker(
+                    lifecycle=ApplicationLifecycle(),
+                    supervisor=BackgroundTaskSupervisor(),
+                )
+                await dependencies.background.start()
+                try:
+                    job = envelope(
+                        task_name="waxprep.test.workerjob",
+                        detail=str(marker),
+                    )
+                    for _ in range(10):
+                        await dependencies.background.submit(job)
+                        for _ in range(25):
+                            if marker.is_file():
+                                return
+                            await asyncio.sleep(0.1)
+                finally:
+                    await dependencies.background.stop()
+                    broker.socket.close(linger=0)
+                    broker.context.term()
+
+            from waxprep.lifecycle import ApplicationLifecycle, BackgroundTaskSupervisor
+
+            asyncio.run(producer())
+            assert marker.is_file(), "independent worker did not execute the submitted job"
+        finally:
+            stop_mp.set()
+            process.join(timeout=10)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+
+    def test_consume_requires_started_runtime(self):
+        from waxprep.background.taskiq import TaskiqBackgroundRuntime
+
+        async def scenario():
+            runtime = TaskiqBackgroundRuntime(JobRegistry())
+            with pytest.raises(BackgroundUnavailableError, match="not started"):
+                await runtime.consume(asyncio.Event())
+
+        asyncio.run(scenario())
+
+    def test_consume_uses_taskiq_receiver_for_non_memory_broker(self, monkeypatch):
+        from taskiq import receiver as receiver_module
+
+        from waxprep.background.taskiq import TaskiqBackgroundRuntime
+
+        called = []
+
+        class FakeBroker:
+            is_worker_process = False
+
+            def task(self, _name):
+                return lambda function: function
+
+            async def startup(self):
+                return None
+
+            async def shutdown(self):
+                return None
+
+        class FakeReceiver:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def listen(self, stop_event):
+                called.append(stop_event)
+
+        monkeypatch.setattr(receiver_module, "Receiver", FakeReceiver)
+
+        async def scenario():
+            stop = asyncio.Event()
+            runtime = TaskiqBackgroundRuntime(JobRegistry(), broker=FakeBroker())  # type: ignore[arg-type]
+            await runtime.start()
+            try:
+                await runtime.consume(stop)
+            finally:
+                await runtime.stop()
+
+        asyncio.run(scenario())
+        assert called and called[0] is not None
+
+    def test_in_memory_broker_cannot_run_an_independent_worker(self):
+        from waxprep.background.taskiq import TaskiqBackgroundRuntime
+
+        async def scenario():
+            runtime = TaskiqBackgroundRuntime(JobRegistry())
+            await runtime.start()
+            try:
+                with pytest.raises(BackgroundUnavailableError, match="InMemoryBroker"):
+                    await runtime.consume(asyncio.Event())
+            finally:
+                await runtime.stop()
 
         asyncio.run(scenario())
 
@@ -186,15 +380,48 @@ class TestWorker:
         assert bundle.settings is settings
 
     def test_worker_runs_and_stops_with_explicit_signal(self):
+        from waxprep.background.runtime import WorkerBackgroundRuntime
+
+        class FakeWorkerRuntime:
+            active = False
+
+            async def start(self):
+                self.active = True
+
+            async def stop(self):
+                self.active = False
+
+            async def submit(self, _envelope):
+                raise AssertionError("worker does not submit")
+
+            async def consume(self, stop_event):
+                await stop_event.wait()
+
+        fake = FakeWorkerRuntime()
+        root = CompositionRoot(settings, overrides={WorkerBackgroundRuntime: fake})
+
+        async def handler(_envelope):  # noqa: RUF029
+            return OperationResult(OperationSuccess(status=OperationStatus.SUCCESS))
+
+        registry = JobRegistry()
+        registry.register(
+            JobHandler(
+                task_name="waxprep.test.job",
+                payload_type=OperationSuccess,
+                handler=handler,
+            )
+        )
+
         async def scenario():
             stop = asyncio.Event()
-            worker = BackgroundWorker(registry=JobRegistry())
+            worker = BackgroundWorker(composition_root=root, registry=registry)
             task = asyncio.create_task(worker.run(stop))
             await asyncio.sleep(0.05)
             stop.set()
             await asyncio.wait_for(task, timeout=2)
 
         asyncio.run(scenario())
+        assert fake.active is False
 
     def test_worker_import_does_not_import_fastapi_in_subprocess(self):
         import subprocess
@@ -212,6 +439,33 @@ class TestWorker:
             timeout=30,
         )
         assert result.stdout.strip() == "False False"
+
+    def test_worker_refuses_an_empty_job_registry(self):
+        from waxprep.background.errors import JobRegistrationError
+        from waxprep.background.runtime import WorkerBackgroundRuntime
+
+        class FakeWorkerRuntime:
+            active = False
+
+            async def start(self):
+                self.active = True
+
+            async def stop(self):
+                self.active = False
+
+            async def submit(self, _envelope):
+                return "fake"
+
+            async def consume(self, stop_event):
+                await stop_event.wait()
+
+        fake = FakeWorkerRuntime()
+        root = CompositionRoot(settings, overrides={WorkerBackgroundRuntime: fake})
+        with pytest.raises(JobRegistrationError, match="job contributor"):
+            asyncio.run(
+                BackgroundWorker(composition_root=root, registry=JobRegistry()).run(asyncio.Event())
+            )
+        assert fake.active is False
 
     def test_worker_background_start_requires_composition(self):
         import asyncio
@@ -282,3 +536,147 @@ class TestWorker:
         monkeypatch.delitem(sys.modules, "waxprep.worker", raising=False)
         runpy.run_module("waxprep.worker", run_name="__main__")
         assert len(calls) == 1
+
+
+class TestBrokerSelectionAndRegistration:
+    def test_in_memory_is_not_selected_outside_dev_or_test(self):
+        from waxprep.composition import CompositionRoot
+        from waxprep.config import Settings
+
+        class Contributor:
+            def register_jobs(self, registry):
+                registry.register(
+                    JobHandler(
+                        task_name="waxprep.test.job",
+                        payload_type=OperationSuccess,
+                        handler=lambda _envelope: None,  # type: ignore[arg-type]
+                    )
+                )
+
+        for environment in ("staging", "production"):
+            configured = Settings(
+                _env_file=None,
+                environment=environment,
+                host="0.0.0.0",
+                port=8000,
+                log_level="INFO",
+            )
+            from waxprep.lifecycle import ApplicationLifecycle, BackgroundTaskSupervisor
+
+            dependencies = CompositionRoot(configured, job_contributors=(Contributor(),)).build(
+                lifecycle=ApplicationLifecycle(),
+                supervisor=BackgroundTaskSupervisor(),
+            )
+            assert isinstance(dependencies.background, UnavailableBackgroundRuntime)
+
+    def test_production_accepts_an_explicit_broker_factory(self):
+        from waxprep.composition import CompositionRoot
+        from waxprep.config import Settings
+        from waxprep.lifecycle import ApplicationLifecycle, BackgroundTaskSupervisor
+
+        configured = Settings(
+            _env_file=None,
+            environment="production",
+            host="0.0.0.0",
+            port=8000,
+            log_level="INFO",
+        )
+        fake = _FakeRuntime()
+
+        dependencies = CompositionRoot(
+            configured,
+            background_factory=lambda _registry, _worker: fake,  # type: ignore[arg-type,return-value]
+        ).build(
+            lifecycle=ApplicationLifecycle(),
+            supervisor=BackgroundTaskSupervisor(),
+        )
+        assert dependencies.background is fake
+
+    def test_job_contributors_populate_the_worker_registry(self):
+        from waxprep.composition import CompositionRoot
+        from waxprep.lifecycle import ApplicationLifecycle, BackgroundTaskSupervisor
+
+        class Contributor:
+            def register_jobs(self, registry):
+                registry.register(
+                    JobHandler(
+                        task_name="waxprep.test.job",
+                        payload_type=OperationSuccess,
+                        handler=lambda _envelope: None,  # type: ignore[arg-type]
+                    )
+                )
+
+        bundle = CompositionRoot(settings, job_contributors=(Contributor(),)).build_worker(
+            lifecycle=ApplicationLifecycle(),
+            supervisor=BackgroundTaskSupervisor(),
+        )
+        assert bundle.job_registry.task_names == ("waxprep.test.job",)
+
+    def test_taskiq_retry_middleware_is_usable_through_composition(self):
+        from taskiq import SmartRetryMiddleware
+
+        from waxprep.composition import CompositionRoot
+        from waxprep.lifecycle import ApplicationLifecycle, BackgroundTaskSupervisor
+
+        attempts = {"count": 0}
+        succeeded = asyncio.Event()
+
+        async def flaky(_envelope):  # noqa: RUF029
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise RuntimeError("transient")
+            succeeded.set()
+            return OperationResult(OperationSuccess(status=OperationStatus.SUCCESS))
+
+        class Contributor:
+            def register_jobs(self, registry):
+                registry.register(
+                    JobHandler(
+                        task_name="waxprep.test.retry",
+                        payload_type=OperationSuccess,
+                        handler=flaky,
+                    )
+                )
+
+        retry = SmartRetryMiddleware(
+            default_retry_count=2,
+            default_retry_label=True,
+            default_delay=0,
+            use_jitter=False,
+            types_of_exceptions=(RuntimeError,),
+        )
+        dependencies = CompositionRoot(
+            settings,
+            job_contributors=(Contributor(),),
+            background_middlewares=(retry,),
+        ).build(
+            lifecycle=ApplicationLifecycle(),
+            supervisor=BackgroundTaskSupervisor(),
+        )
+
+        async def scenario():
+            await dependencies.background.start()
+            try:
+                await dependencies.background.submit(envelope(task_name="waxprep.test.retry"))
+                await asyncio.wait_for(succeeded.wait(), timeout=3)
+            finally:
+                await dependencies.background.stop()
+
+        asyncio.run(scenario())
+        assert attempts["count"] >= 2
+
+
+class _FakeRuntime:
+    active = False
+
+    async def start(self):
+        self.active = True
+
+    async def stop(self):
+        self.active = False
+
+    async def submit(self, _envelope):
+        return "fake"
+
+    async def consume(self, stop_event):
+        await stop_event.wait()

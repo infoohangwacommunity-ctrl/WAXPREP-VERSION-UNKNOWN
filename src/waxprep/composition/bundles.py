@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from waxprep.background.registry import JobRegistry
-from waxprep.background.runtime import BackgroundRuntime
+from waxprep.background.runtime import BackgroundRuntime, WorkerBackgroundRuntime
 from waxprep.config import Settings
 from waxprep.lifecycle import ApplicationLifecycle, BackgroundTaskSupervisor
 from waxprep.registries.channel import ChannelAdapter, ChannelRegistry
@@ -72,6 +72,6 @@ class WorkerDependencies:
 
     settings: Settings
     job_registry: JobRegistry
-    background: BackgroundRuntime
+    background: WorkerBackgroundRuntime
     lifecycle: ApplicationLifecycle
     supervisor: BackgroundTaskSupervisor

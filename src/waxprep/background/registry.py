@@ -179,16 +179,16 @@ class JobRegistry:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            # Preserve the original exception type so the selected execution
+            # framework/middleware can classify and retry it. WaxPrep does not
+            # maintain a hardcoded retryable-exception catalogue here.
             logger.error(
                 "background_job_failed",
                 task=handler.task_name,
                 job_id=str(envelope.message_id),
                 error_type=type(exc).__name__,
             )
-            raise JobExecutionError(
-                "The background job handler raised unexpectedly",
-                context={"task": handler.task_name},
-            ) from exc
+            raise
         if not isinstance(result, OperationResult):  # pyright: ignore[reportUnnecessaryIsInstance]
             raise JobExecutionError(
                 "The background job handler did not return an OperationResult",

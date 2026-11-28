@@ -1,5 +1,5 @@
 """
-Main Application - Stages 01-18
+Main Application - Stages 01-19
 Thin ASGI entrypoint for a typed, failure-safe application.
 
 Assembly is delegated to the Stage 18 composition root; the Stage 16 lifecycle

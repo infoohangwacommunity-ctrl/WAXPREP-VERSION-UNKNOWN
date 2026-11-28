@@ -13,6 +13,7 @@ catalogue.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Sequence
 from typing import Any, cast
@@ -42,9 +43,11 @@ class TaskiqBackgroundRuntime:
         *,
         broker: AsyncBroker | None = None,
         middlewares: Sequence[TaskiqMiddleware] = (),
+        worker_process: bool = False,
     ) -> None:
         self._registry = registry
         self._broker = broker or InMemoryBroker()
+        self._broker.is_worker_process = worker_process
         if middlewares:
             self._broker.with_middlewares(*middlewares)
 
@@ -70,6 +73,26 @@ class TaskiqBackgroundRuntime:
             return
         await self._broker.shutdown()
         self._active = False
+
+    async def consume(self, stop_event: asyncio.Event) -> None:
+        """Run the real Taskiq receiver loop until the stop event is set."""
+        if not self._active:
+            raise BackgroundUnavailableError(
+                "Background runtime is not started; start it through the lifecycle"
+            )
+        if isinstance(self._broker, InMemoryBroker):
+            raise BackgroundUnavailableError(
+                "InMemoryBroker is test/development-only and cannot run an independent worker"
+            )
+        from taskiq.receiver import Receiver
+
+        receiver = Receiver(
+            self._broker,
+            run_startup=False,
+            propagate_exceptions=False,
+            max_async_tasks=100,
+        )
+        await receiver.listen(stop_event)
 
     async def submit(self, envelope: MessageEnvelope[Any]) -> str:
         if not self._active:

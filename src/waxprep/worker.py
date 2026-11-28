@@ -25,6 +25,7 @@ from dataclasses import dataclass
 
 import structlog
 
+from waxprep.background.errors import JobRegistrationError
 from waxprep.background.registry import JobRegistry
 from waxprep.composition import CompositionRoot, WorkerDependencies
 from waxprep.config import settings
@@ -131,7 +132,15 @@ class BackgroundWorker:
         await lifecycle.start()
         logger.info("background_worker_started")
         try:
-            await stop_event.wait()
+            dependencies = state.dependencies
+            assert dependencies is not None
+            if not dependencies.job_registry.task_names:
+                raise JobRegistrationError(
+                    "A background worker requires at least one registered job contributor"
+                )
+            # Receive until shutdown begins; the lifecycle then stops the broker
+            # and releases resources in reverse order.
+            await dependencies.background.consume(stop_event)
         finally:
             logger.info("background_worker_stopping")
             await lifecycle.shutdown()
