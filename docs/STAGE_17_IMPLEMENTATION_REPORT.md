@@ -165,5 +165,13 @@ tests/README.md, tests/architecture/test_boundaries.py, pyproject.toml
 
 ## 8. CI evidence
 
-Commit-bound runs are recorded after the push. Local green results are not a
-substitute for GitHub Actions.
+**Implementation commit:** `d750af6945eb08e9253f830d248bdabe949d03b0`.
+
+| Workflow | Result | Run |
+|---|---|---|
+| CI — Quality Gate | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46089690810 |
+| Dependency Security | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46089690798 |
+
+The quality-gate run includes the new contract schema drift step, Semgrep
+contract-bypass rules, import-linter contract isolation and the full contract
+test suite. Local green results are not a substitute for these runs.
