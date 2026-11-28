@@ -1,6 +1,6 @@
 # WaxPrep Foundation
 
-**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 17).**
+**IMPORTANT: This repository contains the WaxPrep engineering foundation (Stages 01 through 18).**
 
 Stage 07 adds the consolidated CI quality gate (`.github/workflows/quality-gate.yml`) with blocking checks (ruff, ruff format, mypy, import-linter, semgrep, tests, 100% coverage gate, smoke test) and advisory checks (pyright, vulture). Stage 09 adds dependency and supply-chain security to the same gate: pip-audit without blanket ignores, a scoped expiring exception register, lockfile hashes, dependency source restrictions, license policy, OSV malicious-package intelligence, a CycloneDX SBOM and Dependabot proposals. Stage 10 turns that collection into an acceptance system: every job records machine-readable evidence, the workflow audits its own definition, and acceptance is decided only from evidence bound to the exact commit being assessed.
 
@@ -12,6 +12,7 @@ Stage 12–15 add the operational layer, implemented in dependency order (12 →
 - **Stage 14 — Observability:** vendor-neutral OpenTelemetry behind an **optional extra**, a real OTLP metrics pipeline (meter provider + periodic reader) and one request span per HTTP request, low-cardinality labels using route *templates*, and a fail-open exporter policy so a collector outage never breaks a request.
 - **Stage 16 — Application lifecycle:** one explicit state machine per application instance, dependency-ordered initialization, `AsyncExitStack` reverse-order rollback, failure-isolated cleanup that preserves the original exception, cancellation-aware shutdown, owned background-task supervision, lifecycle-aware readiness and centrally validated timeouts.
 - **Stage 17 — Internal communication contracts:** strict immutable Pydantic DTOs, discriminated operation results, a versioned message envelope, bounded JSON validation/serialization, semantic contract identity and compatibility policy, deterministic JSON Schema publication with CI drift and baseline-compatibility enforcement, and contract failures integrated with the Stage 15 taxonomy.
+- **Stage 18 — Dependency injection and composition:** one authoritative composition root, a typed dependency graph with missing/cycle/lifetime validation, typed application bundles, constructor/factory injection, explicit test overrides, registry implementation selection moved to composition, and integration with the Stage 16 lifecycle. No third-party container or global service locator.
 
 **Stage 10 completion does not mean the WaxPrep AI tutoring product is complete.** This is still a foundation project. Real WhatsApp/Telegram handlers, database infrastructure, tutor logic, and the intelligence layer are not implemented.
 
@@ -71,6 +72,7 @@ src/waxprep/
 │   ├── model.py         # ModelRegistry + ModelAdapter protocol
 │   └── tool.py          # ToolRegistry + Tool protocol
 ├── contracts/           # Stage 17 typed communication contracts, schemas and validation
+├── composition/         # Stage 18 composition root, dependency graph, bundles and lifetimes
 ├── detector/            # Stage 08 hardcoding detector (development-time only)
 ├── supplychain/         # Stage 09 dependency & supply-chain gate (development-time only)
 ├── ci/                  # Stage 10 CI evidence, acceptance and workflow audit (development-time only)
@@ -421,6 +423,9 @@ All project documentation is organized in the `docs/` folder:
 - `docs/CONTRACT_EVOLUTION.md` — Contract identity, compatibility classes and migration (Stage 17)
 - `docs/CONTRACT_TESTING.md` — Contract verification strategy and invariants (Stage 17)
 - `docs/STAGE_17_IMPLEMENTATION_REPORT.md` — Stage 17 decisions, evidence and limitations
+- `docs/DEPENDENCY_INJECTION_AND_COMPOSITION.md` — Composition root, typed graph, lifetimes and lifecycle integration (Stage 18)
+- `docs/COMPOSITION_TESTING.md` — Composition invariants, overrides, failure injection and static enforcement (Stage 18)
+- `docs/STAGE_18_IMPLEMENTATION_REPORT.md` — Stage 18 decisions, evidence and limitations
 
 ### Archive (Historical/Superseded)
 - `docs/archive/` — Contains superseded documents:

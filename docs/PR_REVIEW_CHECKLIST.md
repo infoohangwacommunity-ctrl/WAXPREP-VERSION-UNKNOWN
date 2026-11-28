@@ -228,6 +228,16 @@ When changing secrets, logging, telemetry or error handling (Stages 12–15):
 - [ ] Contract tests include invalid, adversarial, property and serialization cases
 - [ ] No transport or external protocol dependency added without justification
 
+**Composition (Stage 18)**
+- [ ] New dependencies are declared in the typed graph with a lifetime
+- [ ] Components receive values explicitly; no service locator/global lookup
+- [ ] Longer-lived providers do not depend on shorter-lived ones
+- [ ] Concrete adapters are selected only in composition (no business imports)
+- [ ] Stage 16 remains the single lifecycle owner; rollback is preserved
+- [ ] Test overrides are explicit, not global monkey patches
+- [ ] Composition failure leaves no partial dependencies
+- [ ] Graph, isolation, lifetime, failure and static-boundary tests cover the change
+
 **Documentation**
 - [ ] `CONFIGURATION_REFERENCE.md` updated for every new setting
 - [ ] `.env.example` placeholders only

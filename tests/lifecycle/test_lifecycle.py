@@ -1212,11 +1212,14 @@ class TestApplicationIntegration:
         lifecycle = create_app().state.lifecycle
         assert [component.name for component in lifecycle.components] == [
             "configuration",
+            "composition",
             "registries",
             "telemetry",
         ]
         assert lifecycle.components[1].depends_on == ("configuration",)
-        assert lifecycle.components[2].mandatory is False
+        assert lifecycle.components[2].depends_on == ("composition",)
+        assert lifecycle.components[3].mandatory is False
+        assert lifecycle.components[3].depends_on == ("composition",)
 
     def test_import_and_factory_do_not_start_resources(self):
         import waxprep.lifecycle as lifecycle_package

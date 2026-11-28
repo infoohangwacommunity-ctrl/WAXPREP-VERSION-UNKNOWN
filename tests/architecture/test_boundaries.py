@@ -17,7 +17,8 @@ STAGE_03_ARCHITECTURE.md, ARCHITECTURE_BOUNDARIES.md):
 | adapters/ | registry protocols, SDKs | core, other adapters, messaging, context, services, registries, id |
 | middleware/ | standard library, typing | core |
 | lifecycle/ | standard library, asyncio, errors/ | FastAPI, registries, adapters, middleware, config, main |
-| contracts/ | standard library, Pydantic, errors/ | core, registries, adapters, middleware, config, lifecycle, observability, main |
+| contracts/ | standard library, Pydantic, errors/ | core, registries, adapters, middleware, config, lifecycle, observability, composition, main |
+| composition/ | config, registries, adapters, lifecycle, observability, contracts | main.py |
 | main.py | FastAPI, config, registries, middleware, adapters | core |
 
 All checks inspect both `import X` and `from X import Y` forms,
@@ -99,6 +100,7 @@ BOUNDARY_RULES: dict[str, tuple[list[str], list[str]]] = {
             "waxprep.services",
             "waxprep.id",
             "waxprep.contracts",
+            "waxprep.composition",
             "fastapi",
         ],
     ),
@@ -154,6 +156,10 @@ BOUNDARY_RULES: dict[str, tuple[list[str], list[str]]] = {
     "middleware": (
         [],
         ["waxprep.core"],
+    ),
+    "composition": (
+        [],
+        ["waxprep.main"],
     ),
     "contracts": (
         ["waxprep.errors"],
@@ -324,6 +330,44 @@ class TestContractsBoundaries:
                 assert not any(module.startswith(f) for f in forbidden), (
                     f"contracts/{path.name} imports forbidden module '{module}'; "
                     "contracts/ must stay at the inner boundary."
+                )
+
+
+class TestCompositionBoundaries:
+    """Inner packages must not import the composition root."""
+
+    @pytest.mark.architecture
+    def test_inner_packages_do_not_import_composition(self):
+        packages = (
+            "core",
+            "contracts",
+            "lifecycle",
+            "messaging",
+            "context",
+            "services",
+            "registries",
+            "adapters",
+            "middleware",
+            "observability",
+        )
+        for package in packages:
+            directory = WAXPREP_ROOT / package
+            if not directory.exists():
+                continue
+            for path in python_files_in_package(directory):
+                for _file_name, module in waxprep_imports_in_file(path):
+                    assert not module.startswith("waxprep.composition"), (
+                        f"{package}/{path.name} imports composition; inner packages "
+                        "must receive dependencies explicitly."
+                    )
+
+    @pytest.mark.architecture
+    def test_composition_does_not_import_main(self):
+        directory = WAXPREP_ROOT / "composition"
+        for path in python_files_in_package(directory):
+            for _file_name, module in waxprep_imports_in_file(path):
+                assert not module.startswith("waxprep.main"), (
+                    f"composition/{path.name} imports main; that creates an assembly cycle."
                 )
 
 

@@ -440,51 +440,11 @@ class TestMainReadinessFailurePaths:
 
     @pytest.fixture
     def readiness_client(self):
-        """Provide a TestClient with registries set up for selective clearing.
-
-        Channel and tool registries are pre-populated; model registry is empty.
-        All register_defaults are patched to no-ops so the lifespan won't
-        re-populate them.
-        """
+        """A normal application client; individual tests clear one registry."""
         import waxprep.main as main_mod
-        import waxprep.registries.channel as ch_reg
-        import waxprep.registries.model as mod_reg
-        import waxprep.registries.tool as tool_reg
 
-        # Save originals
-        orig_channel_rd = ch_reg.ChannelRegistry.register_defaults
-        orig_model_rd = mod_reg.ModelRegistry.register_defaults
-        orig_tool_rd = tool_reg.ToolRegistry.register_defaults
-
-        try:
-            # Patch to no-ops
-            ch_reg.ChannelRegistry.register_defaults = lambda self: None
-            mod_reg.ModelRegistry.register_defaults = lambda self: None
-            tool_reg.ToolRegistry.register_defaults = lambda self: None
-
-            # Create fresh registries
-            main_mod._channel_registry = ch_reg.ChannelRegistry()
-            main_mod._model_registry = mod_reg.ModelRegistry()
-            main_mod._tool_registry = tool_reg.ToolRegistry()
-
-            # Manually populate channel and tool (but NOT model)
-            from waxprep.adapters.fake_channel import FakeChannelAdapter
-            from waxprep.adapters.fake_tool import FakeTool
-
-            main_mod._channel_registry._items["fake"] = FakeChannelAdapter()
-            main_mod._tool_registry._items["fake_tool"] = FakeTool()
-            # model registry stays empty — this is the "model not registered" state
-
-            main_mod._registries_ready = True
-
-            client = TestClient(main_mod._app)
-            client.__enter__()
+        with TestClient(main_mod.get_app()) as client:
             yield client
-        finally:
-            # Restore originals
-            ch_reg.ChannelRegistry.register_defaults = orig_channel_rd
-            mod_reg.ModelRegistry.register_defaults = orig_model_rd
-            tool_reg.ToolRegistry.register_defaults = orig_tool_rd
 
     def test_readiness_fails_when_config_not_loaded(self, readiness_client):
         """Configuration must have a recognised environment value or readiness returns 503.
@@ -538,9 +498,9 @@ class TestMainReadinessFailurePaths:
         import waxprep.main as main_mod
         from waxprep.adapters.fake_channel import FakeChannelAdapter
 
-        # Channel was cleared by the channel test — re-populate it.
-        # Model stays empty — this is what we're testing.
+        # Re-populate channel and clear model for this test.
         main_mod._app_state.channel_registry._items["fake"] = FakeChannelAdapter()
+        main_mod._app_state.model_registry._items.clear()
         response = readiness_client.get("/health/readiness")
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         data = response.json()

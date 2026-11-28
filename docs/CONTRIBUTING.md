@@ -63,6 +63,7 @@ tests/
 ├── integration/        # Component interactions
 ├── contract/           # Protocol compliance
 ├── lifecycle/          # Startup/shutdown, failures
+├── composition/        # Composition root, typed graph, bundles, lifetimes
 ├── architecture/       # Boundary enforcement
 ├── configuration/      # Config loading
 ├── detector/           # Detector unit, adversarial, CLI tests

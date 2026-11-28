@@ -35,7 +35,13 @@ class ModelRegistry(BaseRegistry):
         self._items[name] = item
 
     def register_defaults(self) -> None:
-        """Register default fake adapter. Must be called explicitly."""
+        """Legacy convenience for the fake adapter.
+
+        Production composition (Stage 18) selects adapters in
+        ``waxprep.composition`` and registers them explicitly. This method is
+        retained for the foundation tests and older embedding code; new code
+        should not use it as an implementation-selection mechanism.
+        """
         from waxprep.adapters.fake_model import FakeModelAdapter
 
         self.register("fake", FakeModelAdapter())

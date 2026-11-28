@@ -31,23 +31,24 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from waxprep.composition import (
+    AppState,
+    CompositionRoot,
+    register_application_components,
+)
 from waxprep.config import settings
 from waxprep.errors.http import public_body, status_for
 from waxprep.errors.taxonomy import ErrorCategory, ProgrammingDefectError, WaxPrepError
 from waxprep.lifecycle import (
     ApplicationLifecycle,
     BackgroundTaskSupervisor,
-    LifecycleComponent,
     LifecycleState,
 )
 from waxprep.middleware.observability import ObservabilityMiddleware
 from waxprep.middleware.request_id import RequestIdMiddleware
 from waxprep.observability.logging import configure_logging
 from waxprep.observability.metrics import metrics
-from waxprep.observability.telemetry import TelemetryConfig, route_template, telemetry
-from waxprep.registries.channel import ChannelRegistry
-from waxprep.registries.model import ModelRegistry
-from waxprep.registries.tool import ToolRegistry
+from waxprep.observability.telemetry import route_template
 
 # Logging is configured once from validated settings (Stage 13). This is an
 # explicit call rather than an import side effect so CLI entry points, tests
@@ -81,12 +82,6 @@ def _route_label(request: Request) -> str:
     return route_template(request.url.path, matched_path)
 
 
-def _telemetry_auth_token() -> str | None:
-    """Reveal the configured exporter credential at its single point of use."""
-    token = settings.telemetry_auth_token
-    return token.get_secret_value() if token is not None else None
-
-
 def _record_error_metric(category: str, code: str) -> None:
     """Record one bounded error metric; observability never breaks a response."""
     try:
@@ -103,183 +98,13 @@ def _record_readiness_metric(*, ready: bool) -> None:
         logger.warning("observability_metric_failed", exc_info=True)
 
 
-class AppState:
-    """Application-instance data owned by one ``FastAPI`` instance.
-
-    This is not a module-global. The default application exposes a compatibility
-    alias for older tests/tools, but request handling reads ``app.state``.
-    """
-
-    def __init__(self) -> None:
-        self._shutting_down: bool = False
-        self._registries_ready: bool = False
-        self._channel_registry: ChannelRegistry | None = None
-        self._model_registry: ModelRegistry | None = None
-        self._tool_registry: ToolRegistry | None = None
-
-    @property
-    def shutting_down(self) -> bool:
-        return self._shutting_down
-
-    @shutting_down.setter
-    def shutting_down(self, value: bool) -> None:
-        self._shutting_down = value
-
-    @property
-    def registries_ready(self) -> bool:
-        return self._registries_ready
-
-    @registries_ready.setter
-    def registries_ready(self, value: bool) -> None:
-        self._registries_ready = value
-
-    @property
-    def channel_registry(self) -> ChannelRegistry | None:
-        return self._channel_registry
-
-    @channel_registry.setter
-    def channel_registry(self, value: ChannelRegistry | None) -> None:
-        self._channel_registry = value
-
-    @property
-    def model_registry(self) -> ModelRegistry | None:
-        return self._model_registry
-
-    @model_registry.setter
-    def model_registry(self, value: ModelRegistry | None) -> None:
-        self._model_registry = value
-
-    @property
-    def tool_registry(self) -> ToolRegistry | None:
-        return self._tool_registry
-
-    @tool_registry.setter
-    def tool_registry(self, value: ToolRegistry | None) -> None:
-        self._tool_registry = value
-
-    def reset(self) -> None:
-        """Drop every reference owned by a finished lifecycle execution."""
-        self._shutting_down = False
-        self._registries_ready = False
-        self._channel_registry = None
-        self._model_registry = None
-        self._tool_registry = None
-
-
-# ── Default lifecycle components ─────────────────────────────────────────────
-
-
-def _initialize_configuration() -> None:
-    logger.info(
-        "Configuration loaded",
-        environment=settings.environment.value,
-        host=settings.host,
-        port=settings.port,
-        log_level=settings.log_level.value,
-    )
-
-
-def _initialize_registries(app_state: AppState) -> None:
-    from waxprep.registries.channel import get_channel_registry
-    from waxprep.registries.model import get_model_registry
-    from waxprep.registries.tool import get_tool_registry
-
-    app_state.channel_registry = get_channel_registry()
-    app_state.model_registry = get_model_registry()
-    app_state.tool_registry = get_tool_registry()
-    app_state.channel_registry.register_defaults()
-    app_state.model_registry.register_defaults()
-    app_state.tool_registry.register_defaults()
-    app_state.registries_ready = True
-    logger.info(
-        "registries_initialized",
-        channels=app_state.channel_registry.list_all(),
-        models=app_state.model_registry.list_all(),
-        tools=app_state.tool_registry.list_all(),
-    )
-
-
-def _release_registries(app_state: AppState) -> None:
-    app_state.registries_ready = False
-    app_state.channel_registry = None
-    app_state.model_registry = None
-    app_state.tool_registry = None
-    logger.info("registries_released")
-
-
-def _initialize_telemetry() -> None:
-    # Clear any instruments left over from a previous lifecycle before building
-    # a new provider. Telemetry is optional: failures are recorded by the
-    # lifecycle as degradation and never block the application.
-    metrics.reset()
-    telemetry_state = telemetry.configure(
-        TelemetryConfig(
-            enabled=settings.telemetry_enabled,
-            endpoint=settings.telemetry_endpoint,
-            metrics_endpoint=settings.telemetry_metrics_endpoint,
-            service_version="0.1.0",
-            environment=settings.environment.value,
-            sample_ratio=settings.telemetry_sample_ratio,
-            auth_token=_telemetry_auth_token(),
-        )
-    )
-    metrics_active = False
-    if telemetry_state.active and telemetry_state.metrics_active:
-        metrics_active = metrics.configure(meter_provider=telemetry_state.meter_provider)
-    logger.info(
-        "telemetry_configured",
-        active=telemetry_state.active,
-        reason=telemetry_state.reason,
-        metrics_active=metrics_active,
-        metrics_reason=telemetry_state.metrics_reason,
-    )
-
-
-async def _shutdown_observability() -> None:  # noqa: RUF029
-    """Final flush after application resources, then reset instruments."""
-    telemetry.shutdown()
-    metrics.reset()
-    logger.info("observability_shutdown_complete")
-
-
-def _register_default_components(
-    lifecycle: ApplicationLifecycle,
-    app_state: AppState,
-) -> None:
-    lifecycle.register(
-        LifecycleComponent(
-            name="configuration",
-            initialize=_initialize_configuration,
-            description="Validated settings already loaded; logs non-secret identity",
-        )
-    )
-    lifecycle.register(
-        LifecycleComponent(
-            name="registries",
-            initialize=lambda: _initialize_registries(app_state),
-            release=lambda: _release_registries(app_state),
-            depends_on=("configuration",),
-            description="Channel, model and tool registries with explicit defaults",
-        )
-    )
-    lifecycle.register(
-        LifecycleComponent(
-            name="telemetry",
-            initialize=_initialize_telemetry,
-            mandatory=False,
-            depends_on=("configuration",),
-            description="Optional OpenTelemetry export; degradation never blocks startup",
-        )
-    )
-    lifecycle.set_observability_cleanup(_shutdown_observability)
-
-
 def _ensure_app_resources(app: FastAPI) -> tuple[AppState, ApplicationLifecycle]:
-    """Attach per-instance lifecycle resources to a FastAPI app.
+    """Attach per-instance lifecycle and composition resources to an app.
 
     ``create_app()`` attaches them up front. A manually constructed
-    ``FastAPI(lifespan=lifespan)`` (tests, embedding) gets the same defaults here,
-    proving the lifespan owns its state instead of relying on module globals.
+    ``FastAPI(lifespan=lifespan)`` (tests, embedding) gets the same defaults here.
+    A caller that supplies its own lifecycle with components keeps those
+    components; only an empty lifecycle receives the application components.
     """
     app_state = cast(AppState | None, getattr(app.state, "app_state", None))
     if app_state is None:
@@ -295,7 +120,13 @@ def _ensure_app_resources(app: FastAPI) -> tuple[AppState, ApplicationLifecycle]
     if lifecycle is None:
         lifecycle = ApplicationLifecycle(background=supervisor)
         app.state.lifecycle = lifecycle
-        _register_default_components(lifecycle, app_state)
+
+    if not lifecycle.components:
+        root = cast(CompositionRoot | None, getattr(app.state, "composition_root", None))
+        if root is None:
+            root = CompositionRoot(settings)
+            app.state.composition_root = root
+        register_application_components(lifecycle, app_state, supervisor, root)
     else:
         lifecycle.attach_background(supervisor)
 
@@ -483,12 +314,13 @@ async def root() -> JSONResponse:  # noqa: RUF029
 # ── Application factory ──────────────────────────────────────────────────────
 
 
-def create_app() -> FastAPI:
+def create_app(composition_root: CompositionRoot | None = None) -> FastAPI:
     """Build an independent application instance with its own lifecycle."""
+    selected_root = composition_root or CompositionRoot(settings)
     app_state = AppState()
     supervisor = BackgroundTaskSupervisor()
     lifecycle = ApplicationLifecycle(background=supervisor)
-    _register_default_components(lifecycle, app_state)
+    register_application_components(lifecycle, app_state, supervisor, selected_root)
 
     app = FastAPI(
         title="WaxPrep Foundation",
@@ -511,6 +343,7 @@ def create_app() -> FastAPI:
     app.state.app_state = app_state
     app.state.supervisor = supervisor
     app.state.lifecycle = lifecycle
+    app.state.composition_root = selected_root
 
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(ObservabilityMiddleware)

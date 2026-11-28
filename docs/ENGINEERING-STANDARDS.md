@@ -540,6 +540,30 @@ Before pushing:
 
 ---
 
+## 13. Stage 18: Dependency Injection and Composition
+
+- One authoritative composition root. Do not scatter concrete implementation
+  selection across lifecycle callbacks, modules or components.
+- Declare dependencies explicitly in `ProviderSpec`/constructors. No global
+  service locator, string-keyed container or hidden `resolve()` calls.
+- Components never import `waxprep.composition`; inner packages receive values.
+- Provide a typed bundle, not one enormous universal container or arbitrary
+  dictionary.
+- Declare a lifetime. A longer-lived provider cannot depend on a shorter one.
+  Request/operation scopes stay policy-only until a real component exists.
+- Stage 16 remains the only lifecycle manager. Composition runs as a component;
+  do not add a second startup/shutdown system.
+- Select concrete adapters in composition. Production code must not call
+  `register_defaults()` or import concrete adapters outside the allowed paths.
+- Test overrides are explicit `CompositionRoot` values, not monkey-patched
+  globals.
+- A composition failure must roll back through Stage 16 and expose no partial
+  bundle.
+- Add graph, isolation, override, lifetime, failure and static-boundary tests for
+  every new provider or bundle.
+
+---
+
 ## PR Review Checklist
 
 See [PR_REVIEW_CHECKLIST.md](PR_REVIEW_CHECKLIST.md) for the concise, actionable checklist.

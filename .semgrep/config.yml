@@ -304,3 +304,25 @@ rules:
       technology: [python]
       subcategory: contracts
       confidence: HIGH
+
+  # ── Stage 18: composition boundaries ───────────────────────────────────────
+  # Concrete adapters are selected only by the composition root. Legacy
+  # registry helpers are allowed to keep their historical import path.
+  - id: waxprep-concrete-adapter-import
+    patterns:
+      - pattern-regex: '(^|\n)\s*(from|import)\s+waxprep\.adapters'
+    paths:
+      exclude:
+        - src/waxprep/composition
+        - src/waxprep/registries
+        - src/waxprep/adapters
+    message: |
+      Concrete adapter imported outside the composition root. Select
+      implementations in composition and inject the resulting capability.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: correctness
+      technology: [python]
+      subcategory: composition
+      confidence: HIGH

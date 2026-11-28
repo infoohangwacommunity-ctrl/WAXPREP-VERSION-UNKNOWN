@@ -26,6 +26,7 @@ forbidden_modules =
     waxprep.services
     waxprep.id
     waxprep.contracts
+    waxprep.composition
 
 # Contract 2: Outer-to-Inner directionality
 # REMOVED: type = allowed is not supported by this import-linter version.
@@ -101,3 +102,37 @@ forbidden_modules =
     waxprep.lifecycle
     waxprep.observability
     waxprep.id
+    waxprep.composition
+
+# Contract 7: Composition isolation
+# The composition root is the outermost assembly boundary. Inner packages must
+# never import it, and composition must not import the ASGI entrypoint (which
+# would create a cycle).
+[importlinter:contract:7]
+name = "Composition isolation: inner packages must not import composition"
+type = forbidden
+
+source_modules =
+    waxprep.core
+    waxprep.contracts
+    waxprep.lifecycle
+    waxprep.messaging
+    waxprep.context
+    waxprep.services
+    waxprep.registries
+    waxprep.adapters
+    waxprep.middleware
+    waxprep.observability
+
+forbidden_modules =
+    waxprep.composition
+
+[importlinter:contract:8]
+name = "Composition does not import the ASGI entrypoint"
+type = forbidden
+
+source_modules =
+    waxprep.composition
+
+forbidden_modules =
+    waxprep.main
