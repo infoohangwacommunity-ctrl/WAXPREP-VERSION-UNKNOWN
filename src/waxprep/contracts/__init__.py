@@ -14,6 +14,12 @@ The package is inner-layer: it may import the error taxonomy and Pydantic, but
 not concrete adapters, registries, middleware, configuration or the application.
 """
 
+from waxprep.contracts.compatibility import (
+    EnforcementFinding,
+    EnforcementReport,
+    enforce_compatibility,
+    load_decisions,
+)
 from waxprep.contracts.envelopes import MessageEnvelope, MessageKind
 from waxprep.contracts.errors import (
     ContractError,
@@ -78,6 +84,8 @@ __all__ = [
     "ContractVersionError",
     "ContractViolationError",
     "DriftReport",
+    "EnforcementFinding",
+    "EnforcementReport",
     "ErrorDetail",
     "EventPublisher",
     "InvalidContractVersionError",
@@ -99,6 +107,8 @@ __all__ = [
     "classify_change",
     "compare_schemas",
     "dump_contract",
+    "enforce_compatibility",
+    "load_decisions",
     "load_schema",
     "validate_contract",
 ]

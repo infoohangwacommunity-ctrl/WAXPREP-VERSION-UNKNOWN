@@ -17,6 +17,8 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
+from waxprep.contracts.compatibility import enforce_compatibility
+from waxprep.contracts.errors import ContractViolationError
 from waxprep.contracts.schema import (
     ContractSchemaRegistry,
     build_default_registry,
@@ -39,6 +41,15 @@ def _parser() -> argparse.ArgumentParser:
     compat = subparsers.add_parser("compat", help="classify schema compatibility")
     compat.add_argument("--old", type=Path, required=True)
     compat.add_argument("--new", type=Path, required=True)
+
+    enforce = subparsers.add_parser(
+        "enforce", help="enforce compatibility against the published baseline"
+    )
+    enforce.add_argument("--baseline", type=Path, default=Path("contracts/baseline"))
+    enforce.add_argument(
+        "--decisions", type=Path, default=Path("contracts/compatibility-decisions.toml")
+    )
+    enforce.add_argument("--report", type=Path, default=None)
 
     subparsers.add_parser("list", help="list current contract identities")
     return parser
@@ -75,6 +86,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             for change in compat.changes:
                 print(f"{change.compatibility.value}: {change.path} ({change.change.value})")
             return 0 if compat.compatible else 1
+        case "enforce":
+            try:
+                report = enforce_compatibility(
+                    _registry(),
+                    args.baseline,
+                    decisions_path=args.decisions,
+                )
+            except ContractViolationError as exc:
+                print(f"contract compatibility error: {exc.safe_message}")
+                return 2
+            if args.report is not None:
+                report.write(args.report)
+            for finding in report.violations:
+                print(f"{finding.status.value}: {finding.contract}: {finding.message}")
+            if not report.ok:
+                return 1
+            print("Contract compatibility check passed")
+            return 0
         case _:
             print(
                 canonical_json({"contracts": [str(item) for item in _registry().identities()]}),

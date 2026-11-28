@@ -68,12 +68,12 @@
         },
         "status": {
           "const": "deferred",
-          "default": "deferred",
           "title": "Status",
           "type": "string"
         }
       },
       "required": [
+        "status",
         "retry_after_seconds"
       ],
       "title": "OperationDeferred",
@@ -87,12 +87,12 @@
         },
         "status": {
           "const": "failed",
-          "default": "failed",
           "title": "Status",
           "type": "string"
         }
       },
       "required": [
+        "status",
         "error"
       ],
       "title": "OperationFailure",
@@ -106,12 +106,12 @@
         },
         "status": {
           "const": "rejected",
-          "default": "rejected",
           "title": "Status",
           "type": "string"
         }
       },
       "required": [
+        "status",
         "error"
       ],
       "title": "OperationRejected",
@@ -135,11 +135,13 @@
         },
         "status": {
           "const": "success",
-          "default": "success",
           "title": "Status",
           "type": "string"
         }
       },
+      "required": [
+        "status"
+      ],
       "title": "OperationSuccess",
       "type": "object"
     }

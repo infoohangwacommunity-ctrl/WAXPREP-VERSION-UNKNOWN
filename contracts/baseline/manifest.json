@@ -1,0 +1,17 @@
+{
+  "contracts": [
+    {
+      "file": "waxprep.error.detail@1.0.0.schema.json",
+      "id": "urn:waxprep:contract:waxprep.error.detail:1.0.0",
+      "name": "waxprep.error.detail",
+      "version": "1.0.0"
+    },
+    {
+      "file": "waxprep.operation.result@1.0.0.schema.json",
+      "id": "urn:waxprep:contract:waxprep.operation.result:1.0.0",
+      "name": "waxprep.operation.result",
+      "version": "1.0.0"
+    }
+  ],
+  "schema_dialect": "https://json-schema.org/draft/2020-12/schema"
+}

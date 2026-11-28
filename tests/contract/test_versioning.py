@@ -344,3 +344,99 @@ class TestCompareSchemas:
 
     def test_schemas_without_properties_or_required(self):
         assert compare_schemas({"type": "string"}, {"type": "string"}).changes == ()
+
+
+class TestComparatorHardening:
+    def test_pattern_and_format_changes_are_breaking(self):
+        assert [c.change for c in compare_schemas({"pattern": "a"}, {"pattern": "b"}).changes] == [
+            ChangeType.VALIDATION_RESTRICTED
+        ]
+        assert [c.change for c in compare_schemas({"format": "a"}, {"format": "b"}).changes] == [
+            ChangeType.VALIDATION_RESTRICTED
+        ]
+
+    @pytest.mark.parametrize(
+        "key",
+        ["default", "discriminator", "mapping", "deprecated", "readOnly", "writeOnly"],
+    )
+    def test_semantic_keyword_changes_are_breaking(self, key):
+        assert [c.change for c in compare_schemas({key: "a"}, {key: "b"}).changes] == [
+            ChangeType.SEMANTIC_CHANGE
+        ]
+
+    def test_properties_presence_change_is_unsupported(self):
+        assert [c.change for c in compare_schemas({}, {"properties": {}}).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+        assert [c.change for c in compare_schemas({"properties": {}}, {}).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+
+    def test_properties_shape_change_is_unsupported(self):
+        assert [
+            c.change for c in compare_schemas({"properties": []}, {"properties": []}).changes
+        ] == [ChangeType.UNSUPPORTED_CHANGE]
+
+    def test_items_presence_and_schema_changes(self):
+        assert [c.change for c in compare_schemas({}, {"items": {"type": "string"}}).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+        assert [c.change for c in compare_schemas({"items": {"type": "string"}}, {}).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+        changed = compare_schemas({"items": {"type": "string"}}, {"items": {"type": "integer"}})
+        assert [c.change for c in changed.changes] == [ChangeType.TYPE_CHANGE]
+
+    def test_tuple_item_schemas(self):
+        old = {"items": [{"type": "string"}, {"type": "integer"}]}
+        new = {"items": [{"type": "string"}, {"type": "integer"}]}
+        assert compare_schemas(old, new).changes == ()
+        shorter = {"items": [{"type": "string"}]}
+        assert [c.change for c in compare_schemas(old, shorter).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+        changed = {"items": [{"type": "string"}, {"type": "boolean"}]}
+        assert [c.change for c in compare_schemas(old, changed).changes] == [ChangeType.TYPE_CHANGE]
+
+    def test_unsupported_items_form(self):
+        assert [c.change for c in compare_schemas({"items": True}, {"items": False}).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+        assert compare_schemas({"items": True}, {"items": True}).changes == ()
+
+    def test_unique_items(self):
+        assert [
+            c.change for c in compare_schemas({"uniqueItems": False}, {"uniqueItems": True}).changes
+        ] == [ChangeType.VALIDATION_RESTRICTED]
+        assert [
+            c.change for c in compare_schemas({"uniqueItems": True}, {"uniqueItems": False}).changes
+        ] == [ChangeType.VALIDATION_RELAXED]
+        assert compare_schemas({"uniqueItems": True}, {"uniqueItems": True}).changes == ()
+
+    def test_union_keyword_change_is_unsupported(self):
+        old = {"oneOf": [{"type": "string"}]}
+        new = {"anyOf": [{"type": "string"}]}
+        assert [c.change for c in compare_schemas(old, new).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+
+    @pytest.mark.parametrize(
+        "key", ["if", "then", "else", "allOf", "not", "contains", "patternProperties"]
+    )
+    def test_unsupported_conditional_keywords_fail_safely(self, key):
+        assert [c.change for c in compare_schemas({key: {"a": 1}}, {key: {"a": 2}}).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+
+    def test_unrecognized_keyword_fails_safely(self):
+        assert [c.change for c in compare_schemas({"x-custom": 1}, {"x-custom": 2}).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+
+    def test_unresolved_ref_change_fails_safely(self):
+        assert [c.change for c in compare_schemas({"$ref": "#/a"}, {"$ref": "#/b"}).changes] == [
+            ChangeType.UNSUPPORTED_CHANGE
+        ]
+
+    def test_unsupported_change_policy(self):
+        assert classify_change(ChangeType.UNSUPPORTED_CHANGE) is Compatibility.BREAKING

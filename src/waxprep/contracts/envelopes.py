@@ -19,6 +19,7 @@ Field semantics are deliberately distinct:
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -26,13 +27,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from waxprep.contracts.models.base import ContractModel
+from waxprep.contracts.models.base import ContractModel, ContractRootModel, FrozenDict
 from waxprep.contracts.versioning import ContractVersion, InvalidContractVersionError
 
 _NAME_PATTERN = r"^[a-z][a-z0-9]*(\.[a-z0-9]+)+$"
 _PRODUCER_PATTERN = r"^[a-z][a-z0-9_.-]{0,63}$"
 _VERSION_PATTERN = r"^[0-9]+\.[0-9]+\.[0-9]+$"
 _METADATA_KEY = r"^x-[a-z0-9-]{1,32}$"
+_METADATA_KEY_PATTERN = re.compile(_METADATA_KEY)
 MAX_METADATA_ENTRIES = 16
 MAX_METADATA_VALUE = 256
 
@@ -47,7 +49,7 @@ class MessageKind(StrEnum):
     STREAM = "stream"
 
 
-class MessageEnvelope[PayloadT: BaseModel](ContractModel):
+class MessageEnvelope[PayloadT: ContractModel | ContractRootModel[Any]](ContractModel):
     """Versioned metadata surrounding one typed contract payload."""
 
     message_id: UUID
@@ -59,7 +61,7 @@ class MessageEnvelope[PayloadT: BaseModel](ContractModel):
     created_at: datetime
     producer: str = Field(pattern=_PRODUCER_PATTERN)
     payload: PayloadT
-    metadata: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, str] = Field(default_factory=FrozenDict)
 
     @field_validator("contract_version")
     @classmethod
@@ -83,11 +85,14 @@ class MessageEnvelope[PayloadT: BaseModel](ContractModel):
         if len(value) > MAX_METADATA_ENTRIES:
             raise ValueError("metadata has too many entries")
         for key, item in value.items():
-            if not key.startswith("x-") or len(key) > 34:
-                raise ValueError("metadata keys must be namespaced with 'x-'")
+            if _METADATA_KEY_PATTERN.fullmatch(key) is None:
+                raise ValueError(
+                    "metadata keys must match 'x-' followed by 1-32 lower-case "
+                    "letters, digits or hyphens"
+                )
             if len(item) > MAX_METADATA_VALUE:
                 raise ValueError("metadata value is too long")
-        return value
+        return FrozenDict(value)
 
 
 def envelope_schema(contract: type[BaseModel]) -> dict[str, Any]:

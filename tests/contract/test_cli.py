@@ -93,3 +93,48 @@ def test_module_entrypoint(monkeypatch, capsys):
         runpy.run_module("waxprep.contracts.cli", run_name="__main__")
     assert raised.value.code == 0
     assert "waxprep.operation.result@1.0.0" in capsys.readouterr().out
+
+
+class TestEnforceCommand:
+    def test_enforce_passes_against_committed_baseline(self, tmp_path: Path, capsys):
+        report = tmp_path / "compat.json"
+        assert (
+            main([
+                "enforce",
+                "--baseline",
+                str(Path("contracts/baseline")),
+                "--decisions",
+                str(Path("contracts/compatibility-decisions.toml")),
+                "--report",
+                str(report),
+            ])
+            == 0
+        )
+        assert "compatibility check passed" in capsys.readouterr().out
+        assert json.loads(report.read_text(encoding="utf-8"))["ok"] is True
+
+    def test_enforce_fails_when_published_schema_changed(self, tmp_path: Path, capsys):
+        import shutil
+
+        baseline = tmp_path / "baseline"
+        shutil.copytree(Path("contracts/baseline"), baseline)
+        schema = next(baseline.glob("waxprep.*.schema.json"))
+        payload = json.loads(schema.read_text(encoding="utf-8"))
+        payload["title"] = "tampered"
+        schema.write_text(json.dumps(payload), encoding="utf-8")
+
+        assert (
+            main([
+                "enforce",
+                "--baseline",
+                str(baseline),
+                "--decisions",
+                str(Path("contracts/compatibility-decisions.toml")),
+            ])
+            == 1
+        )
+        assert "Published version modified" in capsys.readouterr().out
+
+    def test_enforce_reports_missing_baseline(self, tmp_path: Path, capsys):
+        assert main(["enforce", "--baseline", str(tmp_path / "missing")]) == 2
+        assert "compatibility error" in capsys.readouterr().out

@@ -16,6 +16,7 @@
 | Architecture | import-linter + boundary tests | Contracts stay at the inner boundary |
 | Bypass | Semgrep + AST test | No validated-model construction bypass |
 | Drift | CI schema check | A model change cannot skip publication |
+| Compatibility enforcement | CI baseline check | A published version is not rewritten and breaking/conditional changes follow policy |
 
 ## 2. Required scenarios
 
@@ -31,6 +32,13 @@
 - Every implementation satisfies the same Protocol contract.
 - Version changes follow the compatibility policy.
 - Breaking changes are detected.
+- The discriminator `status` is required in every result variant and the schema
+  agrees with Pydantic.
+- Metadata keys match the full `x-[a-z0-9-]{1,32}` format.
+- Metadata and payload data cannot be mutated after construction.
+- A published version cannot be rewritten silently; conditional changes need a
+  recorded decision.
+- Unsupported comparator constructs fail safely.
 - Cancellation/timeout results are represented, not invented as strings.
 - Sensitive information is not exposed through errors.
 
@@ -58,6 +66,12 @@ strings, Unicode/control characters, oversized output and unbounded metadata.
   `model_copy(update=...)` or `strict=False` validation bypass in `src/`.
 - Semgrep rule `waxprep-contract-bypass-model-construction` enforces the same.
 - `tests/contract/test_schema_registry.py` verifies committed schemas are in sync.
+- `tests/contract/test_compatibility_enforcement.py` verifies baseline,
+  conditional decisions, same-version immutability, major-bump enforcement,
+  removal/regression handling and report output.
+- `tests/contract/test_versioning.py` covers comparator hardening for patterns,
+  formats, array items, unique items, conditional keywords, union-keyword swaps
+  and unresolved references.
 
 ## 6. Running
 
@@ -67,6 +81,9 @@ uv run pytest tests/contract -v -m contract
 
 # Schema drift (also part of make check)
 uv run python -m waxprep.contracts.cli check --schemas contracts/schemas
+uv run python -m waxprep.contracts.cli enforce \
+  --baseline contracts/baseline \
+  --decisions contracts/compatibility-decisions.toml
 
 # Full gate
 make check

@@ -1,0 +1,10 @@
+# Explicit compatibility decisions (Stage 17).
+#
+# Conditional changes and exceptions to published-version immutability must be
+# recorded here, keyed by contract name or "name@major.minor.patch". The value
+# is the reviewed reason. Empty by default.
+#
+# Example:
+# [decisions]
+# "waxprep.operation.result@1.1.0" = "Consumer tolerates the new deferred error field; reviewed 2026-11-28."
+[decisions]

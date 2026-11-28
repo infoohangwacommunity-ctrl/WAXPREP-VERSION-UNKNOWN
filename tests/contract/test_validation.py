@@ -10,6 +10,7 @@ from waxprep.contracts.models.result import (
     ErrorDetail,
     OperationFailure,
     OperationResult,
+    OperationStatus,
     OperationSuccess,
 )
 from waxprep.contracts.validation import (
@@ -110,7 +111,7 @@ class TestValidateContract:
 
 class TestDumpContract:
     def test_dump_is_deterministic(self):
-        value = OperationSuccess(detail="ok")
+        value = OperationSuccess(status=OperationStatus.SUCCESS, detail="ok")
         first = dump_contract(OperationSuccess, value)
         second = dump_contract(OperationSuccess, value)
         assert first == second
@@ -119,11 +120,12 @@ class TestDumpContract:
     def test_dump_roundtrips_through_validation(self):
         value = OperationResult(
             OperationFailure(
+                status=OperationStatus.FAILED,
                 error=ErrorDetail(
                     code="WAX-1005",
                     category=ErrorCategory.NOT_FOUND,
                     retryable=False,
-                )
+                ),
             )
         )
         text = dump_contract(OperationResult, value)
@@ -133,7 +135,11 @@ class TestDumpContract:
     def test_dump_enforces_size_limit(self):
         limits = ValidationLimits(max_payload_bytes=10)
         with pytest.raises(ContractSerializationError, match="size limit"):
-            dump_contract(OperationSuccess, OperationSuccess(detail="x" * 100), limits=limits)
+            dump_contract(
+                OperationSuccess,
+                OperationSuccess(status=OperationStatus.SUCCESS, detail="x" * 100),
+                limits=limits,
+            )
 
     def test_dump_rejects_non_finite_values(self):
         class FloatModel(BaseModel):
@@ -152,5 +158,5 @@ class TestDumpContract:
 
     def test_pydantic_validation_error_is_wrapped(self):
         with pytest.raises(ValidationError) as raised:
-            OperationSuccess(detail=1)  # type: ignore[arg-type]
+            OperationSuccess(status=OperationStatus.SUCCESS, detail=1)  # type: ignore[arg-type]
         assert raised.value.error_count() == 1

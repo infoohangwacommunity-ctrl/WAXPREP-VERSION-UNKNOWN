@@ -58,9 +58,16 @@ These are one package, not six subsystems.
 `ContractModel` is:
 
 - **strict** — `"1"` is not accepted as `1` in Python construction;
-- **frozen** — a received request cannot be mutated;
+- **frozen** — field assignment is rejected;
 - **extra=forbid** — unknown structural fields are rejected;
-- **finite-only** — NaN/Infinity are rejected.
+- **finite-only** — NaN/Infinity are rejected;
+- **deeply immutable** — lists, dicts, sets and arbitrary Pydantic models are
+  rejected in fields; collections must be tuples/frozensets or nested frozen
+  contracts.
+
+`RootModel` unions use `ContractRootModel`, which carries the same frozen and
+strict configuration. The envelope only accepts a `ContractModel` or
+`ContractRootModel` payload; an arbitrary `BaseModel` cannot bypass the policy.
 
 Forward-compatible extensions are introduced as a new contract revision with an
 explicit field. There is no global `extra="ignore"`.
@@ -70,8 +77,9 @@ Existing concrete contracts:
 - `ErrorDetail` — `code` (`WAX-####`), bounded `category`, `retryable`; no
   exception message or input.
 - `OperationResult` — discriminated union: `success`, `failed`, `rejected`,
-  `deferred`. The discriminator is `status`; consumers cannot guess a variant
-  from whichever fields happen to exist.
+  `deferred`. The discriminator is `status`; it is **required** in every variant,
+  so the generated JSON Schema and Pydantic runtime validation agree. Consumers
+  cannot guess a variant from whichever fields happen to exist.
 
 ### Answer to the unknown-field decision
 
@@ -104,7 +112,7 @@ local function call.
 | `created_at` | UTC, timezone-aware |
 | `producer` | bounded originating component identity |
 | `payload` | typed contract DTO |
-| `metadata` | `x-` namespaced, bounded string map |
+| `metadata` | `x-` namespaced (regex-enforced), bounded, immutable `FrozenDict` |
 
 HTTP request IDs remain a transport concern and are not substituted for
 `message_id`, `correlation_id` or `causation_id`.
@@ -130,7 +138,7 @@ is a request for something to happen; an event states that something happened.
 - sanitized errors (location + type only; no input values).
 
 `dump_contract` serializes through Pydantic, uses deterministic sorted JSON,
-rejects non-finite values, and re-checks the size limit.
+rejects non-finite values and lone surrogates, and re-checks the size limit.
 
 `ValidationLimits` centralizes the bounds. These controls apply even to data from
 another internal component: components can contain bugs.
@@ -158,16 +166,33 @@ stable `$id` per identity. Committed schemas live in `contracts/schemas/`:
 - each contract has one `name@version.schema.json`;
 - a version bump adds a new file; old schema files are not overwritten.
 
-CI runs `python -m waxprep.contracts.cli check --schemas contracts/schemas`.
-Model changes without regenerated schemas fail the gate. `generate` rewrites the
-current files; review the diff before committing.
+CI runs two independent checks:
+
+- `check --schemas contracts/schemas` — committed schemas match the models;
+- `enforce --baseline contracts/baseline` — the proposed contract is compatible
+  with the previously published baseline.
+
+`contracts/baseline/` is the last accepted published set. A same-version schema
+change is forbidden (published versions are immutable) unless an explicit
+decision is recorded. A new version is classified against the baseline:
+breaking changes require a major increment; conditional changes require an
+explicit entry in `contracts/compatibility-decisions.toml`. The CLI writes
+machine-readable evidence, which CI uploads with the job evidence.
+
+`generate` rewrites the current schema files; review the diff before committing.
+Historical schema files are never overwritten.
 
 ## 10. Compatibility and versioning
 
 See `CONTRACT_EVOLUTION.md`. Structural changes are classified by
-`compare_schemas`; semantic meaning changes are never auto-classified as safe and
-must be treated as major. A change being accepted by Python is not evidence of
-compatibility.
+`compare_schemas`. The comparator fails safely: unknown/unexamined keywords,
+changed `pattern`/`format`, array item schemas, `uniqueItems`, union keyword
+changes (`oneOf` ↔ `anyOf`), conditional schemas and unresolved references are
+reported as breaking/unsupported rather than silently accepted. Semantic meaning
+changes are never auto-classified as safe and require a major version.
+
+Compatibility is enforced in CI, not only by the manual CLI. A change being
+accepted by Python is not evidence of compatibility.
 
 ## 11. Adding a real contract
 

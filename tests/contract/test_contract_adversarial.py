@@ -7,7 +7,7 @@ from pydantic import BaseModel, ValidationError
 
 from waxprep.contracts.envelopes import MessageEnvelope
 from waxprep.contracts.errors import ContractSerializationError, ContractValidationError
-from waxprep.contracts.models.result import OperationSuccess
+from waxprep.contracts.models.result import OperationStatus, OperationSuccess
 from waxprep.contracts.validation import (
     ValidationLimits,
     dump_contract,
@@ -63,18 +63,18 @@ class TestAdversarialInputs:
         assert "admin" not in rendered
 
     def test_unicode_text_is_preserved(self):
-        result = validate_contract(OperationSuccess, '{"detail":"héllo 世界"}')
+        result = validate_contract(OperationSuccess, '{"status":"success","detail":"héllo 世界"}')
         assert result.detail == "héllo 世界"
 
     def test_control_characters_in_text_are_preserved(self):
-        result = validate_contract(OperationSuccess, '{"detail":"line\\nnext"}')
+        result = validate_contract(OperationSuccess, '{"status":"success","detail":"line\\nnext"}')
         assert result.detail == "line\nnext"
 
     def test_oversized_output_is_rejected(self):
         with pytest.raises(ContractSerializationError, match="size limit"):
             dump_contract(
                 OperationSuccess,
-                OperationSuccess(detail="é" * 200),
+                OperationSuccess(status=OperationStatus.SUCCESS, detail="é" * 200),
                 limits=ValidationLimits(max_payload_bytes=50),
             )
 
@@ -100,6 +100,6 @@ class TestAdversarialInputs:
                 correlation_id=uuid4(),
                 created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
                 producer="waxprep.test",
-                payload=OperationResult(OperationSuccess()),
+                payload=OperationResult(OperationSuccess(status=OperationStatus.SUCCESS)),
                 metadata={f"x-{index}": "v" for index in range(17)},
             )

@@ -91,6 +91,8 @@ ignore_names = [
     "MessageHandler",
     "ContextProvider",
     "event",
+    "default",
+    "other",
 ]
 ignore_decorators = []
 

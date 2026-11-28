@@ -15,7 +15,7 @@ from waxprep.contracts.envelopes import (
     MessageKind,
     envelope_schema,
 )
-from waxprep.contracts.models.result import OperationResult, OperationSuccess
+from waxprep.contracts.models.result import OperationResult, OperationStatus, OperationSuccess
 
 pytestmark = pytest.mark.contract
 
@@ -31,7 +31,7 @@ def make_envelope(**overrides):
         "correlation_id": uuid4(),
         "created_at": datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
         "producer": "waxprep.contract-test",
-        "payload": OperationResult(OperationSuccess(detail="ok")),
+        "payload": OperationResult(OperationSuccess(status=OperationStatus.SUCCESS, detail="ok")),
     }
     values.update(overrides)
     return Envelope(**values)
@@ -83,11 +83,11 @@ class TestMessageEnvelope:
             make_envelope(message_kind="telepathy")
 
     def test_metadata_requires_namespaced_keys(self):
-        with pytest.raises(ValidationError, match="namespaced"):
+        with pytest.raises(ValidationError, match="metadata keys must match"):
             make_envelope(metadata={"trace": "abc"})
 
     def test_metadata_key_is_bounded(self):
-        with pytest.raises(ValidationError, match="namespaced"):
+        with pytest.raises(ValidationError, match="metadata keys must match"):
             make_envelope(metadata={"x-" + "a" * 40: "v"})
 
     def test_metadata_value_is_bounded(self):
@@ -122,3 +122,121 @@ class TestEnvelopeSchema:
         schema = envelope_schema(OperationResult)
         assert "OperationResult" in schema["$defs"]
         assert "OperationSuccess" in str(schema["$defs"])
+
+
+class TestMetadataKeyFormat:
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "x-UPPER",
+            "x-space key",
+            "x- invalid",
+            "x-",
+            "x-bad!",
+            "x-under_score",
+            "x-ünicode",
+            "X-lower",
+        ],
+    )
+    def test_invalid_metadata_keys_are_rejected(self, key):
+        with pytest.raises(ValidationError, match="metadata keys must match"):
+            make_envelope(metadata={key: "value"})
+
+    @pytest.mark.parametrize("key", ["x-a", "x-0", "x-trace-id", "x-" + "a" * 32])
+    def test_valid_metadata_keys_are_accepted(self, key):
+        assert make_envelope(metadata={key: "value"}).metadata[key] == "value"
+
+
+class TestDeepImmutability:
+    def test_metadata_cannot_be_mutated(self):
+        metadata = make_envelope(metadata={"x-trace": "abc"}).metadata
+        with pytest.raises(TypeError):
+            metadata["x-new"] = "value"  # type: ignore[index]
+        with pytest.raises(TypeError):
+            del metadata["x-trace"]
+        with pytest.raises(TypeError):
+            metadata.clear()
+        with pytest.raises(TypeError):
+            metadata.pop("x-trace")
+        with pytest.raises(TypeError):
+            metadata.popitem()
+        with pytest.raises(TypeError):
+            metadata.setdefault("x-new", "value")
+        with pytest.raises(TypeError):
+            metadata.update({"x-new": "value"})
+        with pytest.raises(TypeError):
+            metadata |= {"x-new": "value"}
+
+    def test_metadata_survives_deep_copy(self):
+        envelope = make_envelope(metadata={"x-trace": "abc"})
+        copied = envelope.model_copy(deep=True)
+        assert copied.metadata == {"x-trace": "abc"}
+        assert isinstance(copied.metadata, dict)
+        with pytest.raises(TypeError):
+            copied.metadata["x-new"] = "value"
+
+    def test_frozen_dict_copy_is_immutable(self):
+        import copy
+
+        frozen = make_envelope(metadata={"x-trace": "abc"}).metadata
+        assert copy.copy(frozen) is frozen
+        assert copy.deepcopy(frozen) is frozen
+
+    def test_arbitrary_pydantic_payload_is_rejected_by_the_envelope(self):
+        from pydantic import BaseModel
+
+        class PlainModel(BaseModel):
+            value: str
+
+        with pytest.raises(ValidationError, match="must be immutable"):
+            MessageEnvelope[PlainModel](
+                message_id=uuid4(),
+                message_kind=MessageKind.RESPONSE,
+                message_type="waxprep.operation.result",
+                contract_version="1.0.0",
+                correlation_id=uuid4(),
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                producer="waxprep.test",
+                payload=PlainModel(value="x"),
+            )
+
+    def test_contract_model_rejects_mutable_fields(self):
+        from waxprep.contracts.models.base import ContractModel
+
+        class MutableContract(ContractModel):
+            values: list[str]
+
+        with pytest.raises(ValidationError, match="must be immutable"):
+            MutableContract(values=["a"])
+
+    def test_contract_model_rejects_arbitrary_nested_models(self):
+        from pydantic import BaseModel
+
+        from waxprep.contracts.models.base import ContractModel
+
+        class PlainModel(BaseModel):
+            value: str
+
+        class NestedContract(ContractModel):
+            nested: PlainModel
+
+        with pytest.raises(ValidationError, match="must be immutable"):
+            NestedContract(nested=PlainModel(value="x"))
+
+    def test_contract_model_accepts_immutable_nested_data(self):
+        from waxprep.contracts.models.base import ContractModel
+
+        class Nested(ContractModel):
+            name: str
+
+        class Parent(ContractModel):
+            items: tuple[Nested, ...]
+            tags: frozenset[str]
+            mapping: dict[str, str]
+
+        with pytest.raises(ValidationError, match="must be immutable"):
+            Parent(
+                items=(Nested(name="a"),),
+                tags=frozenset({"x"}),
+                mapping={"x": "y"},
+            )

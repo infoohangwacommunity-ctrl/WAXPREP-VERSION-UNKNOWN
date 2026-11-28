@@ -522,15 +522,18 @@ Before pushing:
   universal component interface.
 - Envelopes are for durable/asynchronous/cross-process messages, not every local
   call. Message, correlation and causation IDs are distinct from HTTP request IDs.
-- Contract DTOs reject unknown fields; envelope metadata is the only namespaced,
-  bounded extension point.
+- Contract DTOs reject unknown fields and mutable fields; envelope metadata is
+  the only namespaced, bounded, immutable extension point.
+- Discriminators are required, not defaulted, so generated schemas and runtime
+  validation agree.
 - Validate untrusted bytes with `validate_contract` (size, JSON-only, depth,
   duplicate keys, finite numbers, safe errors). Never deserialize arbitrary
   Python objects.
 - Contract failures use the Stage 15 taxonomy; external malformed data is not
   automatically a programming defect.
-- A contract change requires a compatibility decision: regenerate schemas,
-  review the diff, and run `contracts.cli compat` against the previous version.
+- A contract change requires a compatibility decision: regenerate schemas and
+  pass the CI baseline enforcement. Breaking changes need a major increment;
+  conditional changes need a decision entry; published versions are immutable.
 - Never hand-edit `contracts/schemas/`; never overwrite a historical schema file.
 - No transport/framework (Kafka, RabbitMQ, Redis, MCP, Protobuf, CloudEvents
   runtime) unless a real distribution requirement justifies it.

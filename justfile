@@ -29,6 +29,7 @@ import-linter:
 # Verify published contract schemas (Stage 17)
 contracts:
 	uv run python -m waxprep.contracts.cli check --schemas contracts/schemas
+	uv run python -m waxprep.contracts.cli enforce --baseline contracts/baseline --decisions contracts/compatibility-decisions.toml --report artifacts/contract-compatibility.json
 
 # Run semgrep security scan
 semgrep:

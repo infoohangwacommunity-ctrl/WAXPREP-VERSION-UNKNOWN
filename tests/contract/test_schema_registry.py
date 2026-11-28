@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from waxprep.contracts.errors import ContractViolationError
-from waxprep.contracts.models.result import ErrorDetail, OperationResult, OperationSuccess
+from waxprep.contracts.models.result import (
+    ErrorDetail,
+    OperationResult,
+    OperationStatus,
+    OperationSuccess,
+)
 from waxprep.contracts.schema import (
     MANIFEST_FILENAME,
     SCHEMA_DIALECT,
@@ -134,6 +139,29 @@ class TestLoadSchema:
             load_schema(tmp_path / "missing.json")
 
 
+class TestDiscriminatorSchema:
+    def test_every_variant_requires_status(self):
+        schema = build_default_registry().schema_for("waxprep.operation.result")
+        expected = {
+            "OperationSuccess": "success",
+            "OperationFailure": "failed",
+            "OperationRejected": "rejected",
+            "OperationDeferred": "deferred",
+        }
+        for variant, discriminator in expected.items():
+            definition = schema["$defs"][variant]
+            assert "status" in definition["required"]
+            assert definition["properties"]["status"]["const"] == discriminator
+
+    def test_pydantic_agrees_with_the_required_discriminator(self):
+        from pydantic import ValidationError
+
+        from waxprep.contracts.models.result import OperationResult
+
+        with pytest.raises(ValidationError):
+            OperationResult.model_validate({"detail": "missing status"})
+
+
 class TestDefaultRegistry:
     def test_foundational_contracts(self):
         identities = {item.name: item.version for item in build_default_registry().identities()}
@@ -150,4 +178,4 @@ class TestDefaultRegistry:
     def test_dump_is_stable(self):
         registry = build_default_registry()
         assert registry.documents() == registry.documents()
-        assert OperationSuccess(detail="ok").detail == "ok"
+        assert OperationSuccess(status=OperationStatus.SUCCESS, detail="ok").detail == "ok"

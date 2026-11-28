@@ -219,9 +219,12 @@ When changing secrets, logging, telemetry or error handling (Stages 12–15):
 - [ ] No arbitrary dict is passed across a defined contract boundary
 - [ ] Existing core/registry protocols were not duplicated
 - [ ] Envelope used only where identity/version/correlation are needed
+- [ ] Envelope metadata uses the full `x-[a-z0-9-]{1,32}` key format
+- [ ] Contract models reject mutable fields; metadata/payload cannot be mutated after construction
+- [ ] Every OperationResult variant requires its `status` discriminator
 - [ ] Untrusted payloads use bounded `validate_contract` and safe error details
 - [ ] Contract failures map to Stage 15 codes/categories
-- [ ] Schemas regenerated and compatibility classified; historical schemas preserved
+- [ ] Schemas regenerated; baseline compatibility enforced; decisions recorded; historical schemas preserved
 - [ ] Contract tests include invalid, adversarial, property and serialization cases
 - [ ] No transport or external protocol dependency added without justification
 

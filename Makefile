@@ -25,8 +25,9 @@ type: ## Run mypy strict type checker
 import-linter: ## Run import-linter architecture contracts
 	uv run import-linter lint
 
-contracts: ## Verify published JSON Schemas match the models (Stage 17)
+contracts: ## Verify schemas and compatibility (Stage 17)
 	uv run python -m waxprep.contracts.cli check --schemas contracts/schemas
+	uv run python -m waxprep.contracts.cli enforce --baseline contracts/baseline --decisions contracts/compatibility-decisions.toml --report artifacts/contract-compatibility.json
 
 semgrep: ## Run semgrep security scan
 	uv run semgrep --config .semgrep --error --exclude src/waxprep/detector src/

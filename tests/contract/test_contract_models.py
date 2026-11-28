@@ -37,13 +37,13 @@ def not_found_detail() -> ErrorDetail:
 
 class TestContractModelPolicy:
     def test_model_is_frozen(self):
-        result = OperationSuccess(detail="ok")
+        result = OperationSuccess(status=OperationStatus.SUCCESS, detail="ok")
         with pytest.raises(ValidationError):
             result.detail = "changed"  # type: ignore[misc]
 
     def test_extra_fields_are_forbidden(self):
         with pytest.raises(ValidationError):
-            OperationSuccess(detail="ok", injected="value")  # type: ignore[call-arg]
+            OperationSuccess(status=OperationStatus.SUCCESS, detail="ok", injected="value")  # type: ignore[call-arg]
 
     def test_strict_mode_rejects_implicit_string_to_number(self):
         class NumberContract(ContractModel):
@@ -54,12 +54,12 @@ class TestContractModelPolicy:
 
     def test_infinity_is_rejected(self):
         with pytest.raises(ValidationError):
-            OperationDeferred(retry_after_seconds=float("inf"))
+            OperationDeferred(status=OperationStatus.DEFERRED, retry_after_seconds=float("inf"))
 
 
 class TestOperationResult:
     def test_success_variant(self):
-        result = OperationResult(OperationSuccess(detail="done"))
+        result = OperationResult(OperationSuccess(status=OperationStatus.SUCCESS, detail="done"))
         assert result.status is OperationStatus.SUCCESS
         assert result.successful is True
         assert result.error is None
@@ -68,9 +68,9 @@ class TestOperationResult:
     @pytest.mark.parametrize(
         "variant",
         [
-            OperationFailure(error=not_found_detail()),
-            OperationRejected(error=not_found_detail()),
-            OperationDeferred(retry_after_seconds=1.5),
+            OperationFailure(status=OperationStatus.FAILED, error=not_found_detail()),
+            OperationRejected(status=OperationStatus.REJECTED, error=not_found_detail()),
+            OperationDeferred(status=OperationStatus.DEFERRED, retry_after_seconds=1.5),
         ],
     )
     def test_non_success_variants(self, variant):
@@ -81,8 +81,40 @@ class TestOperationResult:
             result.require_success()
 
     def test_deferred_error_is_optional(self):
-        result = OperationResult(OperationDeferred(retry_after_seconds=5, error=not_found_detail()))
+        result = OperationResult(
+            OperationDeferred(
+                status=OperationStatus.DEFERRED, retry_after_seconds=5, error=not_found_detail()
+            )
+        )
         assert result.error == not_found_detail()
+
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            OperationSuccess,
+            OperationFailure,
+            OperationRejected,
+            OperationDeferred,
+        ],
+    )
+    def test_status_discriminator_is_required(self, factory):
+        with pytest.raises(ValidationError, match="status"):
+            factory()  # type: ignore[call-arg]
+
+    def test_missing_status_is_rejected_from_json(self):
+        with pytest.raises(ValidationError):
+            OperationResult.model_validate({"detail": "ok"})
+        with pytest.raises(ValidationError):
+            OperationResult.model_validate({})
+
+    def test_invalid_status_is_rejected(self):
+        with pytest.raises(ValidationError):
+            OperationResult.model_validate({"status": "teleported"})
+
+    def test_root_model_is_frozen(self):
+        result = OperationResult(OperationSuccess(status=OperationStatus.SUCCESS))
+        with pytest.raises(ValidationError):
+            result.root = OperationSuccess(status=OperationStatus.SUCCESS)  # type: ignore[misc]
 
     def test_unknown_discriminator_is_rejected(self):
         with pytest.raises(ValidationError):
@@ -94,13 +126,13 @@ class TestOperationResult:
 
     def test_deferred_bounds(self):
         with pytest.raises(ValidationError):
-            OperationDeferred(retry_after_seconds=-1)
+            OperationDeferred(status=OperationStatus.DEFERRED, retry_after_seconds=-1)
         with pytest.raises(ValidationError):
-            OperationDeferred(retry_after_seconds=86401)
+            OperationDeferred(status=OperationStatus.DEFERRED, retry_after_seconds=86401)
 
     def test_success_detail_is_bounded(self):
         with pytest.raises(ValidationError):
-            OperationSuccess(detail="x" * 513)
+            OperationSuccess(status=OperationStatus.SUCCESS, detail="x" * 513)
 
 
 class TestErrorDetail:

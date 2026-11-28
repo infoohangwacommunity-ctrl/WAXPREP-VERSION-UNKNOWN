@@ -1,0 +1,176 @@
+{
+  "$defs": {
+    "ErrorCategory": {
+      "description": "Bounded failure categories. Safe for metric labels and log fields.",
+      "enum": [
+        "validation",
+        "configuration",
+        "authentication",
+        "authorization",
+        "not_found",
+        "conflict",
+        "dependency_unavailable",
+        "dependency_timeout",
+        "rate_limited",
+        "provider_rejected",
+        "internal_invariant",
+        "programming_defect",
+        "cancellation",
+        "unknown"
+      ],
+      "title": "ErrorCategory",
+      "type": "string"
+    },
+    "ErrorDetail": {
+      "additionalProperties": false,
+      "description": "Safe, bounded failure identity shared across components.",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/ErrorCategory"
+        },
+        "code": {
+          "pattern": "^WAX-[0-9]{4}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "category",
+        "retryable"
+      ],
+      "title": "ErrorDetail",
+      "type": "object"
+    },
+    "OperationDeferred": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "retry_after_seconds": {
+          "maximum": 86400,
+          "minimum": 0,
+          "title": "Retry After Seconds",
+          "type": "number"
+        },
+        "status": {
+          "const": "deferred",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "retry_after_seconds"
+      ],
+      "title": "OperationDeferred",
+      "type": "object"
+    },
+    "OperationFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/ErrorDetail"
+        },
+        "status": {
+          "const": "failed",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "error"
+      ],
+      "title": "OperationFailure",
+      "type": "object"
+    },
+    "OperationRejected": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/ErrorDetail"
+        },
+        "status": {
+          "const": "rejected",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "error"
+      ],
+      "title": "OperationRejected",
+      "type": "object"
+    },
+    "OperationSuccess": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "status": {
+          "const": "success",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "OperationSuccess",
+      "type": "object"
+    }
+  },
+  "$id": "urn:waxprep:contract:waxprep.operation.result:1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Root wrapper for the discriminated operation-result union.",
+  "discriminator": {
+    "mapping": {
+      "deferred": "#/$defs/OperationDeferred",
+      "failed": "#/$defs/OperationFailure",
+      "rejected": "#/$defs/OperationRejected",
+      "success": "#/$defs/OperationSuccess"
+    },
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/OperationSuccess"
+    },
+    {
+      "$ref": "#/$defs/OperationFailure"
+    },
+    {
+      "$ref": "#/$defs/OperationRejected"
+    },
+    {
+      "$ref": "#/$defs/OperationDeferred"
+    }
+  ],
+  "title": "OperationResult"
+}

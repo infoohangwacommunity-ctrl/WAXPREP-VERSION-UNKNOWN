@@ -15,19 +15,19 @@ from waxprep.contracts.interfaces import (
     RequestHandler,
     StreamingHandler,
 )
-from waxprep.contracts.models.result import OperationResult, OperationSuccess
+from waxprep.contracts.models.result import OperationResult, OperationStatus, OperationSuccess
 
 pytestmark = pytest.mark.contract
 
 
 class SuccessHandler:
     async def handle(self, request: OperationSuccess) -> OperationSuccess:  # noqa: ARG002
-        return OperationSuccess(detail="handled")
+        return OperationSuccess(status=OperationStatus.SUCCESS, detail="handled")
 
 
 class SuccessCommand:
     async def execute(self, command: OperationSuccess) -> OperationSuccess:  # noqa: ARG002
-        return OperationSuccess(detail="executed")
+        return OperationSuccess(status=OperationStatus.SUCCESS, detail="executed")
 
 
 class SuccessPublisher:
@@ -41,7 +41,7 @@ class SuccessPublisher:
 class ChunkStream:
     async def stream(self, request: OperationSuccess) -> AsyncIterator[OperationSuccess]:  # noqa: ARG002
         for index in range(2):
-            yield OperationSuccess(detail=str(index))
+            yield OperationSuccess(status=OperationStatus.SUCCESS, detail=str(index))
 
 
 class MissingEverything:
@@ -57,7 +57,7 @@ def envelope() -> MessageEnvelope[OperationResult]:
         correlation_id=uuid4(),
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         producer="waxprep.test",
-        payload=OperationResult(OperationSuccess(detail="event")),
+        payload=OperationResult(OperationSuccess(status=OperationStatus.SUCCESS, detail="event")),
     )
 
 
@@ -66,12 +66,16 @@ class TestProtocolCompliance:
     async def test_request_handler(self):
         handler = SuccessHandler()
         assert isinstance(handler, RequestHandler)
-        assert (await handler.handle(OperationSuccess())).detail == "handled"
+        assert (
+            await handler.handle(OperationSuccess(status=OperationStatus.SUCCESS))
+        ).detail == "handled"
 
     async def test_command_handler(self):
         handler = SuccessCommand()
         assert isinstance(handler, CommandHandler)
-        assert (await handler.execute(OperationSuccess())).detail == "executed"
+        assert (
+            await handler.execute(OperationSuccess(status=OperationStatus.SUCCESS))
+        ).detail == "executed"
 
     async def test_event_publisher(self):
         publisher = SuccessPublisher()
@@ -83,7 +87,10 @@ class TestProtocolCompliance:
     async def test_streaming_handler(self):
         handler = ChunkStream()
         assert isinstance(handler, StreamingHandler)
-        chunks = [chunk async for chunk in handler.stream(OperationSuccess())]
+        chunks = [
+            chunk
+            async for chunk in handler.stream(OperationSuccess(status=OperationStatus.SUCCESS))
+        ]
         assert [chunk.detail for chunk in chunks] == ["0", "1"]
 
     async def test_missing_methods_are_not_compliant(self):

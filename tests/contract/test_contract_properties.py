@@ -53,14 +53,20 @@ def detail() -> ErrorDetail:
 def test_operation_result_json_roundtrip(status, detail_text, retry_after):
     match status:
         case OperationStatus.SUCCESS:
-            value = OperationResult(OperationSuccess(detail=detail_text))
+            value = OperationResult(
+                OperationSuccess(status=OperationStatus.SUCCESS, detail=detail_text)
+            )
         case OperationStatus.FAILED:
-            value = OperationResult(OperationFailure(error=detail()))
+            value = OperationResult(OperationFailure(status=OperationStatus.FAILED, error=detail()))
         case OperationStatus.REJECTED:
-            value = OperationResult(OperationRejected(error=detail()))
+            value = OperationResult(
+                OperationRejected(status=OperationStatus.REJECTED, error=detail())
+            )
         case OperationStatus.DEFERRED:
             value = OperationResult(
-                OperationDeferred(retry_after_seconds=retry_after, error=detail())
+                OperationDeferred(
+                    status=OperationStatus.DEFERRED, retry_after_seconds=retry_after, error=detail()
+                )
             )
 
     text = dump_contract(OperationResult, value)
@@ -87,7 +93,7 @@ def test_envelope_json_roundtrip(version, producer):
         correlation_id=uuid4(),
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         producer=producer,
-        payload=OperationResult(OperationSuccess(detail="ok")),
+        payload=OperationResult(OperationSuccess(status=OperationStatus.SUCCESS, detail="ok")),
     )
     restored = validate_contract(
         MessageEnvelope[OperationResult], dump_contract(MessageEnvelope[OperationResult], envelope)
@@ -119,5 +125,5 @@ def test_unknown_fields_are_always_rejected(extra):
 def test_arbitrary_text_is_preserved_not_crashed(text):
     import json
 
-    result = validate_contract(OperationSuccess, json.dumps({"detail": text}))
+    result = validate_contract(OperationSuccess, json.dumps({"status": "success", "detail": text}))
     assert result.detail == text

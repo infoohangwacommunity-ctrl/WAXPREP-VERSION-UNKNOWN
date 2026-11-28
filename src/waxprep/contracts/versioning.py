@@ -108,6 +108,7 @@ class ChangeType(StrEnum):
     ADDITIONAL_PROPERTIES_RESTRICTED = "additional_properties_restricted"
     VARIANT_ADDED = "variant_added"
     VARIANT_REMOVED = "variant_removed"
+    UNSUPPORTED_CHANGE = "unsupported_change"
     SEMANTIC_CHANGE = "semantic_change"
     SERIALIZATION_CHANGE = "serialization_change"
 
@@ -143,6 +144,7 @@ _POLICY: dict[ChangeType, Compatibility] = {
     ChangeType.ADDITIONAL_PROPERTIES_RESTRICTED: Compatibility.BREAKING,
     ChangeType.VARIANT_ADDED: Compatibility.CONDITIONAL,
     ChangeType.VARIANT_REMOVED: Compatibility.BREAKING,
+    ChangeType.UNSUPPORTED_CHANGE: Compatibility.BREAKING,
     ChangeType.SEMANTIC_CHANGE: Compatibility.BREAKING,
     ChangeType.SERIALIZATION_CHANGE: Compatibility.BREAKING,
 }
@@ -234,6 +236,11 @@ def _compare_node(
         changes.append(SchemaChange(path, ChangeType.TYPE_CHANGE, "type changed"))
         return changes
 
+    changes.extend(_compare_unsupported(old, new, path))
+    changes.extend(_compare_pattern_and_format(old, new, path))
+    changes.extend(_compare_semantics(old, new, path))
+    changes.extend(_compare_items(old, new, path, old_root, new_root, seen))
+    changes.extend(_compare_unique_items(old, new, path))
     changes.extend(_compare_enum(old, new, path))
     changes.extend(_compare_properties(old, new, path, old_root, new_root, seen))
     changes.extend(_compare_required(old, new, path))
@@ -241,6 +248,203 @@ def _compare_node(
     changes.extend(_compare_additional_properties(old, new, path))
     changes.extend(_compare_bounds(old, new, path))
     return changes
+
+
+_IGNORED_KEYS = frozenset({"$defs", "$schema", "$id", "title", "description", "examples"})
+_BOUND_KEYS = frozenset({
+    "minLength",
+    "maxLength",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "minItems",
+    "maxItems",
+    "minProperties",
+    "maxProperties",
+})
+_HANDLED_KEYS = (
+    frozenset({
+        "$ref",
+        "type",
+        "properties",
+        "required",
+        "additionalProperties",
+        "enum",
+        "const",
+        "oneOf",
+        "anyOf",
+        "pattern",
+        "format",
+        "items",
+        "uniqueItems",
+        "default",
+        "discriminator",
+        "mapping",
+        "deprecated",
+        "readOnly",
+        "writeOnly",
+    })
+    | _BOUND_KEYS
+)
+_UNSUPPORTED_IF_PRESENT = (
+    "allOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "contains",
+    "prefixItems",
+    "dependentSchemas",
+    "dependentRequired",
+    "propertyNames",
+    "patternProperties",
+    "unevaluatedProperties",
+    "contentEncoding",
+    "contentMediaType",
+    "minContains",
+    "maxContains",
+)
+_UNSUPPORTED_KEYS = frozenset(_UNSUPPORTED_IF_PRESENT)
+
+
+def _compare_unsupported(old: dict[str, Any], new: dict[str, Any], path: str) -> list[SchemaChange]:
+    changes: list[SchemaChange] = []
+    old_ref = old.get("$ref")
+    new_ref = new.get("$ref")
+    if old_ref != new_ref:
+        changes.append(
+            SchemaChange(path, ChangeType.UNSUPPORTED_CHANGE, "unresolved reference changed")
+        )
+    for key in _UNSUPPORTED_IF_PRESENT:
+        if old.get(key) != new.get(key):
+            changes.append(
+                SchemaChange(
+                    f"{path}.{key}",
+                    ChangeType.UNSUPPORTED_CHANGE,
+                    f"unsupported schema keyword changed: {key}",
+                )
+            )
+    for key in set(old) | set(new):
+        if key in _IGNORED_KEYS or key in _HANDLED_KEYS or key in _UNSUPPORTED_KEYS:
+            continue
+        if old.get(key) != new.get(key):
+            changes.append(
+                SchemaChange(
+                    f"{path}.{key}",
+                    ChangeType.UNSUPPORTED_CHANGE,
+                    f"unrecognized schema keyword changed: {key}",
+                )
+            )
+    return changes
+
+
+def _compare_pattern_and_format(
+    old: dict[str, Any], new: dict[str, Any], path: str
+) -> list[SchemaChange]:
+    changes: list[SchemaChange] = []
+    for key in ("pattern", "format"):
+        if old.get(key) != new.get(key):
+            changes.append(
+                SchemaChange(
+                    f"{path}.{key}",
+                    ChangeType.VALIDATION_RESTRICTED,
+                    f"{key} changed",
+                )
+            )
+    return changes
+
+
+def _compare_semantics(old: dict[str, Any], new: dict[str, Any], path: str) -> list[SchemaChange]:
+    changes: list[SchemaChange] = []
+    for key in ("default", "discriminator", "mapping", "deprecated", "readOnly", "writeOnly"):
+        if old.get(key) != new.get(key):
+            changes.append(
+                SchemaChange(
+                    f"{path}.{key}",
+                    ChangeType.SEMANTIC_CHANGE,
+                    f"{key} changed",
+                )
+            )
+    return changes
+
+
+def _compare_items(
+    old: dict[str, Any],
+    new: dict[str, Any],
+    path: str,
+    old_root: dict[str, Any],
+    new_root: dict[str, Any],
+    seen: set[tuple[int, int]],
+) -> list[SchemaChange]:
+    old_items = old.get("items")
+    new_items = new.get("items")
+    if old_items is None and new_items is None:
+        return []
+    if old_items is None or new_items is None:
+        return [
+            SchemaChange(
+                f"{path}.items",
+                ChangeType.UNSUPPORTED_CHANGE,
+                "items presence changed",
+            )
+        ]
+    if isinstance(old_items, dict) and isinstance(new_items, dict):
+        return _compare_node(
+            old_items,
+            new_items,
+            path=f"{path}.items",
+            old_root=old_root,
+            new_root=new_root,
+            seen=seen,
+        )
+    if isinstance(old_items, list) and isinstance(new_items, list):
+        if len(old_items) != len(new_items):
+            return [
+                SchemaChange(
+                    f"{path}.items",
+                    ChangeType.UNSUPPORTED_CHANGE,
+                    "tuple item count changed",
+                )
+            ]
+        changes: list[SchemaChange] = []
+        for index, (old_item, new_item) in enumerate(zip(old_items, new_items, strict=True)):
+            changes.extend(
+                _compare_node(
+                    old_item,
+                    new_item,
+                    path=f"{path}.items[{index}]",
+                    old_root=old_root,
+                    new_root=new_root,
+                    seen=seen,
+                )
+            )
+        return changes
+    if old_items != new_items:
+        return [
+            SchemaChange(
+                f"{path}.items",
+                ChangeType.UNSUPPORTED_CHANGE,
+                "items changed in an unsupported form",
+            )
+        ]
+    return []
+
+
+def _compare_unique_items(
+    old: dict[str, Any], new: dict[str, Any], path: str
+) -> list[SchemaChange]:
+    old_value = bool(old.get("uniqueItems", False))
+    new_value = bool(new.get("uniqueItems", False))
+    if old_value == new_value:
+        return []
+    return [
+        SchemaChange(
+            f"{path}.uniqueItems",
+            ChangeType.VALIDATION_RESTRICTED if new_value else ChangeType.VALIDATION_RELAXED,
+            "uniqueItems changed",
+        )
+    ]
 
 
 def _compare_enum(old: dict[str, Any], new: dict[str, Any], path: str) -> list[SchemaChange]:
@@ -272,8 +476,14 @@ def _compare_properties(
 ) -> list[SchemaChange]:
     old_properties = old.get("properties")
     new_properties = new.get("properties")
-    if not isinstance(old_properties, dict) or not isinstance(new_properties, dict):
+    if old_properties is None and new_properties is None:
         return []
+    if old_properties is None or new_properties is None:
+        return [SchemaChange(path, ChangeType.UNSUPPORTED_CHANGE, "properties presence changed")]
+    if not isinstance(old_properties, dict) or not isinstance(new_properties, dict):
+        return [
+            SchemaChange(path, ChangeType.UNSUPPORTED_CHANGE, "properties shape is unsupported")
+        ]
     changes: list[SchemaChange] = []
     new_required = set(new.get("required") or ())
     for name, old_property in old_properties.items():
@@ -345,6 +555,16 @@ def _compare_variants(
     new_root: dict[str, Any],
     seen: set[tuple[int, int]],
 ) -> list[SchemaChange]:
+    old_keyword = "oneOf" if "oneOf" in old else "anyOf" if "anyOf" in old else None
+    new_keyword = "oneOf" if "oneOf" in new else "anyOf" if "anyOf" in new else None
+    if old_keyword != new_keyword and (old_keyword is not None or new_keyword is not None):
+        return [
+            SchemaChange(
+                path,
+                ChangeType.UNSUPPORTED_CHANGE,
+                f"union keyword changed from {old_keyword} to {new_keyword}",
+            )
+        ]
     old_variants = _variants(old, old_root)
     new_variants = _variants(new, new_root)
     if not old_variants and not new_variants:

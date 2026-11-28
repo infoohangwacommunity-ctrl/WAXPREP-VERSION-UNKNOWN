@@ -81,7 +81,24 @@ A manually edited schema or a model change without regeneration fails.
 5. Remove the old revision only after stored/queued data can no longer exist.
 6. Record the migration and any data rewrite.
 
-## 7. CLI
+## 7. Automatic baseline enforcement
+
+`contracts/baseline/` holds the last accepted published schema set.
+`contracts/compatibility-decisions.toml` records reviewed exceptions and
+conditional decisions.
+
+The quality gate runs `waxprep.contracts.cli enforce` and fails when:
+
+- a published version is modified without an explicit exception;
+- a breaking change does not increment the major version;
+- a conditional change has no explicit decision;
+- a contract is removed or its version regresses without a decision;
+- the baseline manifest/schema set is missing or malformed.
+
+New contracts are compatible additions. The command writes a machine-readable
+report (`ci-evidence/contract-compatibility.json` in CI).
+
+## 8. CLI
 
 ```bash
 # Publish current schemas
@@ -90,14 +107,30 @@ uv run python -m waxprep.contracts.cli generate
 # Verify committed schemas match models (CI)
 uv run python -m waxprep.contracts.cli check --schemas contracts/schemas
 
-# Compare an old and a new schema
+# Enforce compatibility against the published baseline (CI)
+uv run python -m waxprep.contracts.cli enforce \
+  --baseline contracts/baseline \
+  --decisions contracts/compatibility-decisions.toml \
+  --report ci-evidence/contract-compatibility.json
+
+# Compare an old and a new schema manually
 uv run python -m waxprep.contracts.cli compat \
   --old contracts/schemas/waxprep.operation.result@1.0.0.schema.json \
   --new /tmp/new-operation-result.schema.json
 ```
 
-`compat` exits non-zero for breaking changes and prints the recommended semantic
-version bump.
+`enforce` and `compat` exit non-zero for policy violations and print the
+recommended semantic version bump.
+
+## 9. Unsupported schema constructs
+
+The comparator handles the constructs used by current contracts and explicitly
+reports unsupported or unexamined structural changes as breaking. This includes
+`if`/`then`/`else`, `allOf`, `not`, `contains`, `patternProperties`,
+`prefixItems`, `dependentSchemas`, `patternProperties`, `oneOf`/`anyOf` swaps,
+array `items` changes, `uniqueItems`, `pattern`/`format`, defaults,
+discriminators and unresolved references. A new construct must get a comparator
+case and test before a contract relies on it.
 
 ## 8. Deprecation
 

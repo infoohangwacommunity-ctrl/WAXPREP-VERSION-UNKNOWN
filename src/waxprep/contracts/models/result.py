@@ -13,10 +13,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import ConfigDict, Field, RootModel
+from pydantic import Field
 
 from waxprep.contracts.errors import ContractViolationError
-from waxprep.contracts.models.base import ContractModel
+from waxprep.contracts.models.base import ContractModel, ContractRootModel
 from waxprep.errors.taxonomy import ErrorCategory, WaxPrepError
 
 
@@ -47,22 +47,22 @@ class ErrorDetail(ContractModel):
 
 
 class OperationSuccess(ContractModel):
-    status: Literal[OperationStatus.SUCCESS] = OperationStatus.SUCCESS
+    status: Literal[OperationStatus.SUCCESS]
     detail: str | None = Field(default=None, max_length=512)
 
 
 class OperationFailure(ContractModel):
-    status: Literal[OperationStatus.FAILED] = OperationStatus.FAILED
+    status: Literal[OperationStatus.FAILED]
     error: ErrorDetail
 
 
 class OperationRejected(ContractModel):
-    status: Literal[OperationStatus.REJECTED] = OperationStatus.REJECTED
+    status: Literal[OperationStatus.REJECTED]
     error: ErrorDetail
 
 
 class OperationDeferred(ContractModel):
-    status: Literal[OperationStatus.DEFERRED] = OperationStatus.DEFERRED
+    status: Literal[OperationStatus.DEFERRED]
     retry_after_seconds: float = Field(ge=0, le=86400)
     error: ErrorDetail | None = None
 
@@ -73,10 +73,8 @@ OperationVariant = Annotated[
 ]
 
 
-class OperationResult(RootModel[OperationVariant]):
+class OperationResult(ContractRootModel[OperationVariant]):
     """Root wrapper for the discriminated operation-result union."""
-
-    model_config = ConfigDict(frozen=True, strict=True)
 
     @property
     def status(self) -> OperationStatus:
