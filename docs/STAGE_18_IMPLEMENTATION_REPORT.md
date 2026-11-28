@@ -204,4 +204,13 @@ suite is 1,352 passed, 1 skipped, 9 xfailed, 100% coverage (5,144 statements).
 
 ### 8.7 Correction CI evidence
 
-Recorded after the correction push.
+**Correction commit:** `eba36119fd1e3cc6ba6877c2ebb3e2bd5b92c9cd`.
+
+| Workflow | Result | Run |
+|---|---|---|
+| CI — Quality Gate | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46122716253 |
+| Dependency Security | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46122716263 |
+
+These runs are bound to the correction commit and include the updated
+architecture-boundary checks, factory-signature tests, lifetime-scope policy
+tests and the full suite/coverage gate.
