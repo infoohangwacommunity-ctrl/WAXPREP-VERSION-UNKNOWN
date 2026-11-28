@@ -275,4 +275,19 @@ Local suite: **1299 passed, 1 skipped, 9 xfailed**, **100% coverage (4,888
 statements)**. The full `make check` gate passes, including schema drift,
 baseline compatibility, Semgrep, import-linter and the full test suite.
 
-Commit-bound CI evidence is recorded after the correction push.
+### 9.8 Correction CI evidence
+
+**Final correction commit:** `e33efc6b646e4b2147427e5a223401d2cf3f03b9`.
+
+| Workflow | Result | Run |
+|---|---|---|
+| CI — Quality Gate | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46093842446 |
+| Dependency Security | success | https://github.com/infoohangwacommunity-ctrl/WAXPREP-VERSION-UNKNOWN/actions/runs/46093842410 |
+
+An intermediate correction commit (`0545a17`) passed every quality-gate job but
+failed `CI Acceptance` because the compatibility report was written into
+`ci-evidence/`, which the acceptance verifier treats as job evidence. The final
+commit moves the report to `artifacts/contract-compatibility.json` and uploads
+it as its own artifact; acceptance passes.
+
+Both workflows above are bound to the final correction commit.
