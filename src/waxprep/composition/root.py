@@ -18,7 +18,13 @@ from typing import Any, cast
 from waxprep.adapters.fake_channel import FakeChannelAdapter
 from waxprep.adapters.fake_model import FakeModelAdapter
 from waxprep.adapters.fake_tool import FakeTool
-from waxprep.composition.bundles import AdapterSelection, ApplicationDependencies
+from waxprep.background.registry import JobRegistry
+from waxprep.background.runtime import BackgroundRuntime, UnavailableBackgroundRuntime
+from waxprep.composition.bundles import (
+    AdapterSelection,
+    ApplicationDependencies,
+    WorkerDependencies,
+)
 from waxprep.composition.graph import DependencyGraph, ProviderSpec
 from waxprep.composition.lifetimes import Lifetime
 from waxprep.config import Settings
@@ -77,6 +83,23 @@ class CompositionRoot:
         )
         graph.register(
             ProviderSpec(
+                JobRegistry,
+                JobRegistry,
+                lifetime=Lifetime.APPLICATION,
+                name="job-registry",
+            )
+        )
+        graph.register(
+            ProviderSpec(
+                BackgroundRuntime,
+                self._select_background,
+                dependencies=(JobRegistry,),
+                lifetime=Lifetime.APPLICATION,
+                name="background-runtime",
+            )
+        )
+        graph.register(
+            ProviderSpec(
                 ApplicationLifecycle,
                 lambda: lifecycle,
                 lifetime=Lifetime.APPLICATION,
@@ -103,6 +126,7 @@ class CompositionRoot:
                     AdapterSelection,
                     ApplicationLifecycle,
                     BackgroundTaskSupervisor,
+                    BackgroundRuntime,
                 ),
                 lifetime=Lifetime.APPLICATION,
                 name="application-dependencies",
@@ -110,6 +134,63 @@ class CompositionRoot:
         )
         resolved = graph.build(overrides=self._overrides)
         return cast(ApplicationDependencies, resolved[ApplicationDependencies])
+
+    def build_worker(
+        self,
+        *,
+        lifecycle: ApplicationLifecycle,
+        supervisor: BackgroundTaskSupervisor,
+        registry: JobRegistry | None = None,
+        background: BackgroundRuntime | None = None,
+    ) -> WorkerDependencies:
+        """Assemble a worker bundle without FastAPI or HTTP dependencies."""
+        job_registry = registry or JobRegistry()
+        graph = DependencyGraph()
+        graph.register(ProviderSpec(Settings, lambda: self._settings, lifetime=Lifetime.PROCESS))
+        graph.register(ProviderSpec(JobRegistry, lambda: job_registry))
+        graph.register(
+            ProviderSpec(
+                BackgroundRuntime,
+                lambda _job_registry: background or self._default_background(job_registry),
+                dependencies=(JobRegistry,),
+                name="background-runtime",
+            )
+        )
+        graph.register(ProviderSpec(ApplicationLifecycle, lambda: lifecycle, name="lifecycle"))
+        graph.register(
+            ProviderSpec(
+                BackgroundTaskSupervisor,
+                lambda: supervisor,
+                name="background-supervisor",
+            )
+        )
+        graph.register(
+            ProviderSpec(
+                WorkerDependencies,
+                WorkerDependencies,
+                dependencies=(
+                    Settings,
+                    JobRegistry,
+                    BackgroundRuntime,
+                    ApplicationLifecycle,
+                    BackgroundTaskSupervisor,
+                ),
+                name="worker-dependencies",
+            )
+        )
+        resolved = graph.build(overrides=self._overrides)
+        return cast(WorkerDependencies, resolved[WorkerDependencies])
+
+    def _select_background(self, registry: JobRegistry) -> BackgroundRuntime:
+        return self._default_background(registry)
+
+    @staticmethod
+    def _default_background(registry: JobRegistry) -> BackgroundRuntime:
+        try:
+            from waxprep.background.taskiq import TaskiqBackgroundRuntime
+        except ImportError:
+            return UnavailableBackgroundRuntime()
+        return TaskiqBackgroundRuntime(registry)
 
     def _select_adapters(self) -> AdapterSelection:
         return self._adapters or AdapterSelection(

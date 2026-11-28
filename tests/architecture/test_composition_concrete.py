@@ -90,3 +90,24 @@ def test_no_global_dependency_graph_or_composition_root() -> None:
 def test_global_graph_check_catches_synthetic_violation() -> None:
     source = "graph = DependencyGraph()\nroot = CompositionRoot(settings)\n"
     assert _global_graph_instances(Path("rogue.py"), source) == [1, 2]
+
+
+def _imports_module(path: Path, module: str) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == module or node.module.startswith(f"{module}."):
+                return True
+        elif isinstance(node, ast.Import):
+            if any(
+                alias.name == module or alias.name.startswith(f"{module}.") for alias in node.names
+            ):
+                return True
+    return False
+
+
+def test_background_worker_does_not_import_fastapi() -> None:
+    worker = SOURCE_ROOT / "waxprep" / "worker.py"
+    assert _imports_module(worker, "fastapi") is False
+    for path in (SOURCE_ROOT / "waxprep" / "background").glob("*.py"):
+        assert _imports_module(path, "fastapi") is False

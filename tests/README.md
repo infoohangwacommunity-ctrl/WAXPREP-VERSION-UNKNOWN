@@ -6,11 +6,11 @@ Hermetic, isolated, deterministic tests.
 
 | Category | Marker | Directory | Purpose |
 |----------|--------|-----------|---------|
-| **Unit** | `@pytest.mark.unit` | `tests/unit/` | Pure-function tests — no I/O, no app, no state. Fast, isolated, the foundation. Includes Stage 18 dependency-graph validation/building. |
-| **Integration** | `@pytest.mark.integration` | `tests/integration/` | App + real dependencies. Tests exception handlers, registries, composition root/lifecycle wiring, and the main FastAPI app end-to-end through the TestClient. |
+| **Unit** | `@pytest.mark.unit` | `tests/unit/` | Pure-function tests — no I/O, no app, no state. Fast, isolated, the foundation. Includes Stage 18 dependency-graph validation/building and Stage 19 job registration/dispatch. |
+| **Integration** | `@pytest.mark.integration` | `tests/integration/` | App + real dependencies. Tests exception handlers, registries, composition/lifecycle wiring, Taskiq background runtime/worker, and the main FastAPI app through the TestClient. |
 | **Contract** | `@pytest.mark.contract` | `tests/contract/` | Stage 17 typed DTOs, envelopes, validation, versioning/compatibility, schema drift, CLI, protocols, properties and adversarial inputs. |
 | **Lifecycle** | `@pytest.mark.lifecycle` | `tests/lifecycle/` | Stage 16 state transitions, rollback, reverse cleanup, cancellation, background-task ownership, isolation and ASGI lifespan behaviour. `test_lifecycle_static.py` also runs under the architecture marker. |
-| **Architecture** | `@pytest.mark.architecture` | `tests/architecture/` | Boundary and dependency checks — ensures modules don't import across forbidden boundaries, concrete adapters stay in composition, and no global dependency graph exists. |
+| **Architecture** | `@pytest.mark.architecture` | `tests/architecture/` | Boundary and dependency checks — ensures modules don't import across forbidden boundaries, concrete adapters stay in composition, the worker does not import FastAPI, and no global dependency graph exists. |
 | **Configuration** | `@pytest.mark.configuration` | `tests/configuration/` | Settings and environment variable handling: config load, env precedence, defaults, and validation. |
 | **Regression** | `@pytest.mark.regression` | `tests/regression/` | Pinned bug-fix tests — each test names the bug it guards against. Should never be deleted. |
 | **Detector** | none (not in the CI matrix) | `tests/detector/` | Stage 08 Universal Hardcoding Detector rule, adversarial, CLI, quality-gate and property tests. Executed by the full-suite coverage job. |

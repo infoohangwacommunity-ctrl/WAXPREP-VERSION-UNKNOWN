@@ -238,6 +238,17 @@ When changing secrets, logging, telemetry or error handling (Stages 12–15):
 - [ ] Composition failure leaves no partial dependencies
 - [ ] Graph, isolation, lifetime, failure and static-boundary tests cover the change
 
+**Background execution (Stage 19)**
+- [ ] Work is submitted through `BackgroundRuntime`; no Taskiq/broker import in components
+- [ ] Handlers register by task identity; no fixed business job catalogue
+- [ ] Envelope/payload is validated and bounded; no pickle/arbitrary objects
+- [ ] Failure results use Stage 15/17 types; unexpected errors are not swallowed
+- [ ] Duplicate delivery is safe/idempotent where required; no exactly-once claim
+- [ ] Worker uses composition + lifecycle and does not import FastAPI
+- [ ] App starts without a worker; background extra absence degrades safely
+- [ ] Broker/framework selection is in composition, not business code
+- [ ] Submission, execution, failure, lifecycle and static tests cover the change
+
 **Documentation**
 - [ ] `CONFIGURATION_REFERENCE.md` updated for every new setting
 - [ ] `.env.example` placeholders only

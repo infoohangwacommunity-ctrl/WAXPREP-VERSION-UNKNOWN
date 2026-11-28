@@ -18,7 +18,8 @@ STAGE_03_ARCHITECTURE.md, ARCHITECTURE_BOUNDARIES.md):
 | middleware/ | standard library, typing | core |
 | lifecycle/ | standard library, asyncio, errors/ | FastAPI, registries, adapters, middleware, config, main |
 | contracts/ | standard library, Pydantic, errors/ | core, registries, adapters, middleware, config, lifecycle, observability, composition, main |
-| composition/ | config, registries, adapters, lifecycle, observability, contracts | main.py |
+| composition/ | config, registries, adapters, lifecycle, observability, contracts, background | main.py |
+| background/ | contracts, errors, lifecycle, Taskiq (optional) | composition, main, adapters, registries, middleware, config |
 | main.py | FastAPI, config, registries, middleware, adapters | core |
 
 All checks inspect both `import X` and `from X import Y` forms,
@@ -160,6 +161,17 @@ BOUNDARY_RULES: dict[str, tuple[list[str], list[str]]] = {
     "composition": (
         [],
         ["waxprep.main"],
+    ),
+    "background": (
+        ["waxprep.contracts", "waxprep.errors", "waxprep.lifecycle"],
+        [
+            "waxprep.composition",
+            "waxprep.main",
+            "waxprep.adapters",
+            "waxprep.registries",
+            "waxprep.middleware",
+            "waxprep.config",
+        ],
     ),
     "contracts": (
         ["waxprep.errors"],
@@ -349,6 +361,7 @@ class TestCompositionBoundaries:
             "adapters",
             "middleware",
             "observability",
+            "background",
         )
         for package in packages:
             directory = WAXPREP_ROOT / package

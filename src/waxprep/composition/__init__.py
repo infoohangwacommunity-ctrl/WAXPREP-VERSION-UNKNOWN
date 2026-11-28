@@ -14,7 +14,11 @@ component is introduced.
 """
 
 from waxprep.composition.application import register_application_components
-from waxprep.composition.bundles import AdapterSelection, ApplicationDependencies
+from waxprep.composition.bundles import (
+    AdapterSelection,
+    ApplicationDependencies,
+    WorkerDependencies,
+)
 from waxprep.composition.errors import (
     CircularDependencyError,
     CompositionError,
@@ -32,6 +36,7 @@ __all__ = [
     "AdapterSelection",
     "AppState",
     "ApplicationDependencies",
+    "WorkerDependencies",
     "CircularDependencyError",
     "CompositionError",
     "CompositionRoot",

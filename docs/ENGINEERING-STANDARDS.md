@@ -564,6 +564,29 @@ Before pushing:
 
 ---
 
+## 14. Stage 19: Background Execution
+
+- Submit work through `BackgroundRuntime`; components must not import Taskiq or a
+  broker package.
+- Register handlers through `JobRegistry` by stable task identity. Do not add a
+  fixed business-job catalogue to the infrastructure.
+- Job payloads cross a process boundary: use validated Stage 17 envelopes,
+  bounded JSON, correlation/causation IDs and safe failure results.
+- Handlers must tolerate duplicate delivery; the foundation does not advertise
+  exactly-once execution.
+- Do not add a custom queue, broker, scheduler, worker framework or hardcoded
+  retry/error list. Use the framework's broker/middleware extension points.
+- Worker startup uses the Stage 18 composition root and Stage 16 lifecycle; it
+  must not import FastAPI or create a second container/lifecycle.
+- Application startup must work without a worker; the background component is
+  optional and degrades to an unavailable submitter when the extra is absent.
+- Concrete broker selection stays in composition; the default in-memory broker
+  is for foundation tests, not a production delivery guarantee.
+- Add submission, execution, validation, failure, lifecycle, isolation and static
+  boundary tests for every new handler or runtime.
+
+---
+
 ## PR Review Checklist
 
 See [PR_REVIEW_CHECKLIST.md](PR_REVIEW_CHECKLIST.md) for the concise, actionable checklist.

@@ -123,6 +123,7 @@ source_modules =
     waxprep.adapters
     waxprep.middleware
     waxprep.observability
+    waxprep.background
 
 forbidden_modules =
     waxprep.composition
@@ -135,4 +136,19 @@ source_modules =
     waxprep.composition
 
 forbidden_modules =
+    waxprep.main
+
+# Contract 9: Background infrastructure isolation
+# The background package provides submission/runtime primitives; it must not
+# import the composition root or ASGI entrypoint. The outer worker entrypoint
+# (waxprep.worker) is the only place that combines background and composition.
+[importlinter:contract:9]
+name = "Background isolation: no composition or ASGI entrypoint imports"
+type = forbidden
+
+source_modules =
+    waxprep.background
+
+forbidden_modules =
+    waxprep.composition
     waxprep.main

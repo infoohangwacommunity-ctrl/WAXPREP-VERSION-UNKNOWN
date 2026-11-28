@@ -81,6 +81,23 @@ def _initialize_registries(app_state: AppState) -> None:
     )
 
 
+async def _start_background(app_state: AppState) -> None:
+    dependencies = app_state.dependencies
+    if dependencies is None:
+        raise CompositionError("Background cannot initialize without composed dependencies")
+    try:
+        await dependencies.background.start()
+    except BaseException:
+        await dependencies.background.stop()
+        raise
+
+
+async def _stop_background(app_state: AppState) -> None:
+    dependencies = app_state.dependencies
+    if dependencies is not None:
+        await dependencies.background.stop()
+
+
 def _release_registries(app_state: AppState) -> None:
     app_state.registries_ready = False
     app_state.channel_registry = None
@@ -159,6 +176,16 @@ def register_application_components(
             release=lambda: _release_registries(app_state),
             depends_on=("composition",),
             description="Registers the composition root's selected adapters",
+        )
+    )
+    lifecycle.register(
+        LifecycleComponent(
+            name="background",
+            initialize=lambda: _start_background(app_state),
+            release=lambda: _stop_background(app_state),
+            mandatory=False,
+            depends_on=("composition",),
+            description="Optional background execution runtime; in-memory by default",
         )
     )
     lifecycle.register(

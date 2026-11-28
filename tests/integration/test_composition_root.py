@@ -110,6 +110,42 @@ class TestCompositionRoot:
         dependencies.channel_registry.register("probe", FakeChannelAdapter())
         assert dependencies.channel_registry.is_registered("probe")
 
+    def test_background_initialization_requires_composition(self):
+        import asyncio
+
+        from waxprep.composition.application import _start_background
+
+        with pytest.raises(CompositionError, match="without composed"):
+            asyncio.run(_start_background(AppState()))
+
+    def test_background_start_failure_is_cleaned_up(self):
+        import asyncio
+
+        from waxprep.composition.application import _start_background
+
+        class FailingBackground:
+            def __init__(self):
+                self.stopped = False
+
+            @property
+            def active(self):
+                return False
+
+            async def start(self):
+                raise RuntimeError("broker failed")
+
+            async def stop(self):
+                self.stopped = True
+
+        class FakeDependencies:
+            background = FailingBackground()
+
+        state = AppState()
+        state.dependencies = FakeDependencies()  # type: ignore[assignment]
+        with pytest.raises(RuntimeError, match="broker failed"):
+            asyncio.run(_start_background(state))
+        assert FakeDependencies.background.stopped is True
+
     def test_registry_initialization_requires_composition(self):
         with pytest.raises(CompositionError, match="without composed"):
             _initialize_registries(AppState())
@@ -184,5 +220,6 @@ class TestApplicationComposition:
             "configuration",
             "composition",
             "registries",
+            "background",
             "telemetry",
         ]

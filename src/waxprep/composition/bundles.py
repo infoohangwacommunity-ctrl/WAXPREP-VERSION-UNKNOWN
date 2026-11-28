@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from waxprep.background.registry import JobRegistry
+from waxprep.background.runtime import BackgroundRuntime
 from waxprep.config import Settings
 from waxprep.lifecycle import ApplicationLifecycle, BackgroundTaskSupervisor
 from waxprep.registries.channel import ChannelAdapter, ChannelRegistry
@@ -55,5 +57,21 @@ class ApplicationDependencies:
     model_registry: ModelRegistry
     tool_registry: ToolRegistry
     adapters: AdapterSelection
+    lifecycle: ApplicationLifecycle
+    supervisor: BackgroundTaskSupervisor
+    background: BackgroundRuntime
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerDependencies:
+    """Worker-scope dependencies assembled by the composition root.
+
+    The worker receives only what it needs; it does not inherit the HTTP
+    application, FastAPI, middleware or request handlers.
+    """
+
+    settings: Settings
+    job_registry: JobRegistry
+    background: BackgroundRuntime
     lifecycle: ApplicationLifecycle
     supervisor: BackgroundTaskSupervisor

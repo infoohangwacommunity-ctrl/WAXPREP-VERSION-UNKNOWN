@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "waxprep"
 version = "0.1.0"
-description = "WaxPrep Foundation - Stages 01-18 (engineering foundation, quality gate, supply-chain security, CI acceptance, secrets, logging, typed errors, OpenTelemetry observability, application lifecycle management, internal communication contracts, and explicit dependency-injection composition)"
+description = "WaxPrep Foundation - Stages 01-19 (engineering foundation, quality gate, supply-chain security, CI acceptance, secrets, logging, typed errors, OpenTelemetry observability, application lifecycle management, internal communication contracts, and explicit dependency-injection composition, and background execution infrastructure)"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 license = "MIT"
@@ -23,6 +23,7 @@ dependencies = [
 
 [project.scripts]
 waxprep = "waxprep.main:run"
+waxprep-worker = "waxprep.worker:run"
 
 [project.optional-dependencies]
 # ── Stage 14: telemetry is an OPTIONAL extra ─────────────────────────────────
@@ -34,6 +35,14 @@ waxprep = "waxprep.main:run"
 telemetry = [
     "opentelemetry-sdk>=1.45.0",
     "opentelemetry-exporter-otlp-proto-http>=1.45.0",
+]
+# ── Stage 19: background execution is an OPTIONAL extra ─────────────────────
+# Taskiq core + the in-memory broker are used by the foundation adapter. Real
+# broker packages (Redis/RabbitMQ/NATS) are deployment choices and are not
+# committed here. The application degrades to an unavailable submitter when the
+# extra is absent.
+background = [
+    "taskiq>=0.13.0",
 ]
 dev = [
     "mypy>=1.8.0",
@@ -57,6 +66,9 @@ dev = [
     # exporter integration is tested, not only the degraded no-op path.
     "opentelemetry-sdk>=1.45.0",
     "opentelemetry-exporter-otlp-proto-http>=1.45.0",
+    # Stage 19 — install the background extra in CI so the real Taskiq adapter
+    # is exercised, not only the unavailable/degraded path.
+    "taskiq>=0.13.0",
 ]
 
 # ── Vulture: dead code detection ─────────────────────────────────────────────

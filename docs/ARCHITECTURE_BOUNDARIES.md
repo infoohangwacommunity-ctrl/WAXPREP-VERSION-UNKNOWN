@@ -494,6 +494,7 @@ The packages exist; most of them are intentionally empty land.
 3. **Context** (`src/waxprep/context/`) — package boundary only. No student state is implemented.
 4. **Services** (`src/waxprep/services/`) — package boundary only. No product services.
 5. **Composition** (`src/waxprep/composition/`) — Stage 18 composition root, typed graph, lifetimes and bundles. This is implemented; it is not a product service.
+6. **Background** (`src/waxprep/background/`, `src/waxprep/worker.py`) — Stage 19 submission boundary, job registry, Taskiq adapter and independent worker entrypoint. No product jobs are registered.
 
 `extract_keywords()` is a generic lexical utility. It is not, and must not
 become, the tutor's student-understanding mechanism.
@@ -517,10 +518,12 @@ These boundaries ensure:
 | `messaging/` | No (use registries) | Yes | No | No (use registries/adapters) |
 | `context/` | No | Optional | No | No |
 | `composition/` | Yes (selection boundary) | No | No | Yes (selects adapters) |
+| `background/` | No | No | No | Taskiq (framework adapter only) |
+| `worker.py` | No | No | No (composition/background) | No |
 | `main.py` | No (composition selects) | No | Yes | No |
 | `middleware/` | No | No | Yes (Starlette) | No |
 
 ---
 
-*Document version: 1.2*
-*Last updated: 2026-11-28 — Stage 18 composition and registry correction*
+*Document version: 1.3*
+*Last updated: 2026-11-28 — Stage 19 background execution boundary*
